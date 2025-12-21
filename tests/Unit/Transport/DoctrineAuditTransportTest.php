@@ -40,9 +40,19 @@ class DoctrineAuditTransportTest extends TestCase
 
     public function testSendPostFlushUpdatesId(): void
     {
-        $log = $this->createStub(AuditLog::class);
-        $log->method('getId')->willReturn(1);
-        $log->method('getEntityId')->willReturn('pending');
+        // Use real instance instead of stub because AuditLog is final
+        $log = new AuditLog();
+        $log->setEntityId('pending');
+        // Since properties are public private(set), we can't mock them easily with createStub unless we use __get or reflection,
+        // but AuditLog is final now.
+        // We should use a real instance and set properties via setters (which we kept).
+        $log = new AuditLog();
+        $log->setEntityId('pending');
+        // We need to set ID, but ID is private(set) and has no setter.
+        // We must use reflection to set ID for testing.
+        $reflection = new \ReflectionClass($log);
+        $property = $reflection->getProperty('id');
+        $property->setValue($log, 1);
 
         $entity = new \stdClass();
         $em = $this->createStub(EntityManagerInterface::class);

@@ -241,7 +241,7 @@ class AuditService
 
         // Numeric comparison with type coercion
         if (is_numeric($oldValue) && is_numeric($newValue)) {
-            return (float)$oldValue !== (float)$newValue;
+            return (float) $oldValue !== (float) $newValue;
         }
 
         // Array comparison
@@ -284,7 +284,7 @@ class AuditService
             // Filter out null values and convert to strings
             $idValues = array_filter(
                 array_map('strval', $ids),
-                fn ($id) => $id !== ''
+                fn($id) => $id !== ''
             );
 
             return !empty($idValues)
@@ -312,15 +312,15 @@ class AuditService
 
             // Collection handling
             $value instanceof Collection => $value->map(function ($item) use ($depth) {
-                return $this->serializeValue($item, $depth + 1);
-            })->toArray(),
+                    return $this->serializeValue($item, $depth + 1);
+                })->toArray(),
 
             // Object handling
             is_object($value) => $this->serializeObject($value),
 
             // Array handling with recursion protection
             is_array($value) => array_map(
-                fn ($v) => $this->serializeValue($v, $depth + 1),
+                fn($v) => $this->serializeValue($v, $depth + 1),
                 $value
             ),
 
@@ -342,7 +342,7 @@ class AuditService
         }
 
         if (method_exists($value, '__toString')) {
-            return (string)$value;
+            return (string) $value;
         }
 
         return $value::class;

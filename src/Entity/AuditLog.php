@@ -1,9 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Entity;
 
-use Doctrine\ORM\Mapping as ORM;
 use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping as ORM;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 
 #[ORM\Entity(repositoryClass: AuditLogRepository::class)]
@@ -15,63 +17,51 @@ use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
         new ORM\Index(name: 'created_idx', columns: ['created_at']),
     ]
 )]
-class AuditLog
+final class AuditLog
 {
     public const ACTION_CREATE = 'create';
     public const ACTION_UPDATE = 'update';
     public const ACTION_DELETE = 'delete';
 
     #[ORM\Id, ORM\GeneratedValue, ORM\Column]
-    private ?int $id = null;
+    public private(set) ?int $id = null;
 
     #[ORM\Column(length: 255)]
-    private string $entityClass;
+    public private(set) string $entityClass;
 
     #[ORM\Column(length: 255)]
-    private string $entityId;
+    public private(set) string $entityId;
 
     #[ORM\Column(length: 50)]
-    private string $action;
+    public private(set) string $action;
 
     #[ORM\Column(type: Types::JSON, nullable: true)]
-    private ?array $oldValues = null;
+    public private(set) ?array $oldValues = null;
 
     #[ORM\Column(type: Types::JSON, nullable: true)]
-    private ?array $newValues = null;
+    public private(set) ?array $newValues = null;
 
     #[ORM\Column(type: Types::JSON, nullable: true)]
-    private ?array $changedFields = null;
+    public private(set) ?array $changedFields = null;
 
     #[ORM\Column(nullable: true)]
-    private ?int $userId = null;
+    public private(set) ?int $userId = null;
 
     #[ORM\Column(length: 255, nullable: true)]
-    private ?string $username = null;
+    public private(set) ?string $username = null;
 
     #[ORM\Column(length: 45, nullable: true)]
-    private ?string $ipAddress = null;
+    public private(set) ?string $ipAddress = null;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
-    private ?string $userAgent = null;
+    public private(set) ?string $userAgent = null;
 
     #[ORM\Column]
-    private \DateTimeImmutable $createdAt;
+    public private(set) \DateTimeImmutable $createdAt;
 
     public function __construct()
     {
         $this->createdAt = new \DateTimeImmutable();
-    }
-
-
-
-    public function getId(): ?int
-    {
-        return $this->id;
-    }
-
-    public function getEntityClass(): string
-    {
-        return $this->entityClass;
     }
 
     public function setEntityClass(string $entityClass): self
@@ -80,20 +70,10 @@ class AuditLog
         return $this;
     }
 
-    public function getEntityId(): string
-    {
-        return $this->entityId;
-    }
-
     public function setEntityId(string $entityId): self
     {
         $this->entityId = $entityId;
         return $this;
-    }
-
-    public function getAction(): string
-    {
-        return $this->action;
     }
 
     public function setAction(string $action): self
@@ -102,20 +82,10 @@ class AuditLog
         return $this;
     }
 
-    public function getOldValues(): ?array
-    {
-        return $this->oldValues;
-    }
-
     public function setOldValues(?array $oldValues): self
     {
         $this->oldValues = $oldValues;
         return $this;
-    }
-
-    public function getNewValues(): ?array
-    {
-        return $this->newValues;
     }
 
     public function setNewValues(?array $newValues): self
@@ -124,20 +94,10 @@ class AuditLog
         return $this;
     }
 
-    public function getChangedFields(): ?array
-    {
-        return $this->changedFields;
-    }
-
     public function setChangedFields(?array $changedFields): self
     {
         $this->changedFields = $changedFields;
         return $this;
-    }
-
-    public function getUserId(): ?int
-    {
-        return $this->userId;
     }
 
     public function setUserId(?int $userId): self
@@ -146,20 +106,10 @@ class AuditLog
         return $this;
     }
 
-    public function getUsername(): ?string
-    {
-        return $this->username;
-    }
-
     public function setUsername(?string $username): self
     {
         $this->username = $username;
         return $this;
-    }
-
-    public function getIpAddress(): ?string
-    {
-        return $this->ipAddress;
     }
 
     public function setIpAddress(?string $ipAddress): self
@@ -168,20 +118,10 @@ class AuditLog
         return $this;
     }
 
-    public function getUserAgent(): ?string
-    {
-        return $this->userAgent;
-    }
-
     public function setUserAgent(?string $userAgent): self
     {
         $this->userAgent = $userAgent;
         return $this;
-    }
-
-    public function getCreatedAt(): \DateTimeImmutable
-    {
-        return $this->createdAt;
     }
 
     public function setCreatedAt(\DateTimeImmutable $createdAt): self
@@ -189,7 +129,4 @@ class AuditLog
         $this->createdAt = $createdAt;
         return $this;
     }
-
-
-
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use Doctrine\ORM\EntityManagerInterface;
@@ -37,7 +39,7 @@ final class DoctrineAuditTransport implements AuditTransportInterface
         $em = $context['em'];
 
         // Only update if we have a valid ID and the entity ID was pending
-        if ($log->getId() && $log->getEntityId() === 'pending') {
+        if ($log->id && $log->entityId === 'pending') {
             // We need the actual entity to get its ID now
             $entity = $context['entity'] ?? null;
             if (!$entity) {
@@ -57,7 +59,7 @@ final class DoctrineAuditTransport implements AuditTransportInterface
             $table = $em->getClassMetadata(AuditLog::class)->getTableName();
             $em->getConnection()->executeStatement(
                 sprintf('UPDATE %s SET entity_id = ? WHERE id = ?', $table),
-                [$entityId, $log->getId()]
+                [$entityId, $log->id]
             );
         }
     }

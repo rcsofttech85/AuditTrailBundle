@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use Psr\Log\LoggerInterface;
@@ -26,7 +28,7 @@ final class HttpAuditTransport implements AuditTransportInterface
             return;
         }
 
-        $entityId = $log->getEntityId();
+        $entityId = $log->entityId;
         if ($entityId === 'pending' && isset($context['entity'], $context['em'])) {
             $entity = $context['entity'];
             $em = $context['em'];
@@ -40,18 +42,19 @@ final class HttpAuditTransport implements AuditTransportInterface
         try {
             $this->client->request('POST', $this->endpoint, [
                 'json' => [
-                    'entity_class' => $log->getEntityClass(),
+                    'entity_class' => $log->entityClass,
                     'entity_id' => $entityId,
-                    'action' => $log->getAction(),
-                    'old_values' => $log->getOldValues(),
-                    'new_values' => $log->getNewValues(),
-                    'user_id' => $log->getUserId(),
-                    'username' => $log->getUsername(),
-                    'ip_address' => $log->getIpAddress(),
-                    'created_at' => $log->getCreatedAt()->format(\DateTimeInterface::ATOM),
+                    'action' => $log->action,
+                    'old_values' => $log->oldValues,
+                    'new_values' => $log->newValues,
+                    'user_id' => $log->userId,
+                    'username' => $log->username,
+                    'ip_address' => $log->ipAddress,
+                    'created_at' => $log->createdAt->format(\DateTimeInterface::ATOM),
                 ],
             ]);
         } catch (\Throwable $e) {
+
             $this->logger->error("Failed to send audit log to endpoint: {$this->endpoint}", [
                 'exception' => $e,
             ]);

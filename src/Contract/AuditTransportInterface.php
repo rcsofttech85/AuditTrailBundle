@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Contract;
 
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;

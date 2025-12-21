@@ -1,3 +1,4 @@
 vendor
 .env
 .php-cs-fixer.dist.php
+.phpunit.result.cache/

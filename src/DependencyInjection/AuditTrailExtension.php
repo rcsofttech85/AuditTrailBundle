@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\DependencyInjection;
 
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
@@ -15,7 +17,7 @@ use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
-class AuditTrailExtension extends Extension
+final class AuditTrailExtension extends Extension
 {
 
     public function load(array $configs, ContainerBuilder $container): void

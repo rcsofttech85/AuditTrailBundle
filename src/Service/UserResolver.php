@@ -18,7 +18,7 @@ class UserResolver
     public function getUserId(): ?int
     {
         $user = $this->security->getUser();
-        
+
         return match (true) {
             $user === null => null,
             method_exists($user, 'getId') => $user->getId(),
@@ -34,14 +34,14 @@ class UserResolver
     public function getIpAddress(): ?string
     {
         $request = $this->requestStack->getCurrentRequest();
-        
+
         return $this->trackIpAddress ? $request?->getClientIp() : null;
     }
 
     public function getUserAgent(): ?string
     {
         $request = $this->requestStack->getCurrentRequest();
-        
+
         return $this->trackUserAgent ? $request?->headers->get('User-Agent') : null;
     }
 }

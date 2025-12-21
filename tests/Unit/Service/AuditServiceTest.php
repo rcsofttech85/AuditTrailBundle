@@ -97,12 +97,12 @@ class AuditServiceTest extends TestCase
             ['name' => 'New']
         );
 
-        $this->assertEquals(TestEntity::class, $log->getEntityClass());
-        $this->assertEquals(AuditLog::ACTION_UPDATE, $log->getAction());
-        $this->assertEquals(['name' => 'Old'], $log->getOldValues());
-        $this->assertEquals(['name' => 'New'], $log->getNewValues());
-        $this->assertEquals(['name'], $log->getChangedFields());
-        $this->assertEquals(123, $log->getUserId());
-        $this->assertEquals('testuser', $log->getUsername());
+        $this->assertEquals(TestEntity::class, $log->entityClass);
+        $this->assertEquals(AuditLog::ACTION_UPDATE, $log->action);
+        $this->assertEquals(['name' => 'Old'], $log->oldValues);
+        $this->assertEquals(['name' => 'New'], $log->newValues);
+        $this->assertEquals(['name'], $log->changedFields);
+        $this->assertEquals(123, $log->userId);
+        $this->assertEquals('testuser', $log->username);
     }
 }

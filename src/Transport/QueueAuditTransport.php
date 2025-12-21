@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use Psr\Log\LoggerInterface;
@@ -23,7 +25,7 @@ final class QueueAuditTransport implements AuditTransportInterface
             return;
         }
 
-        $entityId = $log->getEntityId();
+        $entityId = $log->entityId;
         if ($entityId === 'pending' && isset($context['entity'], $context['em'])) {
             $entity = $context['entity'];
             $em = $context['em'];
@@ -36,22 +38,22 @@ final class QueueAuditTransport implements AuditTransportInterface
 
         try {
             $message = new AuditLogMessage(
-                $log->getEntityClass(),
+                $log->entityClass,
                 $entityId,
-                $log->getAction(),
-                $log->getOldValues(),
-                $log->getNewValues(),
-                $log->getUserId(),
-                $log->getUsername(),
-                $log->getIpAddress(),
-                $log->getCreatedAt()
+                $log->action,
+                $log->oldValues,
+                $log->newValues,
+                $log->userId,
+                $log->username,
+                $log->ipAddress,
+                $log->createdAt
             );
 
             $this->bus->dispatch($message);
         } catch (\Throwable $e) {
             $this->logger->error('Failed to dispatch audit log message', [
                 'exception' => $e,
-                'entity_class' => $log->getEntityClass(),
+                'entity_class' => $log->entityClass,
             ]);
         }
     }

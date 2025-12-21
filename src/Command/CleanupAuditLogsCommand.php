@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Command;
 
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
@@ -13,11 +15,11 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
     name: 'audit:cleanup',
     description: 'Deletes old audit logs based on retention policy'
 )]
-class CleanupAuditLogsCommand extends Command
+final class CleanupAuditLogsCommand extends Command
 {
     public function __construct(
         private AuditLogRepository $repository,
-        #[Autowire(param: "audit_trail.retention_days")]private int $retentionDays = 365
+        #[Autowire(param: "audit_trail.retention_days")] private int $retentionDays = 365
     ) {
         parent::__construct();
     }

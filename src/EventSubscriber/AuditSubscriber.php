@@ -12,9 +12,9 @@ use Rcsofttech\AuditTrailBundle\Service\AuditService;
 
 #[AsDoctrineListener(event: Events::onFlush)]
 #[AsDoctrineListener(event: Events::postFlush)]
-class AuditSubscriber
+final class AuditSubscriber
 {
-    private array $pendingAudits = [];
+    private array $scheduledAudits = [];
 
     public function __construct(
         private readonly AuditService $auditService,
@@ -46,8 +46,8 @@ class AuditSubscriber
                 'uow' => $uow
             ]);
 
-            // Store for postFlush to update entity ID
-            $this->pendingAudits[] = ['entity' => $entity, 'audit' => $audit];
+            // Store for postFlush (ID update + other transports)
+            $this->scheduledAudits[] = ['entity' => $entity, 'audit' => $audit];
         }
 
         // UPDATE
@@ -66,6 +66,9 @@ class AuditSubscriber
                 'em' => $em,
                 'uow' => $uow
             ]);
+
+            // Store for postFlush (other transports)
+            $this->scheduledAudits[] = ['entity' => $entity, 'audit' => $audit];
         }
 
         // DELETE
@@ -86,23 +89,26 @@ class AuditSubscriber
                 'em' => $em,
                 'uow' => $uow
             ]);
+
+            // Store for postFlush (other transports)
+            $this->scheduledAudits[] = ['entity' => $entity, 'audit' => $audit];
         }
     }
 
     public function postFlush(PostFlushEventArgs $args): void
     {
-        if (empty($this->pendingAudits)) {
+        if (empty($this->scheduledAudits)) {
             return;
         }
 
-        $pendingAudits = $this->pendingAudits;
-        $this->pendingAudits = [];
+        $scheduledAudits = $this->scheduledAudits;
+        $this->scheduledAudits = [];
 
         $em = $args->getObjectManager();
 
-        foreach ($pendingAudits as $pending) {
-            $entity = $pending['entity'];
-            $audit = $pending['audit'];
+        foreach ($scheduledAudits as $scheduled) {
+            $entity = $scheduled['entity'];
+            $audit = $scheduled['audit'];
 
             $this->transport->send($audit, [
                 'phase' => 'post_flush',

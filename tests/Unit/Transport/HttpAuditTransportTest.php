@@ -27,6 +27,8 @@ class HttpAuditTransportTest extends TestCase
     {
         $log = new AuditLog();
         $log->setEntityClass('TestEntity');
+        // ID is private(set) and no setter, but we need to set it for test?
+        // Wait, setEntityId IS available.
         $log->setEntityId('1');
         $log->setAction('create');
 

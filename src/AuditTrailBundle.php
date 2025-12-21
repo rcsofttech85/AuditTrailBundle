@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle;
 
 use Symfony\Component\HttpKernel\Bundle\Bundle;
 
-class AuditTrailBundle extends Bundle
+final class AuditTrailBundle extends Bundle
 {
     public function getPath(): string
     {

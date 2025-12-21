@@ -84,4 +84,38 @@ class AuditSubscriberTest extends TestCase
 
         $this->subscriber->postFlush($postFlushArgs);
     }
+
+    public function testPostFlushHandlesUpdates(): void
+    {
+        // First trigger onFlush to populate scheduled audits
+        $entity = new \stdClass();
+        $auditLog = new AuditLog();
+
+        $em = $this->createStub(EntityManagerInterface::class);
+        $uow = $this->createStub(UnitOfWork::class);
+        $args = $this->createStub(OnFlushEventArgs::class);
+
+        $args->method('getObjectManager')->willReturn($em);
+        $em->method('getUnitOfWork')->willReturn($uow);
+
+        $uow->method('getScheduledEntityInsertions')->willReturn([]);
+        $uow->method('getScheduledEntityUpdates')->willReturn([$entity]);
+        $uow->method('getScheduledEntityDeletions')->willReturn([]);
+        $uow->method('getEntityChangeSet')->willReturn([]);
+
+        $this->auditService->method('shouldAudit')->willReturn(true);
+        $this->auditService->method('createAuditLog')->willReturn($auditLog);
+
+        $this->subscriber->onFlush($args);
+
+        // Now trigger postFlush
+        $postFlushArgs = $this->createStub(PostFlushEventArgs::class);
+        $postFlushArgs->method('getObjectManager')->willReturn($em);
+
+        $this->transport->expects($this->once())
+            ->method('send')
+            ->with($auditLog, $this->callback(fn($context) => $context['phase'] === 'post_flush'));
+
+        $this->subscriber->postFlush($postFlushArgs);
+    }
 }
