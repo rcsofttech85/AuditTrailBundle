@@ -3,11 +3,10 @@
 namespace Rcsofttech\AuditTrailBundle\EventSubscriber;
 
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
-use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Events;
-use Doctrine\ORM\UnitOfWork;
+use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 
@@ -18,8 +17,10 @@ class AuditSubscriber
     private array $pendingAudits = [];
 
     public function __construct(
-        private readonly AuditService $auditService
-    ) {}
+        private readonly AuditService $auditService,
+        private readonly AuditTransportInterface $transport
+    ) {
+    }
 
     public function onFlush(OnFlushEventArgs $args): void
     {
@@ -39,7 +40,11 @@ class AuditSubscriber
                 $this->auditService->getEntityData($entity)
             );
 
-            $this->persistAudit($em, $uow, $audit);
+            $this->transport->send($audit, [
+                'phase' => 'on_flush',
+                'em' => $em,
+                'uow' => $uow
+            ]);
 
             // Store for postFlush to update entity ID
             $this->pendingAudits[] = ['entity' => $entity, 'audit' => $audit];
@@ -56,7 +61,11 @@ class AuditSubscriber
 
             $audit = $this->auditService->createAuditLog($entity, AuditLog::ACTION_UPDATE, $old, $new);
 
-            $this->persistAudit($em, $uow, $audit);
+            $this->transport->send($audit, [
+                'phase' => 'on_flush',
+                'em' => $em,
+                'uow' => $uow
+            ]);
         }
 
         // DELETE
@@ -72,7 +81,11 @@ class AuditSubscriber
                 null
             );
 
-            $this->persistAudit($em, $uow, $audit);
+            $this->transport->send($audit, [
+                'phase' => 'on_flush',
+                'em' => $em,
+                'uow' => $uow
+            ]);
         }
     }
 
@@ -86,31 +99,17 @@ class AuditSubscriber
         $this->pendingAudits = [];
 
         $em = $args->getObjectManager();
-        $connection = $em->getConnection();
 
         foreach ($pendingAudits as $pending) {
             $entity = $pending['entity'];
             $audit = $pending['audit'];
 
-            // Get the actual entity ID
-            $meta = $em->getClassMetadata($entity::class);
-            $ids = $meta->getIdentifierValues($entity);
-
-
-            $entityId = !empty($ids) ? implode('-', $ids) : 'pending';
-
-            // Update audit log directly in database to avoid triggering another flush
-            if ($entityId !== 'pending' && $audit->getId()) {
-                $table = $em->getClassMetadata(AuditLog::class)->getTableName();
-                $connection->executeStatement(
-                    sprintf('UPDATE %s SET entity_id = ? WHERE id = ?', $table),
-                    [$entityId, $audit->getId()]
-                );
-            }
+            $this->transport->send($audit, [
+                'phase' => 'post_flush',
+                'em' => $em,
+                'entity' => $entity
+            ]);
         }
-
-        // Clear pending audits
-        $this->pendingAudits = [];
     }
 
     private function shouldProcessEntity(object $entity): bool
@@ -137,13 +136,5 @@ class AuditSubscriber
 
         return [$old, $new];
     }
-
-    private function persistAudit(EntityManagerInterface $em, UnitOfWork $uow, AuditLog $audit): void
-    {
-        $em->persist($audit);
-        $uow->computeChangeSet(
-            $em->getClassMetadata(AuditLog::class),
-            $audit
-        );
-    }
 }
+
