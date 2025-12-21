@@ -1,0 +1,25 @@
+{
+    "name": "rcsofttech/audit-trail-bundle",
+    "description": "A Symfony bundle that automatically tracks and stores Doctrine ORM entity changes for audit logging and compliance.",
+    "type": "symfony-bundle",
+    "license": "proprietary",
+    "autoload": {
+        "psr-4": {
+            "Rcsofttech\\AuditTrailBundle\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "rahul chavan",
+            "email": "rcsoftech85@gmail.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {
+        "php": "^8.4",
+        "symfony/framework-bundle": "^7.4",
+        "doctrine/orm": "^3.6",
+        "doctrine/doctrine-bundle": "^3.1 || ^2.18",
+        "symfony/security-bundle": "^7.4"
+    }
+}
