@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rcsofttech85/AuditTrailBundle/actions/workflows/ci.yaml/badge.svg)](https://github.com/rcsofttech85/AuditTrailBundle/actions/workflows/ci.yaml)
 [![Latest Stable Version](https://img.shields.io/packagist/v/rcsofttech/audit-trail-bundle.svg)](https://packagist.org/packages/rcsofttech/audit-trail-bundle)
-[![License](https://img.shields.io/packagist/l/rcsofttech/audit-trail-bundle.svg)](https://packagist.org/packages/rcsofttech/audit-trail-bundle)
+![License](https://img.shields.io/github/license/rcsofttech85/AuditTrailBundle)
 [![Total Downloads](https://img.shields.io/packagist/dt/rcsofttech/audit-trail-bundle.svg)](https://packagist.org/packages/rcsofttech/audit-trail-bundle)
 
 A lightweight, high-performance Symfony bundle that automatically tracks and stores Doctrine ORM entity changes for audit logging and compliance.
