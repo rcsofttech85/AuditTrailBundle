@@ -5,11 +5,12 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\TestCase;
+use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
+use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
-use Rcsofttech\AuditTrailBundle\Service\UserResolver;
 
 #[Auditable(enabled: true)]
 class TestEntity
@@ -23,19 +24,22 @@ class TestEntity
 class AuditServiceTest extends TestCase
 {
     private EntityManagerInterface $entityManager;
-    private UserResolver $userResolver;
+    private UserResolverInterface $userResolver;
+    private ClockInterface $clock;
     private LoggerInterface $logger;
     private AuditService $service;
 
     protected function setUp(): void
     {
         $this->entityManager = $this->createMock(EntityManagerInterface::class);
-        $this->userResolver = $this->createMock(UserResolver::class);
+        $this->userResolver = $this->createMock(UserResolverInterface::class);
+        $this->clock = $this->createMock(ClockInterface::class);
         $this->logger = $this->createStub(LoggerInterface::class);
 
         $this->service = new AuditService(
             $this->entityManager,
             $this->userResolver,
+            $this->clock,
             ['ignoredField'], // global ignored
             [], // ignored entities
             $this->logger
@@ -53,6 +57,7 @@ class AuditServiceTest extends TestCase
         $service = new AuditService(
             $this->entityManager,
             $this->userResolver,
+            $this->createMock(ClockInterface::class),
             [],
             [TestEntity::class], // Ignore TestEntity
             $this->logger
@@ -90,6 +95,9 @@ class AuditServiceTest extends TestCase
         $this->userResolver->expects($this->once())->method('getUserId')->willReturn(123);
         $this->userResolver->expects($this->once())->method('getUsername')->willReturn('testuser');
 
+        $now = new \DateTimeImmutable('2024-01-01 12:00:00');
+        $this->clock->expects($this->once())->method('now')->willReturn($now);
+
         $log = $this->service->createAuditLog(
             $entity,
             AuditLog::ACTION_UPDATE,
@@ -104,5 +112,6 @@ class AuditServiceTest extends TestCase
         $this->assertEquals(['name'], $log->changedFields);
         $this->assertEquals(123, $log->userId);
         $this->assertEquals('testuser', $log->username);
+        $this->assertEquals($now, $log->createdAt);
     }
 }

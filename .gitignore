@@ -1,4 +1,5 @@
 vendor
 .env
 .php-cs-fixer.dist.php
-.phpunit.result.cache/
+.phpunit.cache/
+Audit/

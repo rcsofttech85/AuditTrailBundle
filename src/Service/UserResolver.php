@@ -2,16 +2,17 @@
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
 
-class UserResolver
+final readonly class UserResolver implements UserResolverInterface
 {
     public function __construct(
-        private readonly Security $security,
-        private readonly RequestStack $requestStack,
-        private readonly bool $trackIpAddress = true,
-        private readonly bool $trackUserAgent = true
+        private Security $security,
+        private RequestStack $requestStack,
+        private bool $trackIpAddress = true,
+        private bool $trackUserAgent = true
     ) {
     }
 

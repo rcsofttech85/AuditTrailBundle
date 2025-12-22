@@ -5,22 +5,25 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
+use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
 class AuditService
 {
-    private const MAX_SERIALIZATION_DEPTH = 5;
-    private const ENTITY_ID_SEPARATOR = '-';
-    private const PENDING_ID = 'pending';
+    private const int MAX_SERIALIZATION_DEPTH = 5;
+    private const string ENTITY_ID_SEPARATOR = '-';
+    private const string PENDING_ID = 'pending';
 
     /** @var array<string, Auditable|null> */
     private array $auditableCache = [];
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly UserResolver $userResolver,
+        private readonly UserResolverInterface $userResolver,
+        private readonly ClockInterface $clock,
         private readonly array $ignoredProperties = [],
         private readonly array $ignoredEntities = [],
         private readonly ?LoggerInterface $logger = null
@@ -35,7 +38,7 @@ class AuditService
         $class = $entity::class;
 
         // Skip ignored entities
-        if (in_array($class, $this->ignoredEntities, true)) {
+        if (\in_array($class, $this->ignoredEntities, true)) {
             return false;
         }
 
@@ -56,7 +59,7 @@ class AuditService
 
             // Extract scalar fields
             foreach ($meta->getFieldNames() as $field) {
-                if (in_array($field, $ignored, true)) {
+                if (\in_array($field, $ignored, true)) {
                     continue;
                 }
 
@@ -68,7 +71,7 @@ class AuditService
 
             // Extract associations
             foreach ($meta->getAssociationNames() as $assoc) {
-                if (in_array($assoc, $ignored, true)) {
+                if (\in_array($assoc, $ignored, true)) {
                     continue;
                 }
 
@@ -108,6 +111,9 @@ class AuditService
         // Set user context
         $this->enrichWithUserContext($auditLog);
 
+        // Set creation time from clock
+        $auditLog->setCreatedAt($this->clock->now());
+
         return $auditLog;
     }
 
@@ -118,7 +124,7 @@ class AuditService
     {
         $class = $entity::class;
 
-        if (array_key_exists($class, $this->auditableCache)) {
+        if (\array_key_exists($class, $this->auditableCache)) {
             return $this->auditableCache[$class];
         }
 
@@ -185,7 +191,7 @@ class AuditService
         }
 
         // Handle single associations
-        if (is_object($value)) {
+        if (\is_object($value)) {
             return $this->extractEntityIdentifier($value);
         }
 
@@ -213,7 +219,7 @@ class AuditService
         $changed = [];
 
         foreach ($newValues as $field => $newValue) {
-            if (!array_key_exists($field, $oldValues)) {
+            if (!\array_key_exists($field, $oldValues)) {
                 $changed[] = $field;
                 continue;
             }
@@ -245,7 +251,7 @@ class AuditService
         }
 
         // Array comparison
-        if (is_array($oldValue) && is_array($newValue)) {
+        if (\is_array($oldValue) && is_array($newValue)) {
             return $oldValue !== $newValue;
         }
 
@@ -316,16 +322,16 @@ class AuditService
                 })->toArray(),
 
             // Object handling
-            is_object($value) => $this->serializeObject($value),
+            \is_object($value) => $this->serializeObject($value),
 
             // Array handling with recursion protection
-            is_array($value) => array_map(
+            \is_array($value) => array_map(
                 fn($v) => $this->serializeValue($v, $depth + 1),
                 $value
             ),
 
             // Resource handling
-            is_resource($value) => sprintf('[resource: %s]', get_resource_type($value)),
+            \is_resource($value) => sprintf('[resource: %s]', get_resource_type($value)),
 
             // Default: return as-is
             default => $value,
