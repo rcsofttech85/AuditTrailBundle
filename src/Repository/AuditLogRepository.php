@@ -8,6 +8,9 @@ use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
+/**
+ * @extends ServiceEntityRepository<AuditLog>
+ */
 class AuditLogRepository extends ServiceEntityRepository
 {
     public function __construct(ManagerRegistry $registry)
@@ -15,6 +18,9 @@ class AuditLogRepository extends ServiceEntityRepository
         parent::__construct($registry, AuditLog::class);
     }
 
+    /**
+     * @return array<AuditLog>
+     */
     public function findByEntity(string $entityClass, string $entityId): array
     {
         return $this->createQueryBuilder('a')
@@ -27,6 +33,9 @@ class AuditLogRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /**
+     * @return array<AuditLog>
+     */
     public function findByUser(int $userId, int $limit = 100): array
     {
         return $this->createQueryBuilder('a')

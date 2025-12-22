@@ -9,11 +9,12 @@ use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use PHPUnit\Framework\MockObject\MockObject;
 
 class HttpAuditTransportTest extends TestCase
 {
     private HttpAuditTransport $transport;
-    private HttpClientInterface $client;
+    private HttpClientInterface&MockObject $client;
     private LoggerInterface $logger;
 
     protected function setUp(): void
@@ -35,7 +36,7 @@ class HttpAuditTransportTest extends TestCase
         $this->client->expects($this->once())
             ->method('request')
             ->with('POST', 'http://example.com', $this->callback(function ($options) {
-                return isset($options['json']) && $options['json']['entity_id'] === '1';
+                return isset($options['json']) && '1' === $options['json']['entity_id'];
             }));
 
         $this->transport->send($log, ['phase' => 'post_flush']);
@@ -58,7 +59,7 @@ class HttpAuditTransportTest extends TestCase
         $this->client->expects($this->once())
             ->method('request')
             ->with('POST', 'http://example.com', $this->callback(function ($options) {
-                return isset($options['json']) && $options['json']['entity_id'] === '100';
+                return isset($options['json']) && '100' === $options['json']['entity_id'];
             }));
 
         $this->transport->send($log, [

@@ -19,7 +19,7 @@ final class CleanupAuditLogsCommand extends Command
 {
     public function __construct(
         private AuditLogRepository $repository,
-        #[Autowire(param: "audit_trail.retention_days")] private int $retentionDays = 365
+        #[Autowire(param: 'audit_trail.retention_days')] private int $retentionDays = 365,
     ) {
         parent::__construct();
     }

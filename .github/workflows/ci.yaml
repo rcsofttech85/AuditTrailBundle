@@ -65,7 +65,10 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: 8.4
-          tools: cs-fixer
+          tools: composer:v2
+
+      - name: Install Dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
 
       - name: Run PHP-CS-Fixer
-        run: php-cs-fixer fix --dry-run --diff
+        run: vendor/bin/php-cs-fixer fix --dry-run --diff

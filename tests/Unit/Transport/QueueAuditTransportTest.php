@@ -9,11 +9,12 @@ use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
+use PHPUnit\Framework\MockObject\MockObject;
 
 class QueueAuditTransportTest extends TestCase
 {
     private QueueAuditTransport $transport;
-    private MessageBusInterface $bus;
+    private MessageBusInterface&MockObject $bus;
     private LoggerInterface $logger;
 
     protected function setUp(): void
@@ -37,9 +38,10 @@ class QueueAuditTransportTest extends TestCase
                 $this->assertSame('1', $message->entityId);
                 $this->assertSame('TestEntity', $message->entityClass);
                 $this->assertSame('create', $message->action);
+
                 return true;
             }))
-            ->willReturnCallback(fn($message) => new Envelope($message));
+            ->willReturnCallback(fn ($message) => new Envelope($message));
 
         $this->transport->send($log, ['phase' => 'post_flush']);
     }

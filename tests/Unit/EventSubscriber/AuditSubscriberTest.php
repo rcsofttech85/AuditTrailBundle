@@ -11,11 +11,12 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
+use PHPUnit\Framework\MockObject\MockObject;
 
 class AuditSubscriberTest extends TestCase
 {
-    private AuditService $auditService;
-    private AuditTransportInterface $transport;
+    private AuditService&MockObject $auditService;
+    private AuditTransportInterface&MockObject $transport;
     private AuditSubscriber $subscriber;
 
     protected function setUp(): void
@@ -47,7 +48,7 @@ class AuditSubscriberTest extends TestCase
 
         $this->transport->expects($this->once())
             ->method('send')
-            ->with($auditLog, $this->callback(fn($context) => $context['phase'] === 'on_flush'));
+            ->with($auditLog, $this->callback(fn ($context) => 'on_flush' === $context['phase']));
 
         $this->subscriber->onFlush($args);
     }
@@ -80,7 +81,7 @@ class AuditSubscriberTest extends TestCase
 
         $this->transport->expects($this->once())
             ->method('send')
-            ->with($auditLog, $this->callback(fn($context) => $context['phase'] === 'post_flush'));
+            ->with($auditLog, $this->callback(fn ($context) => 'post_flush' === $context['phase']));
 
         $this->subscriber->postFlush($postFlushArgs);
     }
@@ -114,7 +115,7 @@ class AuditSubscriberTest extends TestCase
 
         $this->transport->expects($this->once())
             ->method('send')
-            ->with($auditLog, $this->callback(fn($context) => $context['phase'] === 'post_flush'));
+            ->with($auditLog, $this->callback(fn ($context) => 'post_flush' === $context['phase']));
 
         $this->subscriber->postFlush($postFlushArgs);
     }

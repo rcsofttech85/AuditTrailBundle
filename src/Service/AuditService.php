@@ -20,18 +20,22 @@ class AuditService
     /** @var array<string, Auditable|null> */
     private array $auditableCache = [];
 
+    /**
+     * @param array<string> $ignoredProperties
+     * @param array<string> $ignoredEntities
+     */
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly UserResolverInterface $userResolver,
         private readonly ClockInterface $clock,
         private readonly array $ignoredProperties = [],
         private readonly array $ignoredEntities = [],
-        private readonly ?LoggerInterface $logger = null
+        private readonly ?LoggerInterface $logger = null,
     ) {
     }
 
     /**
-     * Check if the entity should be audited
+     * Check if the entity should be audited.
      */
     public function shouldAudit(object $entity): bool
     {
@@ -44,11 +48,15 @@ class AuditService
 
         $auditable = $this->getAuditableAttribute($entity);
 
-        return $auditable !== null && $auditable->enabled;
+        return null !== $auditable && $auditable->enabled;
     }
 
     /**
-     * Extract entity data for auditing
+     * Extract entity data for auditing.
+     *
+     * @param array<string> $additionalIgnored
+     *
+     * @return array<string, mixed>
      */
     public function getEntityData(object $entity, array $additionalIgnored = []): array
     {
@@ -64,7 +72,7 @@ class AuditService
                 }
 
                 $value = $this->getFieldValueSafely($meta, $entity, $field);
-                if ($value !== null) {
+                if (null !== $value) {
                     $data[$field] = $this->serializeValue($value);
                 }
             }
@@ -82,18 +90,22 @@ class AuditService
             return $data;
         } catch (\Throwable $e) {
             $this->logError('Failed to extract entity data', $e, ['entity' => $entity::class]);
+
             return [];
         }
     }
 
     /**
-     * Create audit log entry
+     * Create audit log entry.
+     *
+     * @param array<string, mixed>|null $oldValues
+     * @param array<string, mixed>|null $newValues
      */
     public function createAuditLog(
         object $entity,
         string $action,
         ?array $oldValues = null,
-        ?array $newValues = null
+        ?array $newValues = null,
     ): AuditLog {
         $auditLog = new AuditLog();
         $auditLog->setEntityClass($entity::class);
@@ -103,7 +115,7 @@ class AuditService
         $auditLog->setNewValues($newValues);
 
         // Determine changed fields for updates
-        if ($action === AuditLog::ACTION_UPDATE && $oldValues !== null && $newValues !== null) {
+        if (AuditLog::ACTION_UPDATE === $action && null !== $oldValues && null !== $newValues) {
             $changedFields = $this->detectChangedFields($oldValues, $newValues);
             $auditLog->setChangedFields($changedFields);
         }
@@ -118,7 +130,7 @@ class AuditService
     }
 
     /**
-     * Get cached Auditable attribute for entity
+     * Get cached Auditable attribute for entity.
      */
     private function getAuditableAttribute(object $entity): ?Auditable
     {
@@ -144,14 +156,18 @@ class AuditService
     }
 
     /**
-     * Build comprehensive list of ignored properties
+     * Build comprehensive list of ignored properties.
+     *
+     * @param array<string> $additionalIgnored
+     *
+     * @return array<int, string>
      */
     private function buildIgnoredPropertyList(object $entity, array $additionalIgnored): array
     {
         $ignored = [...$this->ignoredProperties, ...$additionalIgnored];
 
         $auditable = $this->getAuditableAttribute($entity);
-        if ($auditable !== null) {
+        if (null !== $auditable) {
             $ignored = [...$ignored, ...$auditable->ignoredProperties];
         }
 
@@ -159,7 +175,9 @@ class AuditService
     }
 
     /**
-     * Safely get field value with error handling
+     * Safely get field value with error handling.
+     *
+     * @param ClassMetadata<object> $meta
      */
     private function getFieldValueSafely(ClassMetadata $meta, object $entity, string $field): mixed
     {
@@ -168,18 +186,19 @@ class AuditService
         } catch (\Throwable $e) {
             $this->logError('Failed to get field value', $e, [
                 'entity' => $entity::class,
-                'field' => $field
+                'field' => $field,
             ]);
+
             return null;
         }
     }
 
     /**
-     * Serialize association values
+     * Serialize association values.
      */
     private function serializeAssociation(mixed $value): mixed
     {
-        if ($value === null) {
+        if (null === $value) {
             return null;
         }
 
@@ -199,7 +218,7 @@ class AuditService
     }
 
     /**
-     * Extract identifier from entity object
+     * Extract identifier from entity object.
      */
     private function extractEntityIdentifier(object $entity): mixed
     {
@@ -212,7 +231,12 @@ class AuditService
     }
 
     /**
-     * Detect changed fields between old and new values
+     * Detect changed fields between old and new values.
+     *
+     * @param array<string, mixed> $oldValues
+     * @param array<string, mixed> $newValues
+     *
+     * @return array<int, string>
      */
     private function detectChangedFields(array $oldValues, array $newValues): array
     {
@@ -236,12 +260,12 @@ class AuditService
     }
 
     /**
-     * Compare values with type-aware logic
+     * Compare values with type-aware logic.
      */
     private function valuesAreDifferent(mixed $oldValue, mixed $newValue): bool
     {
         // Handle null comparisons
-        if ($oldValue === null || $newValue === null) {
+        if (null === $oldValue || null === $newValue) {
             return $oldValue !== $newValue;
         }
 
@@ -260,7 +284,7 @@ class AuditService
     }
 
     /**
-     * Enrich audit log with user context
+     * Enrich audit log with user context.
      */
     private function enrichWithUserContext(AuditLog $auditLog): void
     {
@@ -275,7 +299,7 @@ class AuditService
     }
 
     /**
-     * Get entity identifier as string (supports composite keys)
+     * Get entity identifier as string (supports composite keys).
      */
     private function getEntityId(object $entity): string
     {
@@ -290,7 +314,7 @@ class AuditService
             // Filter out null values and convert to strings
             $idValues = array_filter(
                 array_map('strval', $ids),
-                fn($id) => $id !== ''
+                fn ($id) => '' !== $id
             );
 
             return !empty($idValues)
@@ -298,12 +322,13 @@ class AuditService
                 : self::PENDING_ID;
         } catch (\Throwable $e) {
             $this->logError('Failed to get entity ID', $e, ['entity' => $entity::class]);
+
             return self::PENDING_ID;
         }
     }
 
     /**
-     * Serialize values for logging with depth protection
+     * Serialize values for logging with depth protection.
      */
     private function serializeValue(mixed $value, int $depth = 0): mixed
     {
@@ -318,15 +343,15 @@ class AuditService
 
             // Collection handling
             $value instanceof Collection => $value->map(function ($item) use ($depth) {
-                    return $this->serializeValue($item, $depth + 1);
-                })->toArray(),
+                return $this->serializeValue($item, $depth + 1);
+            })->toArray(),
 
             // Object handling
             \is_object($value) => $this->serializeObject($value),
 
             // Array handling with recursion protection
             \is_array($value) => array_map(
-                fn($v) => $this->serializeValue($v, $depth + 1),
+                fn ($v) => $this->serializeValue($v, $depth + 1),
                 $value
             ),
 
@@ -339,7 +364,7 @@ class AuditService
     }
 
     /**
-     * Serialize object values
+     * Serialize object values.
      */
     private function serializeObject(object $value): mixed
     {
@@ -355,15 +380,17 @@ class AuditService
     }
 
     /**
-     * Log errors if logger is available
+     * Log errors if logger is available.
+     *
+     * @param array<string, mixed> $context
      */
     private function logError(string $message, \Throwable $exception, array $context = []): void
     {
-        if ($this->logger !== null) {
+        if (null !== $this->logger) {
             $this->logger->error($message, [
                 'exception' => $exception->getMessage(),
                 'trace' => $exception->getTraceAsString(),
-                ...$context
+                ...$context,
             ]);
         }
     }

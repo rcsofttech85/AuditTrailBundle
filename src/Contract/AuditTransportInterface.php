@@ -11,8 +11,8 @@ interface AuditTransportInterface
     /**
      * Send audit log to the transport.
      *
-     * @param AuditLog $log The audit log entity
-     * @param array $context Context data (e.g., 'phase', 'em', 'uow')
+     * @param AuditLog             $log     The audit log entity
+     * @param array<string, mixed> $context Context data (e.g., 'phase', 'em', 'uow')
      */
     public function send(AuditLog $log, array $context = []): void;
 }

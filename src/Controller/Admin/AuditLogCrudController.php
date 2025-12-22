@@ -19,6 +19,8 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
  * Responsible for providing a read-only view of audit logs in EasyAdmin.
  *
  * @codeCoverageIgnore
+ *
+ * @extends AbstractCrudController<AuditLog>
  */
 class AuditLogCrudController extends AbstractCrudController
 {
@@ -40,7 +42,7 @@ class AuditLogCrudController extends AbstractCrudController
     public function configureActions(Actions $actions): Actions
     {
         return $actions
-            ->disable(Action::NEW , Action::EDIT, Action::DELETE)
+            ->disable(Action::NEW, Action::EDIT, Action::DELETE)
             ->add(Crud::PAGE_INDEX, Action::DETAIL);
     }
 

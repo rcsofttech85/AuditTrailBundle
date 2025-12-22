@@ -1,5 +1,8 @@
 vendor
 .env
-
 .phpunit.cache/
 Audit/
+.php-cs-fixer.cache
+phpstan_errors.txt
+phpstan_final.txt
+

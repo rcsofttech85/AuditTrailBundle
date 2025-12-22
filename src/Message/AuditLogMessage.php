@@ -9,6 +9,10 @@ use Symfony\Component\Messenger\Attribute\AsMessage;
 #[AsMessage(transport: 'audit_trail')]
 final readonly class AuditLogMessage
 {
+    /**
+     * @param array<string, mixed>|null $oldValues
+     * @param array<string, mixed>|null $newValues
+     */
     public function __construct(
         public string $entityClass,
         public string $entityId,

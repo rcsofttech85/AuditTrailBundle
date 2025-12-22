@@ -11,6 +11,7 @@ use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
+use PHPUnit\Framework\MockObject\MockObject;
 
 #[Auditable(enabled: true)]
 class TestEntity
@@ -23,9 +24,9 @@ class TestEntity
 
 class AuditServiceTest extends TestCase
 {
-    private EntityManagerInterface $entityManager;
-    private UserResolverInterface $userResolver;
-    private ClockInterface $clock;
+    private EntityManagerInterface&MockObject $entityManager;
+    private UserResolverInterface&MockObject $userResolver;
+    private ClockInterface&MockObject $clock;
     private LoggerInterface $logger;
     private AuditService $service;
 

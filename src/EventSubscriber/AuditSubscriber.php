@@ -14,11 +14,14 @@ use Rcsofttech\AuditTrailBundle\Service\AuditService;
 #[AsDoctrineListener(event: Events::postFlush)]
 final class AuditSubscriber
 {
+    /**
+     * @var array<array{entity: object, audit: AuditLog}>
+     */
     private array $scheduledAudits = [];
 
     public function __construct(
         private readonly AuditService $auditService,
-        private readonly AuditTransportInterface $transport
+        private readonly AuditTransportInterface $transport,
     ) {
     }
 
@@ -43,7 +46,7 @@ final class AuditSubscriber
             $this->transport->send($audit, [
                 'phase' => 'on_flush',
                 'em' => $em,
-                'uow' => $uow
+                'uow' => $uow,
             ]);
 
             // Store for postFlush (ID update + other transports)
@@ -64,7 +67,7 @@ final class AuditSubscriber
             $this->transport->send($audit, [
                 'phase' => 'on_flush',
                 'em' => $em,
-                'uow' => $uow
+                'uow' => $uow,
             ]);
 
             // Store for postFlush (other transports)
@@ -87,7 +90,7 @@ final class AuditSubscriber
             $this->transport->send($audit, [
                 'phase' => 'on_flush',
                 'em' => $em,
-                'uow' => $uow
+                'uow' => $uow,
             ]);
 
             // Store for postFlush (other transports)
@@ -113,7 +116,7 @@ final class AuditSubscriber
             $this->transport->send($audit, [
                 'phase' => 'post_flush',
                 'em' => $em,
-                'entity' => $entity
+                'entity' => $entity,
             ]);
         }
     }
@@ -127,12 +130,23 @@ final class AuditSubscriber
         return $this->auditService->shouldAudit($entity);
     }
 
+    /**
+     * @param array<string, mixed> $changeSet
+     *
+     * @return array{0: array<string, mixed>, 1: array<string, mixed>}
+     */
     private function extractChanges(array $changeSet): array
     {
         $old = [];
         $new = [];
 
-        foreach ($changeSet as $field => [$oldValue, $newValue]) {
+        foreach ($changeSet as $field => $change) {
+            if (!\is_array($change) || !\array_key_exists(0, $change) || !\array_key_exists(1, $change)) {
+                continue;
+            }
+
+            [$oldValue, $newValue] = $change;
+
             if ($oldValue === $newValue) {
                 continue;
             }
@@ -143,4 +157,3 @@ final class AuditSubscriber
         return [$old, $new];
     }
 }
-

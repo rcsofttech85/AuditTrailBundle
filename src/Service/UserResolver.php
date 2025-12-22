@@ -12,7 +12,7 @@ final readonly class UserResolver implements UserResolverInterface
         private Security $security,
         private RequestStack $requestStack,
         private bool $trackIpAddress = true,
-        private bool $trackUserAgent = true
+        private bool $trackUserAgent = true,
     ) {
     }
 
@@ -21,7 +21,7 @@ final readonly class UserResolver implements UserResolverInterface
         $user = $this->security->getUser();
 
         return match (true) {
-            $user === null => null,
+            null === $user => null,
             method_exists($user, 'getId') => $user->getId(),
             default => null,
         };

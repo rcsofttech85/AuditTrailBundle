@@ -19,9 +19,9 @@ use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 )]
 final class AuditLog
 {
-    public const ACTION_CREATE = 'create';
-    public const ACTION_UPDATE = 'update';
-    public const ACTION_DELETE = 'delete';
+    public const string ACTION_CREATE = 'create';
+    public const string ACTION_UPDATE = 'update';
+    public const string ACTION_DELETE = 'delete';
 
     #[ORM\Id, ORM\GeneratedValue, ORM\Column]
     public private(set) ?int $id = null;
@@ -35,12 +35,15 @@ final class AuditLog
     #[ORM\Column(length: 50)]
     public private(set) string $action;
 
+    /** @var array<string, mixed>|null */
     #[ORM\Column(type: Types::JSON, nullable: true)]
     public private(set) ?array $oldValues = null;
 
+    /** @var array<string, mixed>|null */
     #[ORM\Column(type: Types::JSON, nullable: true)]
     public private(set) ?array $newValues = null;
 
+    /** @var array<int, string>|null */
     #[ORM\Column(type: Types::JSON, nullable: true)]
     public private(set) ?array $changedFields = null;
 
@@ -67,66 +70,86 @@ final class AuditLog
     public function setEntityClass(string $entityClass): self
     {
         $this->entityClass = $entityClass;
+
         return $this;
     }
 
     public function setEntityId(string $entityId): self
     {
         $this->entityId = $entityId;
+
         return $this;
     }
 
     public function setAction(string $action): self
     {
         $this->action = $action;
+
         return $this;
     }
 
+    /**
+     * @param array<string, mixed>|null $oldValues
+     */
     public function setOldValues(?array $oldValues): self
     {
         $this->oldValues = $oldValues;
+
         return $this;
     }
 
+    /**
+     * @param array<string, mixed>|null $newValues
+     */
     public function setNewValues(?array $newValues): self
     {
         $this->newValues = $newValues;
+
         return $this;
     }
 
+    /**
+     * @param array<int, string>|null $changedFields
+     */
     public function setChangedFields(?array $changedFields): self
     {
         $this->changedFields = $changedFields;
+
         return $this;
     }
 
     public function setUserId(?int $userId): self
     {
         $this->userId = $userId;
+
         return $this;
     }
 
     public function setUsername(?string $username): self
     {
         $this->username = $username;
+
         return $this;
     }
 
     public function setIpAddress(?string $ipAddress): self
     {
         $this->ipAddress = $ipAddress;
+
         return $this;
     }
 
     public function setUserAgent(?string $userAgent): self
     {
         $this->userAgent = $userAgent;
+
         return $this;
     }
 
     public function setCreatedAt(\DateTimeImmutable $createdAt): self
     {
         $this->createdAt = $createdAt;
+
         return $this;
     }
 }

@@ -19,7 +19,6 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class AuditTrailExtension extends Extension
 {
-
     public function load(array $configs, ContainerBuilder $container): void
     {
         $configuration = new Configuration();
@@ -32,12 +31,15 @@ final class AuditTrailExtension extends Extension
         $container->setParameter('audit_trail.track_ip_address', $config['track_ip_address']);
         $container->setParameter('audit_trail.track_user_agent', $config['track_user_agent']);
 
-        $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
+        $loader = new YamlFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'));
         $loader->load('services.yaml');
 
         $this->configureTransports($config, $container);
     }
 
+    /**
+     * @param array<string, mixed> $config
+     */
     private function configureTransports(array $config, ContainerBuilder $container): void
     {
         $transports = [];
@@ -81,11 +83,11 @@ final class AuditTrailExtension extends Extension
         }
 
         // Alias AuditTransportInterface
-        if (count($transports) === 1) {
+        if (1 === count($transports)) {
             $container->setAlias(AuditTransportInterface::class, $transports[0]);
         } elseif (count($transports) > 1) {
             $chainTransportId = 'rcsofttech_audit_trail.transport.chain';
-            $transportReferences = array_map(fn($id) => new Reference($id), $transports);
+            $transportReferences = array_map(fn ($id) => new Reference($id), $transports);
 
             $container->register($chainTransportId, ChainAuditTransport::class)
                 ->setArgument('$transports', $transportReferences);

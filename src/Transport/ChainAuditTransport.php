@@ -13,10 +13,13 @@ final class ChainAuditTransport implements AuditTransportInterface
      * @param iterable<AuditTransportInterface> $transports
      */
     public function __construct(
-        private readonly iterable $transports
+        private readonly iterable $transports,
     ) {
     }
 
+    /**
+     * @param array<string, mixed> $context
+     */
     public function send(AuditLog $log, array $context = []): void
     {
         foreach ($this->transports as $transport) {

@@ -42,9 +42,17 @@
         "phpunit/phpunit": "^12.5",
         "symfony/phpunit-bridge": "^8.0",
         "phpstan/phpstan": "^2.0",
-        "friendsofphp/php-cs-fixer": "^3.60"
+        "friendsofphp/php-cs-fixer": "^3.60",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpstan/extension-installer": "^1.4",
+        "easycorp/easyadmin-bundle": "^4.27"
     },
     "suggest": {
         "easycorp/easyadmin-bundle": "Required to use the provided AuditLogCrudController for a built-in dashboard."
+    },
+    "config": {
+        "allow-plugins": {
+            "phpstan/extension-installer": true
+        }
     }
 }
