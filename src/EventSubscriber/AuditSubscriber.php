@@ -43,12 +43,21 @@ final class AuditSubscriber implements ResetInterface
         private readonly bool $failOnTransportError = false,
         private readonly bool $deferTransportUntilCommit = true,
         private readonly bool $fallbackToDatabase = true,
+        private readonly bool $enabled = true,
     ) {
+    }
+
+    /**
+     * Check if audit logging is enabled.
+     */
+    public function isEnabled(): bool
+    {
+        return $this->enabled;
     }
 
     public function onFlush(OnFlushEventArgs $args): void
     {
-        if ($this->isFlushing || $this->recursionDepth > 0) {
+        if (!$this->enabled || $this->isFlushing || $this->recursionDepth > 0) {
             return;
         }
 
@@ -71,7 +80,7 @@ final class AuditSubscriber implements ResetInterface
 
     public function postFlush(PostFlushEventArgs $args): void
     {
-        if ($this->isFlushing || $this->recursionDepth > 0) {
+        if (!$this->enabled || $this->isFlushing || $this->recursionDepth > 0) {
             return;
         }
 
