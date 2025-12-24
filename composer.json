@@ -36,7 +36,8 @@
         "symfony/security-bundle": "^7.4",
         "symfony/http-client": "^7.4",
         "symfony/messenger": "^7.4",
-        "symfony/yaml": "^7.4"
+        "symfony/yaml": "^7.4",
+        "symfony/var-exporter": "^8.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^12.5",
@@ -45,7 +46,9 @@
         "friendsofphp/php-cs-fixer": "^3.60",
         "phpstan/phpstan-phpunit": "^2.0",
         "phpstan/extension-installer": "^1.4",
-        "easycorp/easyadmin-bundle": "^4.27"
+        "easycorp/easyadmin-bundle": "^4.27",
+        "phpstan/phpstan-doctrine": "^2.0",
+        "spaze/phpstan-disallowed-calls": "^4.7"
     },
     "suggest": {
         "easycorp/easyadmin-bundle": "Required to use the provided AuditLogCrudController for a built-in dashboard."

@@ -14,7 +14,8 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 class AuditService
 {
     private const int MAX_SERIALIZATION_DEPTH = 5;
-    private const string ENTITY_ID_SEPARATOR = '-';
+    private const int MAX_AUDITABLE_CACHE = 100;
+    private const int MAX_COLLECTION_ITEMS = 100;
     private const string PENDING_ID = 'pending';
 
     /** @var array<string, Auditable|null> */
@@ -91,7 +92,11 @@ class AuditService
         } catch (\Throwable $e) {
             $this->logError('Failed to extract entity data', $e, ['entity' => $entity::class]);
 
-            return [];
+            return [
+                '_extraction_failed' => true,
+                '_error' => $e->getMessage(),
+                '_entity_class' => $entity::class,
+            ];
         }
     }
 
@@ -109,7 +114,13 @@ class AuditService
     ): AuditLog {
         $auditLog = new AuditLog();
         $auditLog->setEntityClass($entity::class);
-        $auditLog->setEntityId($this->getEntityId($entity));
+
+        $entityId = $this->getEntityId($entity);
+        if (self::PENDING_ID === $entityId && AuditLog::ACTION_DELETE === $action && null !== $oldValues) {
+            $entityId = $this->extractIdFromValues($entity, $oldValues) ?? self::PENDING_ID;
+        }
+        $auditLog->setEntityId($entityId);
+
         $auditLog->setAction($action);
         $auditLog->setOldValues($oldValues);
         $auditLog->setNewValues($newValues);
@@ -123,7 +134,6 @@ class AuditService
         // Set user context
         $this->enrichWithUserContext($auditLog);
 
-        // Set creation time from clock
         $auditLog->setCreatedAt($this->clock->now());
 
         return $auditLog;
@@ -138,6 +148,11 @@ class AuditService
 
         if (\array_key_exists($class, $this->auditableCache)) {
             return $this->auditableCache[$class];
+        }
+
+        // Evict oldest if at limit
+        if (\count($this->auditableCache) >= self::MAX_AUDITABLE_CACHE) {
+            array_shift($this->auditableCache);
         }
 
         try {
@@ -204,6 +219,24 @@ class AuditService
 
         // Handle collections (OneToMany, ManyToMany)
         if ($value instanceof Collection) {
+            $count = $value->count();
+
+            if ($count > self::MAX_COLLECTION_ITEMS) {
+                $this->logger?->warning('Collection exceeds max items for audit', [
+                    'count' => $count,
+                    'max' => self::MAX_COLLECTION_ITEMS,
+                ]);
+
+                return [
+                    '_truncated' => true,
+                    '_total_count' => $count,
+                    '_sample' => array_map(
+                        fn ($item) => $this->extractEntityIdentifier($item),
+                        $value->slice(0, self::MAX_COLLECTION_ITEMS)
+                    ),
+                ];
+            }
+
             return $value->map(function ($item) {
                 return $this->extractEntityIdentifier($item);
             })->toArray();
@@ -271,7 +304,11 @@ class AuditService
 
         // Numeric comparison with type coercion
         if (is_numeric($oldValue) && is_numeric($newValue)) {
-            return (float) $oldValue !== (float) $newValue;
+            $old = (float) $oldValue;
+            $new = (float) $newValue;
+
+            // Use epsilon for float comparison
+            return abs($old - $new) > 1e-9;
         }
 
         // Array comparison
@@ -301,13 +338,20 @@ class AuditService
     /**
      * Get entity identifier as string (supports composite keys).
      */
-    private function getEntityId(object $entity): string
+    public function getEntityId(object $entity): string
     {
         try {
             $meta = $this->entityManager->getClassMetadata($entity::class);
             $ids = $meta->getIdentifierValues($entity);
 
             if (empty($ids)) {
+                // Fallback: Try getId() method directly
+                if (method_exists($entity, 'getId')) {
+                    $id = $entity->getId();
+
+                    return null !== $id ? (string) $id : self::PENDING_ID;
+                }
+
                 return self::PENDING_ID;
             }
 
@@ -318,12 +362,50 @@ class AuditService
             );
 
             return !empty($idValues)
-                ? implode(self::ENTITY_ID_SEPARATOR, $idValues)
+                ? json_encode(array_values($idValues), JSON_THROW_ON_ERROR)
                 : self::PENDING_ID;
         } catch (\Throwable $e) {
+            // Fallback: Try getId() method directly on exception
+            if (method_exists($entity, 'getId')) {
+                try {
+                    $id = $entity->getId();
+
+                    return null !== $id ? (string) $id : self::PENDING_ID;
+                } catch (\Throwable) {
+                    // Ignore fallback error
+                }
+            }
+
             $this->logError('Failed to get entity ID', $e, ['entity' => $entity::class]);
 
             return self::PENDING_ID;
+        }
+    }
+
+    /**
+     * Extract ID from values array using metadata.
+     *
+     * @param array<string, mixed> $values
+     */
+    private function extractIdFromValues(object $entity, array $values): ?string
+    {
+        try {
+            $meta = $this->entityManager->getClassMetadata($entity::class);
+            $idFields = $meta->getIdentifierFieldNames();
+            $ids = [];
+
+            foreach ($idFields as $idField) {
+                if (!isset($values[$idField])) {
+                    return null;
+                }
+                $ids[] = (string) $values[$idField];
+            }
+
+            return count($ids) > 1
+                ? json_encode($ids, JSON_THROW_ON_ERROR)
+                : ($ids[0] ?? null);
+        } catch (\Throwable) {
+            return null;
         }
     }
 
@@ -347,7 +429,7 @@ class AuditService
             })->toArray(),
 
             // Object handling
-            \is_object($value) => $this->serializeObject($value),
+            \is_object($value) => $this->serializeObject($value, $depth),
 
             // Array handling with recursion protection
             \is_array($value) => array_map(
@@ -366,14 +448,18 @@ class AuditService
     /**
      * Serialize object values.
      */
-    private function serializeObject(object $value): mixed
+    private function serializeObject(object $value, int $depth = 0): mixed
     {
         if (method_exists($value, 'getId')) {
             return $value->getId();
         }
 
         if (method_exists($value, '__toString')) {
-            return (string) $value;
+            try {
+                return (string) $value;
+            } catch (\Throwable $e) { // @phpstan-ignore catch.neverThrown
+                return sprintf('[toString error: %s]', $value::class);
+            }
         }
 
         return $value::class;
@@ -389,7 +475,8 @@ class AuditService
         if (null !== $this->logger) {
             $this->logger->error($message, [
                 'exception' => $exception->getMessage(),
-                'trace' => $exception->getTraceAsString(),
+                'exception_class' => $exception::class,
+                'code' => $exception->getCode(),
                 ...$context,
             ]);
         }

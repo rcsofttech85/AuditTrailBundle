@@ -4,3 +4,18 @@ parameters:
         - src
         - tests
     tmpDir: .phpunit.cache/phpstan
+
+    # forbiddenFunctions
+    disallowedFunctionCalls:
+        -
+            function: 'dd()'
+            message: 'is forbidden. Remove debug calls.'
+        -
+            function: 'dump()'
+            message: 'is forbidden. Remove debug calls.'
+        -
+            function: 'var_dump()'
+            message: 'is forbidden.'
+        -
+            function: 'print_r()'
+            message: 'is forbidden.'

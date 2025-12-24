@@ -11,6 +11,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class HttpAuditTransport implements AuditTransportInterface
 {
+    use PendingIdResolver;
+
     public function __construct(
         private HttpClientInterface $client,
         private readonly string $endpoint,
@@ -24,43 +26,36 @@ final class HttpAuditTransport implements AuditTransportInterface
     public function send(AuditLog $log, array $context = []): void
     {
 
-
-
-
         if (($context['phase'] ?? '') !== 'post_flush') {
             return;
         }
 
-        $entityId = $log->entityId;
-        if ('pending' === $entityId && isset($context['entity'], $context['em'])) {
-            $entity = $context['entity'];
-            $em = $context['em'];
-            $meta = $em->getClassMetadata($entity::class);
-            $ids = $meta->getIdentifierValues($entity);
-            if (!empty($ids)) {
-                $entityId = implode('-', $ids);
-            }
-        }
+        $entityId = $this->resolveEntityId($log, $context) ?? $log->getEntityId();
 
         try {
             $this->client->request('POST', $this->endpoint, [
                 'json' => [
-                    'entity_class' => $log->entityClass,
+                    'entity_class' => $log->getEntityClass(),
                     'entity_id' => $entityId,
-                    'action' => $log->action,
-                    'old_values' => $log->oldValues,
-                    'new_values' => $log->newValues,
-                    'user_id' => $log->userId,
-                    'username' => $log->username,
-                    'ip_address' => $log->ipAddress,
-                    'created_at' => $log->createdAt->format(\DateTimeInterface::ATOM),
+                    'action' => $log->getAction(),
+                    'old_values' => $log->getOldValues(),
+                    'new_values' => $log->getNewValues(),
+                    'user_id' => $log->getUserId(),
+                    'username' => $log->getUsername(),
+                    'ip_address' => $log->getIpAddress(),
+                    'created_at' => $log->getCreatedAt()->format(\DateTimeInterface::ATOM),
                 ],
+                'timeout' => 5,
+                'max_duration' => 10,
             ]);
         } catch (\Throwable $e) {
-
             $this->logger->error("Failed to send audit log to endpoint: {$this->endpoint}", [
-                'exception' => $e,
+                'exception' => $e->getMessage(),
+                'exception_class' => $e::class,
+                'entity_class' => $log->getEntityClass(),
+
             ]);
+            throw $e;
         }
     }
 }

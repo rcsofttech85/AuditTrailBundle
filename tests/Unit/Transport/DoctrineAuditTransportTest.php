@@ -77,4 +77,38 @@ class DoctrineAuditTransportTest extends TestCase
             'entity' => $entity,
         ]);
     }
+
+    public function testSendPostFlushWithIsInsertUpdatesId(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityId('123'); // ID already set by subscriber
+
+        $reflection = new \ReflectionClass($log);
+        $property = $reflection->getProperty('id');
+        $property->setValue($log, 1);
+
+        $entity = new \stdClass();
+        $em = $this->createStub(EntityManagerInterface::class);
+        $connection = $this->createMock(Connection::class);
+        $meta = $this->createStub(ClassMetadata::class);
+
+        $em->method('getClassMetadata')->willReturn($meta);
+        $em->method('getConnection')->willReturn($connection);
+        $meta->method('getTableName')->willReturn('audit_log');
+
+        // Expect update to be called even though entityId is not 'pending'
+        $connection->expects($this->once())
+            ->method('executeStatement')
+            ->with(
+                'UPDATE audit_log SET entity_id = ? WHERE id = ?',
+                ['123', 1]
+            );
+
+        $this->transport->send($log, [
+            'phase' => 'post_flush',
+            'em' => $em,
+            'entity' => $entity,
+            'is_insert' => true,
+        ]);
+    }
 }

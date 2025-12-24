@@ -11,6 +11,8 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
 final class DoctrineAuditTransport implements AuditTransportInterface
 {
+    use PendingIdResolver;
+
     /**
      * @param array<string, mixed> $context
      */
@@ -47,28 +49,23 @@ final class DoctrineAuditTransport implements AuditTransportInterface
         /** @var EntityManagerInterface $em */
         $em = $context['em'];
 
-        // Only update if we have a valid ID and the entity ID was pending
-        if ($log->id && 'pending' === $log->entityId) {
-            // We need the actual entity to get its ID now
-            $entity = $context['entity'] ?? null;
-            if (!$entity) {
-                return;
-            }
+        // Persist the audit log if it's not already managed
+        if (!$em->contains($log)) {
+            $em->persist($log);
+            $em->flush();
+        }
 
-            $meta = $em->getClassMetadata($entity::class);
-            $ids = $meta->getIdentifierValues($entity);
 
-            if (empty($ids)) {
-                return;
-            }
+        $entityId = $this->resolveEntityId($log, $context);
 
-            $entityId = implode('-', $ids);
-
+        if (null !== $entityId && $log->getId()) {
             // Direct SQL update to avoid triggering another flush
-            $table = $em->getClassMetadata(AuditLog::class)->getTableName();
+            /** @var \Doctrine\ORM\Mapping\ClassMetadata<AuditLog> $meta */
+            $meta = $em->getClassMetadata(AuditLog::class);
+            $table = $meta->getTableName();
             $em->getConnection()->executeStatement(
                 sprintf('UPDATE %s SET entity_id = ? WHERE id = ?', $table),
-                [$entityId, $log->id]
+                [$entityId, $log->getId()]
             );
         }
     }

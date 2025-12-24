@@ -30,6 +30,9 @@ final class AuditTrailExtension extends Extension
         $container->setParameter('audit_trail.retention_days', $config['retention_days']);
         $container->setParameter('audit_trail.track_ip_address', $config['track_ip_address']);
         $container->setParameter('audit_trail.track_user_agent', $config['track_user_agent']);
+        $container->setParameter('audit_trail.enable_soft_delete', $config['enable_soft_delete']);
+        $container->setParameter('audit_trail.soft_delete_field', $config['soft_delete_field']);
+        $container->setParameter('audit_trail.enable_hard_delete', $config['enable_hard_delete']);
 
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'));
         $loader->load('services.yaml');

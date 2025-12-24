@@ -12,6 +12,8 @@ use Symfony\Component\Messenger\MessageBusInterface;
 
 final class QueueAuditTransport implements AuditTransportInterface
 {
+    use PendingIdResolver;
+
     public function __construct(
         private readonly MessageBusInterface $bus,
         private readonly LoggerInterface $logger,
@@ -28,35 +30,26 @@ final class QueueAuditTransport implements AuditTransportInterface
             return;
         }
 
-        $entityId = $log->entityId;
-        if ('pending' === $entityId && isset($context['entity'], $context['em'])) {
-            $entity = $context['entity'];
-            $em = $context['em'];
-            $meta = $em->getClassMetadata($entity::class);
-            $ids = $meta->getIdentifierValues($entity);
-            if (!empty($ids)) {
-                $entityId = implode('-', $ids);
-            }
-        }
+        $entityId = $this->resolveEntityId($log, $context) ?? $log->getEntityId();
 
         try {
             $message = new AuditLogMessage(
-                $log->entityClass,
+                $log->getEntityClass(),
                 $entityId,
-                $log->action,
-                $log->oldValues,
-                $log->newValues,
-                $log->userId,
-                $log->username,
-                $log->ipAddress,
-                $log->createdAt
+                $log->getAction(),
+                $log->getOldValues(),
+                $log->getNewValues(),
+                $log->getUserId(),
+                $log->getUsername(),
+                $log->getIpAddress(),
+                $log->getCreatedAt()
             );
 
             $this->bus->dispatch($message);
         } catch (\Throwable $e) {
             $this->logger->error('Failed to dispatch audit log message', [
                 'exception' => $e,
-                'entity_class' => $log->entityClass,
+                'entity_class' => $log->getEntityClass(),
             ]);
         }
     }

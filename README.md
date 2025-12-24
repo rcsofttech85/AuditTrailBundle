@@ -63,6 +63,11 @@ audit_trail:
     track_ip_address: true
     track_user_agent: true
 
+    # enable or disable delete tracking
+    enable_hard_delete: true
+    enable_soft_delete: true
+    soft_delete_field: 'deletedAt'
+
     transports:
         # Store logs in the local database
         doctrine: true

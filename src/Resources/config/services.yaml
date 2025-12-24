@@ -2,6 +2,10 @@ services:
   _defaults:
     autowire: true
     autoconfigure: true
+    bind:
+      $enableSoftDelete: '%audit_trail.enable_soft_delete%'
+      $enableHardDelete: '%audit_trail.enable_hard_delete%'
+      $softDeleteField: '%audit_trail.soft_delete_field%'
 
   Rcsofttech\AuditTrailBundle\:
     resource: '../../*'

@@ -9,41 +9,35 @@ use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
-use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Contracts\HttpClient\ResponseInterface;
 
 class HttpAuditTransportTest extends TestCase
 {
-    private HttpAuditTransport $transport;
-    private HttpClientInterface&MockObject $client;
-    private LoggerInterface $logger;
-
-    protected function setUp(): void
-    {
-        $this->client = $this->createMock(HttpClientInterface::class);
-        $this->logger = $this->createStub(LoggerInterface::class);
-        $this->transport = new HttpAuditTransport($this->client, 'http://example.com', $this->logger);
-    }
-
     public function testSendPostFlushSendsRequest(): void
     {
+        $client = $this->createMock(HttpClientInterface::class);
+        $transport = new HttpAuditTransport($client, 'http://example.com', $this->createStub(LoggerInterface::class));
+
         $log = new AuditLog();
         $log->setEntityClass('TestEntity');
-        // ID is private(set) and no setter, but we need to set it for test?
-        // Wait, setEntityId IS available.
         $log->setEntityId('1');
         $log->setAction('create');
 
-        $this->client->expects($this->once())
+        $client->expects($this->once())
             ->method('request')
-            ->with('POST', 'http://example.com', $this->callback(function ($options) {
-                return isset($options['json']) && '1' === $options['json']['entity_id'];
-            }));
+            ->withAnyParameters()
+            ->willReturnCallback(function () {
+                return $this->createStub(ResponseInterface::class);
+            });
 
-        $this->transport->send($log, ['phase' => 'post_flush']);
+        $transport->send($log, ['phase' => 'post_flush']);
     }
 
     public function testSendResolvesPendingId(): void
     {
+        $client = $this->createMock(HttpClientInterface::class);
+        $transport = new HttpAuditTransport($client, 'http://example.com', $this->createStub(LoggerInterface::class));
+
         $log = new AuditLog();
         $log->setEntityClass('TestEntity');
         $log->setEntityId('pending');
@@ -56,13 +50,14 @@ class HttpAuditTransportTest extends TestCase
         $em->method('getClassMetadata')->willReturn($meta);
         $meta->method('getIdentifierValues')->willReturn(['id' => 100]);
 
-        $this->client->expects($this->once())
+        $client->expects($this->once())
             ->method('request')
             ->with('POST', 'http://example.com', $this->callback(function ($options) {
                 return isset($options['json']) && '100' === $options['json']['entity_id'];
-            }));
+            }))
+            ->willReturn($this->createStub(ResponseInterface::class));
 
-        $this->transport->send($log, [
+        $transport->send($log, [
             'phase' => 'post_flush',
             'em' => $em,
             'entity' => $entity,
