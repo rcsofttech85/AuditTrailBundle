@@ -161,6 +161,22 @@ class AuditServiceTest extends TestCase
         $this->assertEquals('["uuid-1","uuid-2"]', $id);
     }
 
+    public function testSingleKeySerialization(): void
+    {
+        $entity = new TestEntity();
+        $metadata = $this->createStub(ClassMetadata::class);
+
+        // Mock single key
+        $metadata->method('getIdentifierValues')->willReturn(['id' => 41]);
+
+        $this->entityManager->method('getClassMetadata')->willReturn($metadata);
+
+        $id = $this->service->getEntityId($entity);
+
+        // Should be plain string
+        $this->assertEquals('41', $id);
+    }
+
     public function testFloatComparisonWithEpsilon(): void
     {
         // Use reflection to access private method valuesAreDifferent

@@ -361,9 +361,13 @@ class AuditService
                 fn ($id) => '' !== $id
             );
 
-            return !empty($idValues)
+            if (empty($idValues)) {
+                return self::PENDING_ID;
+            }
+
+            return count($idValues) > 1
                 ? json_encode(array_values($idValues), JSON_THROW_ON_ERROR)
-                : self::PENDING_ID;
+                : (string) reset($idValues);
         } catch (\Throwable $e) {
             // Fallback: Try getId() method directly on exception
             if (method_exists($entity, 'getId')) {
