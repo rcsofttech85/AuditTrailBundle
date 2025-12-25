@@ -9,16 +9,44 @@ use Rcsofttech\AuditTrailBundle\Transport\ChainAuditTransport;
 
 class ChainAuditTransportTest extends TestCase
 {
-    public function testSendDelegatesToAllTransports(): void
+    public function testSupportsReturnsTrueIfAnyTransportSupportsPhase(): void
+    {
+        $t1 = $this->createMock(AuditTransportInterface::class);
+        $t1->method('supports')->with('on_flush')->willReturn(true);
+
+        $t2 = $this->createMock(AuditTransportInterface::class);
+        $t2->method('supports')->with('on_flush')->willReturn(false);
+
+        $chain = new ChainAuditTransport([$t1, $t2]);
+
+        $this->assertTrue($chain->supports('on_flush'), 'Chain should support phase if at least one child supports it');
+    }
+
+    public function testSupportsReturnsFalseIfNoTransportSupportsPhase(): void
+    {
+        $t1 = $this->createMock(AuditTransportInterface::class);
+        $t1->method('supports')->with('on_flush')->willReturn(false);
+
+        $t2 = $this->createMock(AuditTransportInterface::class);
+        $t2->method('supports')->with('on_flush')->willReturn(false);
+
+        $chain = new ChainAuditTransport([$t1, $t2]);
+
+        $this->assertFalse($chain->supports('on_flush'));
+    }
+
+    public function testSendOnlyCallsTransportsThatSupportThePhase(): void
     {
         $log = new AuditLog();
-        $context = ['phase' => 'test'];
+        $context = ['phase' => 'on_flush'];
 
         $t1 = $this->createMock(AuditTransportInterface::class);
+        $t1->method('supports')->with('on_flush')->willReturn(true);
         $t1->expects($this->once())->method('send')->with($log, $context);
 
         $t2 = $this->createMock(AuditTransportInterface::class);
-        $t2->expects($this->once())->method('send')->with($log, $context);
+        $t2->method('supports')->with('on_flush')->willReturn(false);
+        $t2->expects($this->never())->method('send');
 
         $chain = new ChainAuditTransport([$t1, $t2]);
         $chain->send($log, $context);

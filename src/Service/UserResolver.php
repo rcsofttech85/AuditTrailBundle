@@ -52,11 +52,7 @@ final readonly class UserResolver implements UserResolverInterface
             return null;
         }
 
-        // Simplify to "Chrome/138" instead of full noisy string
-        if (preg_match('/(Chrome|Firefox|Safari|Edge|Opera|MSIE|Trident)\/[\d.]+/', $ua, $matches)) {
-            return $matches[0];
-        }
-
-        return 'Unknown';
+        // Return full UA for better security forensics, truncated to 500 chars
+        return mb_substr($ua, 0, 500);
     }
 }

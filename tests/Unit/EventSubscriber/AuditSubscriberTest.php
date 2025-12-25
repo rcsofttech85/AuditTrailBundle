@@ -172,6 +172,7 @@ class AuditSubscriberTest extends TestCase
         // Transport throws exception
         $transport->method('send')
             ->willThrowException(new \RuntimeException('Transport down'));
+        $transport->method('supports')->willReturn(true);
 
         // Subscriber with fallback enabled
         $subscriber = new AuditSubscriber(

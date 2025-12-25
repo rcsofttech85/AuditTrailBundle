@@ -2,7 +2,6 @@
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
-use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
@@ -40,69 +39,39 @@ class DoctrineAuditTransportTest extends TestCase
 
     public function testSendPostFlushUpdatesId(): void
     {
-        // Use real instance instead of stub because AuditLog is final
         $log = new AuditLog();
         $log->setEntityId('pending');
-        // Since properties are public private(set), we can't mock them easily with createStub unless we use __get or reflection,
-        // but AuditLog is final now.
-        // We should use a real instance and set properties via setters (which we kept).
-        $log = new AuditLog();
-        $log->setEntityId('pending');
-        // We need to set ID, but ID is private(set) and has no setter.
-        // We must use reflection to set ID for testing.
-        $reflection = new \ReflectionClass($log);
-        $property = $reflection->getProperty('id');
-        $property->setValue($log, 1);
 
         $entity = new \stdClass();
         $em = $this->createStub(EntityManagerInterface::class);
-        $connection = $this->createMock(Connection::class);
         $meta = $this->createStub(ClassMetadata::class);
 
         $em->method('getClassMetadata')->willReturn($meta);
-        $em->method('getConnection')->willReturn($connection);
+        $em->method('contains')->willReturn(false);
         $meta->method('getIdentifierValues')->willReturn(['id' => 100]);
-        $meta->method('getTableName')->willReturn('audit_log');
-
-        $connection->expects($this->once())
-            ->method('executeStatement')
-            ->with(
-                'UPDATE audit_log SET entity_id = ? WHERE id = ?',
-                ['100', 1]
-            );
 
         $this->transport->send($log, [
             'phase' => 'post_flush',
             'em' => $em,
             'entity' => $entity,
         ]);
+
+        // The new implementation calls setEntityId instead of executeStatement
+        $this->assertEquals('100', $log->getEntityId());
     }
 
     public function testSendPostFlushWithIsInsertUpdatesId(): void
     {
         $log = new AuditLog();
-        $log->setEntityId('123'); // ID already set by subscriber
-
-        $reflection = new \ReflectionClass($log);
-        $property = $reflection->getProperty('id');
-        $property->setValue($log, 1);
+        $log->setEntityId('pending');
 
         $entity = new \stdClass();
         $em = $this->createStub(EntityManagerInterface::class);
-        $connection = $this->createMock(Connection::class);
         $meta = $this->createStub(ClassMetadata::class);
 
         $em->method('getClassMetadata')->willReturn($meta);
-        $em->method('getConnection')->willReturn($connection);
-        $meta->method('getTableName')->willReturn('audit_log');
-
-        // Expect update to be called even though entityId is not 'pending'
-        $connection->expects($this->once())
-            ->method('executeStatement')
-            ->with(
-                'UPDATE audit_log SET entity_id = ? WHERE id = ?',
-                ['123', 1]
-            );
+        $em->method('contains')->willReturn(true); // Already managed
+        $meta->method('getIdentifierValues')->willReturn(['id' => 456]);
 
         $this->transport->send($log, [
             'phase' => 'post_flush',
@@ -110,5 +79,8 @@ class DoctrineAuditTransportTest extends TestCase
             'entity' => $entity,
             'is_insert' => true,
         ]);
+
+        // Verify setEntityId was called with resolved ID
+        $this->assertEquals('456', $log->getEntityId());
     }
 }

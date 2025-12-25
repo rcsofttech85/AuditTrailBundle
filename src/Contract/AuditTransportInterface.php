@@ -15,4 +15,11 @@ interface AuditTransportInterface
      * @param array<string, mixed> $context Context data (e.g., 'phase', 'em', 'uow')
      */
     public function send(AuditLog $log, array $context = []): void;
+
+    /**
+     * Check if the transport supports the given phase.
+     *
+     * @param string $phase 'on_flush' or 'post_flush'
+     */
+    public function supports(string $phase): bool;
 }

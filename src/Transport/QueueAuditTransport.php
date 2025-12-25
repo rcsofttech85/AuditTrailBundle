@@ -26,10 +26,6 @@ final class QueueAuditTransport implements AuditTransportInterface
     public function send(AuditLog $log, array $context = []): void
     {
 
-        if (($context['phase'] ?? '') !== 'post_flush') {
-            return;
-        }
-
         $entityId = $this->resolveEntityId($log, $context) ?? $log->getEntityId();
 
         try {
@@ -52,5 +48,10 @@ final class QueueAuditTransport implements AuditTransportInterface
                 'entity_class' => $log->getEntityClass(),
             ]);
         }
+    }
+
+    public function supports(string $phase): bool
+    {
+        return 'post_flush' === $phase;
     }
 }

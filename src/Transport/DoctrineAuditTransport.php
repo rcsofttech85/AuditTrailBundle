@@ -35,7 +35,7 @@ final class DoctrineAuditTransport implements AuditTransportInterface
         /** @var EntityManagerInterface $em */
         $em = $context['em'];
         /** @var UnitOfWork $uow */
-        $uow = $context['uow'];
+        $uow = $context['uow']; // This is now guaranteed to exist by the Subscriber fix
 
         $em->persist($log);
         $uow->computeChangeSet($em->getClassMetadata(AuditLog::class), $log);
@@ -49,24 +49,22 @@ final class DoctrineAuditTransport implements AuditTransportInterface
         /** @var EntityManagerInterface $em */
         $em = $context['em'];
 
-        // Persist the audit log if it's not already managed
+        // 1. Persist if not managed
         if (!$em->contains($log)) {
             $em->persist($log);
-            $em->flush();
         }
 
-
+        // Doctrine will pick this change up when the subscriber does the final flush.
         $entityId = $this->resolveEntityId($log, $context);
 
-        if (null !== $entityId && $log->getId()) {
-            // Direct SQL update to avoid triggering another flush
-            /** @var \Doctrine\ORM\Mapping\ClassMetadata<AuditLog> $meta */
-            $meta = $em->getClassMetadata(AuditLog::class);
-            $table = $meta->getTableName();
-            $em->getConnection()->executeStatement(
-                sprintf('UPDATE %s SET entity_id = ? WHERE id = ?', $table),
-                [$entityId, $log->getId()]
-            );
+        if (null !== $entityId) {
+            $log->setEntityId($entityId);
         }
+    }
+
+    public function supports(string $phase): bool
+    {
+        // Doctrine transport supports both phases
+        return true;
     }
 }

@@ -10,6 +10,7 @@ use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Events;
 use Doctrine\ORM\PersistentCollection;
+use Doctrine\ORM\UnitOfWork;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -50,9 +51,6 @@ final class AuditSubscriber implements ResetInterface
     ) {
     }
 
-    /**
-     * Check if audit logging is enabled.
-     */
     public function isEnabled(): bool
     {
         return $this->enabled;
@@ -74,7 +72,8 @@ final class AuditSubscriber implements ResetInterface
             $this->handleBatchFlushIfNeeded($em);
             $this->processInsertions($em, $uow);
             $this->processUpdates($em, $uow);
-            $this->processCollectionUpdates($em, $uow->getScheduledCollectionUpdates());
+            // Fix: Pass UnitOfWork to collection updates
+            $this->processCollectionUpdates($em, $uow, $uow->getScheduledCollectionUpdates());
             $this->processDeletions($em, $uow);
         } finally {
             --$this->recursionDepth;
@@ -94,7 +93,7 @@ final class AuditSubscriber implements ResetInterface
             $failedAudits = [];
             $hasNewAudits = false;
 
-            // Process deferred deletions
+            // 1. Process deferred deletions
             foreach ($this->pendingDeletions as $pending) {
                 $action = $this->determineDeletionAction($em, $pending['entity'], $pending['is_managed']);
 
@@ -114,7 +113,7 @@ final class AuditSubscriber implements ResetInterface
                 );
 
                 $em->persist($audit);
-                $hasNewAudits = true;
+                $hasNewAudits = true; // Deletions always result in a new persist here
 
                 if (!$this->safeSendToTransport($audit, ['phase' => 'post_flush', 'em' => $em])) {
                     $failedAudits[] = $audit;
@@ -122,7 +121,7 @@ final class AuditSubscriber implements ResetInterface
             }
             $this->pendingDeletions = [];
 
-            // Process scheduled audits with ID resolution for inserts
+            // 2. Process scheduled audits (Inserts/Updates)
             foreach ($this->scheduledAudits as $scheduled) {
                 if ($scheduled['is_insert']) {
                     $id = $this->auditService->getEntityId($scheduled['entity']);
@@ -131,19 +130,23 @@ final class AuditSubscriber implements ResetInterface
                     }
                 }
 
-                if (
-                    !$this->safeSendToTransport($scheduled['audit'], [
-                        'phase' => 'post_flush',
-                        'em' => $em,
-                        'is_insert' => $scheduled['is_insert'],
-                    ])
-                ) {
+                $sent = $this->safeSendToTransport($scheduled['audit'], [
+                    'phase' => 'post_flush',
+                    'em' => $em,
+                    'is_insert' => $scheduled['is_insert'],
+                ]);
+
+                if ($sent) {
+                    // Fix: If transport succeeded (e.g. Doctrine transport), it might have persisted the entity.
+                    // We mark this true so flushNewAuditsIfNeeded runs at the end to commit these persists.
+                    $hasNewAudits = true;
+                } else {
                     $failedAudits[] = $scheduled['audit'];
                 }
             }
             $this->scheduledAudits = [];
 
-            // Handle failed audits with database fallback
+            // 3. Handle failed audits fallback
             if ([] !== $failedAudits && $this->fallbackToDatabase) {
                 foreach ($failedAudits as $audit) {
                     if (!$em->contains($audit)) {
@@ -153,6 +156,7 @@ final class AuditSubscriber implements ResetInterface
                 }
             }
 
+            // 4. Final Batch Flush
             $this->flushNewAuditsIfNeeded($em, $hasNewAudits, $failedAudits);
         } finally {
             --$this->recursionDepth;
@@ -161,16 +165,6 @@ final class AuditSubscriber implements ResetInterface
 
     public function onClear(): void
     {
-        $discardedAudits = \count($this->scheduledAudits);
-        $discardedDeletions = \count($this->pendingDeletions);
-
-        if ($discardedAudits > 0 || $discardedDeletions > 0) {
-            $this->logger?->warning('EntityManager cleared, discarding pending audits', [
-                'scheduled_audits' => $discardedAudits,
-                'pending_deletions' => $discardedDeletions,
-            ]);
-        }
-
         $this->reset();
     }
 
@@ -188,13 +182,7 @@ final class AuditSubscriber implements ResetInterface
             return;
         }
 
-        $this->logger?->warning('Auto-flushing audits due to batch size threshold', [
-            'count' => \count($this->scheduledAudits),
-            'threshold' => self::BATCH_FLUSH_THRESHOLD,
-        ]);
-
         $this->isFlushing = true;
-
         try {
             $this->processScheduledAudits($em);
         } finally {
@@ -202,7 +190,7 @@ final class AuditSubscriber implements ResetInterface
         }
     }
 
-    private function processInsertions(EntityManagerInterface $em, \Doctrine\ORM\UnitOfWork $uow): void
+    private function processInsertions(EntityManagerInterface $em, UnitOfWork $uow): void
     {
         foreach ($uow->getScheduledEntityInsertions() as $entity) {
             if (!$this->shouldProcessEntity($entity)) {
@@ -216,11 +204,22 @@ final class AuditSubscriber implements ResetInterface
                 $this->auditService->getEntityData($entity)
             );
 
-            $this->scheduleAudit($entity, $audit, isInsert: true);
+            $sentOnFlush = false;
+
+            if (!$this->deferTransportUntilCommit && $this->transport->supports('on_flush')) {
+                // For insertions, we might not have an ID yet if it's auto-increment and not flushed.
+                // However, DoctrineTransport handles this by computing changeset.
+                $this->sendOrFallback($audit, $em, 'on_flush', $uow);
+                $sentOnFlush = true;
+            }
+
+            if (!$sentOnFlush || $this->transport->supports('post_flush')) {
+                $this->scheduleAudit($entity, $audit, isInsert: true);
+            }
         }
     }
 
-    private function processUpdates(EntityManagerInterface $em, \Doctrine\ORM\UnitOfWork $uow): void
+    private function processUpdates(EntityManagerInterface $em, UnitOfWork $uow): void
     {
         foreach ($uow->getScheduledEntityUpdates() as $entity) {
             if (!$this->shouldProcessEntity($entity)) {
@@ -229,7 +228,7 @@ final class AuditSubscriber implements ResetInterface
 
             /** @var array<string, array{0: mixed, 1: mixed}> $changeSet */
             $changeSet = $uow->getEntityChangeSet($entity);
-            [$old, $new] = $this->extractChanges($changeSet);
+            [$old, $new] = $this->extractChanges($entity, $changeSet);
 
             if ([] === $old && [] === $new) {
                 continue;
@@ -238,10 +237,18 @@ final class AuditSubscriber implements ResetInterface
             $action = $this->determineUpdateAction($changeSet);
             $audit = $this->auditService->createAuditLog($entity, $action, $old, $new);
 
-            if ($this->deferTransportUntilCommit) {
+            $sentOnFlush = false;
+
+            // 1. Try to send immediately (e.g. DoctrineTransport)
+            if (!$this->deferTransportUntilCommit && $this->transport->supports('on_flush')) {
+                $this->sendOrFallback($audit, $em, 'on_flush', $uow);
+                $sentOnFlush = true;
+            }
+
+            // 2. Schedule for post_flush if needed (e.g. HttpTransport in a Chain)
+            // If we didn't send on flush, OR if the transport ALSO supports post_flush (Chain), we schedule.
+            if (!$sentOnFlush || $this->transport->supports('post_flush')) {
                 $this->scheduleAudit($entity, $audit, isInsert: false);
-            } else {
-                $this->sendOrFallback($audit, $em, 'on_flush');
             }
         }
     }
@@ -249,7 +256,7 @@ final class AuditSubscriber implements ResetInterface
     /**
      * @param iterable<PersistentCollection<int, object>> $collectionUpdates
      */
-    private function processCollectionUpdates(EntityManagerInterface $em, iterable $collectionUpdates): void
+    private function processCollectionUpdates(EntityManagerInterface $em, UnitOfWork $uow, iterable $collectionUpdates): void
     {
         foreach ($collectionUpdates as $collection) {
             $owner = $collection->getOwner();
@@ -273,9 +280,7 @@ final class AuditSubscriber implements ResetInterface
             $snapshot = $collection->getSnapshot();
             $oldIds = $this->extractIdsFromCollection($snapshot);
 
-            /** @var list<object> $insertItems */
             $insertItems = array_values($insertDiff);
-            /** @var list<object> $deleteItems */
             $deleteItems = array_values($deleteDiff);
             $newIds = $this->computeNewIds($oldIds, $insertItems, $deleteItems);
 
@@ -286,15 +291,20 @@ final class AuditSubscriber implements ResetInterface
                 [$fieldName => $newIds]
             );
 
-            if ($this->deferTransportUntilCommit) {
+            $sentOnFlush = false;
+
+            if (!$this->deferTransportUntilCommit && $this->transport->supports('on_flush')) {
+                $this->sendOrFallback($audit, $em, 'on_flush', $uow);
+                $sentOnFlush = true;
+            }
+
+            if (!$sentOnFlush || $this->transport->supports('post_flush')) {
                 $this->scheduleAudit($owner, $audit, isInsert: false);
-            } else {
-                $this->sendOrFallback($audit, $em, 'on_flush');
             }
         }
     }
 
-    private function processDeletions(EntityManagerInterface $em, \Doctrine\ORM\UnitOfWork $uow): void
+    private function processDeletions(EntityManagerInterface $em, UnitOfWork $uow): void
     {
         foreach ($uow->getScheduledEntityDeletions() as $entity) {
             if (!$this->shouldProcessEntity($entity)) {
@@ -315,7 +325,6 @@ final class AuditSubscriber implements ResetInterface
             throw new \OverflowException(\sprintf('Maximum audit queue size exceeded (%d). Consider batch processing.', self::MAX_SCHEDULED_AUDITS));
         }
 
-        // Dispatch event to allow customization
         $audit = $this->dispatchAuditCreatedEvent($entity, $audit);
 
         $this->scheduledAudits[] = [
@@ -347,17 +356,24 @@ final class AuditSubscriber implements ResetInterface
      *
      * @return array{0: array<string, mixed>, 1: array<string, mixed>}
      */
-    private function extractChanges(array $changeSet): array
+    private function extractChanges(object $entity, array $changeSet): array
     {
         $old = [];
         $new = [];
+        $sensitiveFields = $this->auditService->getSensitiveFields($entity);
 
         foreach ($changeSet as $field => [$oldValue, $newValue]) {
             if ($oldValue === $newValue) {
                 continue;
             }
-            $old[$field] = $oldValue;
-            $new[$field] = $newValue;
+
+            if (isset($sensitiveFields[$field])) {
+                $old[$field] = $sensitiveFields[$field];
+                $new[$field] = $sensitiveFields[$field];
+            } else {
+                $old[$field] = $oldValue;
+                $new[$field] = $newValue;
+            }
         }
 
         return [$old, $new];
@@ -387,7 +403,6 @@ final class AuditSubscriber implements ResetInterface
     private function extractIdsFromCollection(array $items): array
     {
         $ids = [];
-
         foreach ($items as $item) {
             $id = $this->extractEntityId($item);
             if (null !== $id) {
@@ -403,7 +418,6 @@ final class AuditSubscriber implements ResetInterface
         if (!\method_exists($entity, 'getId')) {
             return null;
         }
-
         $id = $entity->getId();
 
         return (\is_int($id) || \is_string($id)) ? $id : null;
@@ -419,14 +433,12 @@ final class AuditSubscriber implements ResetInterface
     private function computeNewIds(array $oldIds, iterable $insertDiff, iterable $deleteDiff): array
     {
         $newIds = $oldIds;
-
         foreach ($insertDiff as $item) {
             $id = $this->extractEntityId($item);
             if (null !== $id && !\in_array($id, $newIds, true)) {
                 $newIds[] = $id;
             }
         }
-
         foreach ($deleteDiff as $item) {
             $id = $this->extractEntityId($item);
             if (null !== $id) {
@@ -443,16 +455,27 @@ final class AuditSubscriber implements ResetInterface
     private function processScheduledAudits(EntityManagerInterface $em): void
     {
         foreach ($this->scheduledAudits as $i => $scheduled) {
-            $this->sendOrFallback($scheduled['audit'], $em, 'batch_flush');
+            // Logic for batch flush (rarely used but needs safe fallback)
+            // We pass null for UoW here as batch flush happens outside typical UoW calc flow
+            $this->sendOrFallback($scheduled['audit'], $em, 'batch_flush', null);
             unset($this->scheduledAudits[$i]);
         }
-
         $this->scheduledAudits = [];
     }
 
-    private function sendOrFallback(AuditLog $audit, EntityManagerInterface $em, string $phase): void
+    // Fix: Add UnitOfWork argument
+    private function sendOrFallback(AuditLog $audit, EntityManagerInterface $em, string $phase, ?UnitOfWork $uow = null): void
     {
-        if (!$this->safeSendToTransport($audit, ['phase' => $phase, 'em' => $em])) {
+        $context = [
+            'phase' => $phase,
+            'em' => $em,
+        ];
+
+        if ($uow) {
+            $context['uow'] = $uow;
+        }
+
+        if (!$this->safeSendToTransport($audit, $context)) {
             $this->persistFallback($audit, $em, $phase);
         }
     }
@@ -470,8 +493,6 @@ final class AuditSubscriber implements ResetInterface
             $this->logger?->error('Failed to send audit to transport', [
                 'exception' => $e->getMessage(),
                 'audit_action' => $audit->getAction(),
-                'entity_class' => $audit->getEntityClass(),
-                'entity_id' => $audit->getEntityId(),
             ]);
 
             if ($this->failOnTransportError) {
@@ -504,8 +525,6 @@ final class AuditSubscriber implements ResetInterface
         } catch (\Throwable $e) {
             $this->logger?->critical('Failed to persist audit log to database fallback', [
                 'exception' => $e->getMessage(),
-                'audit_action' => $audit->getAction(),
-                'entity_class' => $audit->getEntityClass(),
             ]);
         }
     }
@@ -523,18 +542,8 @@ final class AuditSubscriber implements ResetInterface
 
         try {
             $em->flush();
-
-            if ([] !== $failedAudits) {
-                $this->logger?->info('Persisted {count} audits to database fallback', [
-                    'count' => \count($failedAudits),
-                ]);
-            }
         } catch (\Throwable $e) {
-            $this->logger?->critical('Failed to flush fallback audits to database', [
-                'exception' => $e->getMessage(),
-                'count' => \count($failedAudits),
-            ]);
-
+            $this->logger?->critical('Failed to flush audits', ['exception' => $e->getMessage()]);
             if ($this->failOnTransportError) {
                 throw $e;
             }
@@ -547,21 +556,15 @@ final class AuditSubscriber implements ResetInterface
     {
         if ($this->enableSoftDelete) {
             $meta = $em->getClassMetadata($entity::class);
-
             if ($meta->hasField($this->softDeleteField)) {
                 $reflProp = $meta->getReflectionProperty($this->softDeleteField);
                 $softDeleteValue = $reflProp?->getValue($entity);
-
                 if (null !== $softDeleteValue) {
                     return AuditLog::ACTION_SOFT_DELETE;
                 }
             }
         }
 
-        if (!$this->enableHardDelete) {
-            return null;
-        }
-
-        return AuditLog::ACTION_DELETE;
+        return $this->enableHardDelete ? AuditLog::ACTION_DELETE : null;
     }
 }

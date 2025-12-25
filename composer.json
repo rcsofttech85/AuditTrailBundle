@@ -37,7 +37,7 @@
         "symfony/http-client": "^7.4",
         "symfony/messenger": "^7.4",
         "symfony/yaml": "^7.4",
-        "symfony/var-exporter": "^8.0"
+        "symfony/var-exporter": "^7.4"
     },
     "require-dev": {
         "phpunit/phpunit": "^12.5",

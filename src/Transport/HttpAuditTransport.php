@@ -14,7 +14,7 @@ final class HttpAuditTransport implements AuditTransportInterface
     use PendingIdResolver;
 
     public function __construct(
-        private HttpClientInterface $client,
+        private readonly HttpClientInterface $client,
         private readonly string $endpoint,
         private readonly LoggerInterface $logger,
     ) {
@@ -25,11 +25,6 @@ final class HttpAuditTransport implements AuditTransportInterface
      */
     public function send(AuditLog $log, array $context = []): void
     {
-
-        if (($context['phase'] ?? '') !== 'post_flush') {
-            return;
-        }
-
         $entityId = $this->resolveEntityId($log, $context) ?? $log->getEntityId();
 
         try {
@@ -51,11 +46,14 @@ final class HttpAuditTransport implements AuditTransportInterface
         } catch (\Throwable $e) {
             $this->logger->error("Failed to send audit log to endpoint: {$this->endpoint}", [
                 'exception' => $e->getMessage(),
-                'exception_class' => $e::class,
                 'entity_class' => $log->getEntityClass(),
-
             ]);
             throw $e;
         }
+    }
+
+    public function supports(string $phase): bool
+    {
+        return 'post_flush' === $phase;
     }
 }

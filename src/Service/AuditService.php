@@ -210,7 +210,7 @@ class AuditService
      *
      * @return array<string, string> Map of field name => mask value
      */
-    private function getSensitiveFields(object $entity): array
+    public function getSensitiveFields(object $entity): array
     {
         $class = $entity::class;
 
