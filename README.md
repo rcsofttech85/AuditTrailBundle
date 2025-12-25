@@ -222,3 +222,8 @@ By default, the bundle uses Symfony Security to resolve the user. If you have a 
 ## License
 
 MIT License.
+
+## Screenshots
+
+### Audit Log CLI – List Command
+![Audit Log Command List](docs/images/command-list.png)
