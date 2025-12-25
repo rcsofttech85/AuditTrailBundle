@@ -130,12 +130,36 @@ public function getLogs(EntityManagerInterface $em)
 }
 ```
 
-### 3. Cleaning Up Old Logs
+### 3. CLI Commands
 
-The bundle provides a command to cleanup old audit logs from the database:
+The bundle provides several commands for managing audit logs:
 
+#### List Audit Logs
 ```bash
-php bin/console audit:cleanup
+# List recent audit logs
+php bin/console audit:list
+
+# Filter by entity, action, user, or date
+php bin/console audit:list --entity=User --action=update --limit=50
+php bin/console audit:list --user=123 --from="-7 days"
+```
+
+#### Purge Old Logs
+```bash
+# Preview logs to delete (dry run)
+php bin/console audit:purge --before="30 days ago" --dry-run
+
+# Delete logs older than a date
+php bin/console audit:purge --before="2024-01-01" --force
+```
+
+#### Export Logs
+```bash
+# Export to JSON
+php bin/console audit:export --format=json --output=audits.json
+
+# Export to CSV with filters
+php bin/console audit:export --format=csv --entity=User --from="-30 days" -o audits.csv
 ```
 
 ## EasyAdmin Integration
