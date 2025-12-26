@@ -12,6 +12,7 @@ services:
       $fallbackToDatabase: '%audit_trail.fallback_to_database%'
       $tablePrefix: '%audit_trail.table_prefix%'
       $tableSuffix: '%audit_trail.table_suffix%'
+      $timezone: '%audit_trail.timezone%'
 
   Rcsofttech\AuditTrailBundle\:
     resource: '../../*'

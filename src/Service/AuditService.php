@@ -36,6 +36,7 @@ class AuditService
         private readonly array $ignoredProperties = [],
         private readonly array $ignoredEntities = [],
         private readonly ?LoggerInterface $logger = null,
+        private readonly string $timezone = 'UTC',
     ) {
     }
 
@@ -146,7 +147,7 @@ class AuditService
         // Set user context
         $this->enrichWithUserContext($auditLog);
 
-        $auditLog->setCreatedAt($this->clock->now());
+        $auditLog->setCreatedAt($this->clock->now()->setTimezone(new \DateTimeZone($this->timezone)));
 
         return $auditLog;
     }

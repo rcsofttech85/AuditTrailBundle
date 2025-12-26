@@ -28,6 +28,7 @@ final class AuditTrailExtension extends Extension
         $container->setParameter('audit_trail.ignored_properties', $config['ignored_properties']);
         $container->setParameter('audit_trail.table_prefix', $config['table_prefix']);
         $container->setParameter('audit_trail.table_suffix', $config['table_suffix']);
+        $container->setParameter('audit_trail.timezone', $config['timezone']);
         $container->setParameter('audit_trail.ignored_entities', $config['ignored_entities']);
         $container->setParameter('audit_trail.retention_days', $config['retention_days']);
         $container->setParameter('audit_trail.track_ip_address', $config['track_ip_address']);
