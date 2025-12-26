@@ -1,0 +1,49 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Rcsofttech\AuditTrailBundle\Tests\Service;
+
+use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+
+class TransactionIdGeneratorTest extends TestCase
+{
+    public function testGetTransactionIdReturnsUuid(): void
+    {
+        $generator = new TransactionIdGenerator();
+        $id = $generator->getTransactionId();
+
+        $this->assertNotEmpty($id);
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', $id);
+    }
+
+    public function testGetTransactionIdReturnsSameIdForSameInstance(): void
+    {
+        $generator = new TransactionIdGenerator();
+        $id1 = $generator->getTransactionId();
+        $id2 = $generator->getTransactionId();
+
+        $this->assertSame($id1, $id2);
+    }
+
+    public function testDifferentInstancesReturnDifferentIds(): void
+    {
+        $generator1 = new TransactionIdGenerator();
+        $generator2 = new TransactionIdGenerator();
+
+        $this->assertNotSame($generator1->getTransactionId(), $generator2->getTransactionId());
+    }
+
+    public function testResetGeneratesNewId(): void
+    {
+        $generator = new TransactionIdGenerator();
+        $id1 = $generator->getTransactionId();
+
+        $generator->reset();
+        $id2 = $generator->getTransactionId();
+
+        $this->assertNotSame($id1, $id2);
+        $this->assertNotEmpty($id2);
+    }
+}

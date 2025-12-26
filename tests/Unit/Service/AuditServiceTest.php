@@ -13,6 +13,7 @@ use Rcsofttech\AuditTrailBundle\Attribute\Sensitive;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
+use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use PHPUnit\Framework\MockObject\Stub;
 
 #[Auditable(enabled: true)]
@@ -94,6 +95,7 @@ class AuditServiceTest extends TestCase
     private UserResolverInterface $userResolver;
     private ClockInterface $clock;
     private LoggerInterface $logger;
+    private TransactionIdGenerator $transactionIdGenerator;
     private AuditService $service;
 
     protected function setUp(): void
@@ -103,11 +105,14 @@ class AuditServiceTest extends TestCase
         $this->userResolver = $this->createStub(UserResolverInterface::class);
         $this->clock = $this->createStub(ClockInterface::class);
         $this->logger = $this->createStub(LoggerInterface::class);
+        $this->transactionIdGenerator = $this->createStub(TransactionIdGenerator::class);
+        $this->transactionIdGenerator->method('getTransactionId')->willReturn('test-transaction-id');
 
         $this->service = new AuditService(
             $this->entityManager,
             $this->userResolver,
             $this->clock,
+            $this->transactionIdGenerator,
             ['ignoredField'], // global ignored
             [], // ignored entities
             $this->logger
@@ -126,6 +131,7 @@ class AuditServiceTest extends TestCase
             $this->entityManager,
             $this->userResolver,
             $this->createStub(ClockInterface::class),
+            $this->createStub(TransactionIdGenerator::class),
             [],
             [TestEntity::class], // Ignore TestEntity
             $this->logger
@@ -143,6 +149,7 @@ class AuditServiceTest extends TestCase
             $entityManager,
             $this->userResolver,
             $this->clock,
+            $this->transactionIdGenerator,
             ['ignoredField'],
             [],
             $this->logger
@@ -172,11 +179,13 @@ class AuditServiceTest extends TestCase
         $entityManager = $this->createMock(EntityManagerInterface::class);
         $userResolver = $this->createMock(UserResolverInterface::class);
         $clock = $this->createMock(ClockInterface::class);
+        $transactionIdGenerator = $this->createMock(TransactionIdGenerator::class);
 
         $service = new AuditService(
             $entityManager,
             $userResolver,
             $clock,
+            $transactionIdGenerator,
             ['ignoredField'],
             [],
             $this->logger
@@ -190,6 +199,8 @@ class AuditServiceTest extends TestCase
 
         $now = new \DateTimeImmutable('2024-01-01 12:00:00');
         $clock->expects($this->once())->method('now')->willReturn($now);
+
+        $transactionIdGenerator->expects($this->once())->method('getTransactionId')->willReturn('test-transaction-id');
 
         $log = $service->createAuditLog(
             $entity,
@@ -206,6 +217,7 @@ class AuditServiceTest extends TestCase
         $this->assertEquals(123, $log->getUserId());
         $this->assertEquals('testuser', $log->getUsername());
         $this->assertEquals($now, $log->getCreatedAt());
+        $this->assertEquals('test-transaction-id', $log->getTransactionHash());
     }
 
     public function testCompositeKeySerialization(): void
@@ -449,6 +461,7 @@ class AuditServiceTest extends TestCase
             $entityManager,
             $this->userResolver,
             $clock,
+            $this->transactionIdGenerator,
             [],
             [],
             $this->logger
@@ -483,6 +496,7 @@ class AuditServiceTest extends TestCase
             $entityManager,
             $this->userResolver,
             $this->clock,
+            $this->createStub(TransactionIdGenerator::class),
             [],
             [],
             $this->logger
@@ -518,6 +532,7 @@ class AuditServiceTest extends TestCase
             $entityManager,
             $this->userResolver,
             $this->clock,
+            $this->createStub(TransactionIdGenerator::class),
             [],
             [],
             $this->logger

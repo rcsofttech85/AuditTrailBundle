@@ -39,6 +39,22 @@ class AuditLogRepository extends ServiceEntityRepository
     /**
      * @return array<AuditLog>
      */
+    public function findByTransactionHash(string $transactionHash): array
+    {
+        /** @var array<AuditLog> $result */
+        $result = $this->createQueryBuilder('a')
+            ->where('a.transactionHash = :hash')
+            ->setParameter('hash', $transactionHash)
+            ->orderBy('a.createdAt', 'DESC')
+            ->getQuery()
+            ->getResult();
+
+        return $result;
+    }
+
+    /**
+     * @return array<AuditLog>
+     */
     public function findByUser(int $userId, int $limit = 100): array
     {
         /** @var array<AuditLog> $result */
@@ -74,6 +90,7 @@ class AuditLogRepository extends ServiceEntityRepository
      *     entityId?: string,
      *     userId?: int,
      *     action?: string,
+     *     transactionHash?: string,
      *     from?: \DateTimeImmutable,
      *     to?: \DateTimeImmutable
      * } $filters
@@ -105,6 +122,11 @@ class AuditLogRepository extends ServiceEntityRepository
         if (isset($filters['action'])) {
             $qb->andWhere('a.action = :action')
                 ->setParameter('action', $filters['action']);
+        }
+
+        if (isset($filters['transactionHash'])) {
+            $qb->andWhere('a.transactionHash = :transactionHash')
+                ->setParameter('transactionHash', $filters['transactionHash']);
         }
 
         if (isset($filters['from'])) {

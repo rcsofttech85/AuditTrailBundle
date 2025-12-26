@@ -104,6 +104,26 @@ class AuditListCommandTest extends TestCase
         $this->assertSame(0, $this->commandTester->getStatusCode());
     }
 
+    public function testListWithTransactionFilter(): void
+    {
+        $this->repository
+            ->expects($this->once())
+            ->method('findWithFilters')
+            ->with(
+                $this->callback(function (array $filters) {
+                    return 'abc-123' === $filters['transactionHash'];
+                }),
+                50
+            )
+            ->willReturn([]);
+
+        $this->commandTester->execute([
+            '--transaction' => 'abc-123',
+        ]);
+
+        $this->assertSame(0, $this->commandTester->getStatusCode());
+    }
+
     public function testListWithCustomLimit(): void
     {
         $this->repository
@@ -221,6 +241,7 @@ class AuditListCommandTest extends TestCase
         $audit->method('getChangedFields')->willReturn(['title']);
         $audit->method('getOldValues')->willReturn(['title' => 'Old Title']);
         $audit->method('getNewValues')->willReturn(['title' => 'New Title']);
+        $audit->method('getTransactionHash')->willReturn('abc-123-def-456');
 
         return $audit;
     }

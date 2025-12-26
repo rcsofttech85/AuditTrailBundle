@@ -22,6 +22,7 @@ final readonly class AuditLogMessage
         public ?int $userId,
         public ?string $username,
         public ?string $ipAddress,
+        public ?string $transactionHash,
         public \DateTimeImmutable $createdAt,
     ) {
     }

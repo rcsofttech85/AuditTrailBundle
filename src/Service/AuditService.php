@@ -33,6 +33,7 @@ class AuditService
         private readonly EntityManagerInterface $entityManager,
         private readonly UserResolverInterface $userResolver,
         private readonly ClockInterface $clock,
+        private readonly TransactionIdGenerator $transactionIdGenerator,
         private readonly array $ignoredProperties = [],
         private readonly array $ignoredEntities = [],
         private readonly ?LoggerInterface $logger = null,
@@ -146,6 +147,9 @@ class AuditService
 
         // Set user context
         $this->enrichWithUserContext($auditLog);
+
+        // Set transaction hash
+        $auditLog->setTransactionHash($this->transactionIdGenerator->getTransactionId());
 
         $auditLog->setCreatedAt($this->clock->now()->setTimezone(new \DateTimeZone($this->timezone)));
 

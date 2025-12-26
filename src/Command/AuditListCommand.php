@@ -32,6 +32,7 @@ final class AuditListCommand extends Command
             ->addOption('entity', null, InputOption::VALUE_OPTIONAL, 'Filter by entity class (partial match)')
             ->addOption('entity-id', null, InputOption::VALUE_OPTIONAL, 'Filter by entity ID')
             ->addOption('user', null, InputOption::VALUE_OPTIONAL, 'Filter by user ID')
+            ->addOption('transaction', 't', InputOption::VALUE_OPTIONAL, 'Filter by transaction hash')
             ->addOption('action', null, InputOption::VALUE_OPTIONAL, sprintf(
                 'Filter by action (%s)',
                 implode(', ', $this->getAvailableActions())
@@ -104,6 +105,12 @@ final class AuditListCommand extends Command
             $filters['userId'] = (int) $user;
         }
 
+        if ($transaction = $input->getOption('transaction')) {
+            if (is_string($transaction)) {
+                $filters['transactionHash'] = $transaction;
+            }
+        }
+
         if ($action = $input->getOption('action')) {
             if (is_string($action)) {
                 $availableActions = $this->getAvailableActions();
@@ -155,9 +162,9 @@ final class AuditListCommand extends Command
         $table = new Table($output);
 
         if ($showDetails) {
-            $table->setHeaders(['Entity ID', 'Action', 'User', 'Changed Fields', 'Changed Details', 'Created At']);
+            $table->setHeaders(['Entity ID', 'Action', 'User', 'Tx Hash', 'Changed Details', 'Created At']);
         } else {
-            $table->setHeaders(['ID', 'Entity', 'Entity ID', 'Action', 'User', 'Changed Fields', 'Created At']);
+            $table->setHeaders(['ID', 'Entity', 'Entity ID', 'Action', 'User', 'Tx Hash', 'Created At']);
         }
 
         foreach ($audits as $audit) {
@@ -166,7 +173,7 @@ final class AuditListCommand extends Command
                     $audit->getEntityId(),
                     $audit->getAction(),
                     $audit->getUsername() ?? $audit->getUserId() ?? '-',
-                    implode(', ', $audit->getChangedFields() ?? []),
+                    $this->shortenHash($audit->getTransactionHash()),
                     $this->formatChangedDetails($audit),
                     $audit->getCreatedAt()->format('Y-m-d H:i:s'),
                 ];
@@ -177,7 +184,7 @@ final class AuditListCommand extends Command
                     $audit->getEntityId(),
                     $audit->getAction(),
                     $audit->getUsername() ?? $audit->getUserId() ?? '-',
-                    implode(', ', $audit->getChangedFields() ?? []),
+                    $this->shortenHash($audit->getTransactionHash()),
                     $audit->getCreatedAt()->format('Y-m-d H:i:s'),
                 ];
             }
@@ -257,5 +264,14 @@ final class AuditListCommand extends Command
     private function shortenClass(string $class): string
     {
         return basename(str_replace('\\', '/', $class));
+    }
+
+    private function shortenHash(?string $hash): string
+    {
+        if (null === $hash) {
+            return '-';
+        }
+
+        return substr($hash, 0, 8);
     }
 }

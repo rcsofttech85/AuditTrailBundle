@@ -12,6 +12,7 @@ use Psr\Clock\ClockInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
+use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 
 #[CoversClass(AuditService::class)]
 final class AuditServiceTimezoneTest extends TestCase
@@ -31,6 +32,7 @@ final class AuditServiceTimezoneTest extends TestCase
             $entityManager,
             $userResolver,
             $clock,
+            $this->createStub(TransactionIdGenerator::class),
             [],
             [],
             null,
@@ -68,7 +70,8 @@ final class AuditServiceTimezoneTest extends TestCase
         $service = new AuditService(
             $entityManager,
             $userResolver,
-            $clock
+            $clock,
+            $this->createStub(TransactionIdGenerator::class)
         );
 
         $entity = new class () {

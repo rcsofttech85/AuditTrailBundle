@@ -12,6 +12,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
+use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Symfony\Component\Clock\MockClock;
 
 #[Auditable]
@@ -37,10 +38,13 @@ class SensitiveDataUpdateTest extends TestCase
         $em = $this->createStub(EntityManagerInterface::class);
         $userResolver = $this->createStub(\Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface::class);
         $clock = new MockClock();
+        $transactionIdGenerator = $this->createStub(TransactionIdGenerator::class);
+        $transactionIdGenerator->method('getTransactionId')->willReturn('test-transaction-id');
+
 
         // We need a real AuditService to test the attribute reading logic,
         // but we can mock the dependencies.
-        $auditService = new AuditService($em, $userResolver, $clock);
+        $auditService = new AuditService($em, $userResolver, $clock, $transactionIdGenerator);
 
         // Setup Subscriber
         $transport = $this->createMock(AuditTransportInterface::class);

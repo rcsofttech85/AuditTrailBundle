@@ -38,6 +38,7 @@ final class QueueAuditTransport implements AuditTransportInterface
                 $log->getUserId(),
                 $log->getUsername(),
                 $log->getIpAddress(),
+                $log->getTransactionHash(),
                 $log->getCreatedAt()
             );
 

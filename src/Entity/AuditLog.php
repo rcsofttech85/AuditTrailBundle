@@ -17,6 +17,7 @@ use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
         new ORM\Index(name: 'created_idx', columns: ['created_at']),
         new ORM\Index(name: 'user_action_date_idx', columns: ['user_id', 'action', 'created_at']),
         new ORM\Index(name: 'entity_date_idx', columns: ['entity_class', 'entity_id', 'created_at']),
+        new ORM\Index(name: 'transaction_idx', columns: ['transaction_hash']),
     ]
 )]
 class AuditLog
@@ -70,6 +71,9 @@ class AuditLog
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $userAgent = null;
+
+    #[ORM\Column(length: 40, nullable: true)]
+    private ?string $transactionHash = null;
 
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
@@ -143,6 +147,11 @@ class AuditLog
     public function getUserAgent(): ?string
     {
         return $this->userAgent;
+    }
+
+    public function getTransactionHash(): ?string
+    {
+        return $this->transactionHash;
     }
 
     public function getCreatedAt(): \DateTimeImmutable
@@ -245,6 +254,13 @@ class AuditLog
     public function setUserAgent(?string $userAgent): self
     {
         $this->userAgent = $userAgent;
+
+        return $this;
+    }
+
+    public function setTransactionHash(?string $transactionHash): self
+    {
+        $this->transactionHash = $transactionHash;
 
         return $this;
     }
