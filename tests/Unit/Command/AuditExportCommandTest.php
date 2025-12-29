@@ -34,8 +34,8 @@ class AuditExportCommandTest extends TestCase
 
         $this->commandTester->execute([]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
-        $this->assertStringContainsString('No audit logs', $this->normalizeOutput());
+        self::assertSame(0, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('No audit logs', $this->normalizeOutput());
     }
 
     public function testExportToJson(): void
@@ -51,10 +51,10 @@ class AuditExportCommandTest extends TestCase
             '--format' => 'json',
         ]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
+        self::assertSame(0, $this->commandTester->getStatusCode());
         $output = $this->commandTester->getDisplay();
-        $this->assertStringContainsString('"entity_class"', $output);
-        $this->assertStringContainsString('User', $output);
+        self::assertStringContainsString('"entity_class"', $output);
+        self::assertStringContainsString('User', $output);
     }
 
     public function testExportToCsv(): void
@@ -70,10 +70,10 @@ class AuditExportCommandTest extends TestCase
             '--format' => 'csv',
         ]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
+        self::assertSame(0, $this->commandTester->getStatusCode());
         $output = $this->commandTester->getDisplay();
-        $this->assertStringContainsString('id,entity_class', $output);
-        $this->assertStringContainsString('update', $output);
+        self::assertStringContainsString('id,entity_class', $output);
+        self::assertStringContainsString('update', $output);
     }
 
     public function testExportWithInvalidFormat(): void
@@ -86,8 +86,8 @@ class AuditExportCommandTest extends TestCase
             '--format' => 'xml',
         ]);
 
-        $this->assertSame(1, $this->commandTester->getStatusCode());
-        $this->assertStringContainsString('Invalid format', $this->normalizeOutput());
+        self::assertSame(1, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Invalid format', $this->normalizeOutput());
     }
 
     public function testExportWithInvalidLimit(): void
@@ -100,8 +100,8 @@ class AuditExportCommandTest extends TestCase
             '--limit' => '999999',
         ]);
 
-        $this->assertSame(1, $this->commandTester->getStatusCode());
-        $this->assertStringContainsString('Limit must be between', $this->normalizeOutput());
+        self::assertSame(1, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Limit must be between', $this->normalizeOutput());
     }
 
     public function testExportWithInvalidAction(): void
@@ -114,8 +114,8 @@ class AuditExportCommandTest extends TestCase
             '--action' => 'invalid_action',
         ]);
 
-        $this->assertSame(1, $this->commandTester->getStatusCode());
-        $this->assertStringContainsString('Invalid action', $this->normalizeOutput());
+        self::assertSame(1, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Invalid action', $this->normalizeOutput());
     }
 
     public function testExportWithFilters(): void
@@ -124,7 +124,7 @@ class AuditExportCommandTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
+                self::callback(function (array $filters) {
                     return 'User' === $filters['entityClass']
                         && 'create' === $filters['action'];
                 }),
@@ -137,7 +137,7 @@ class AuditExportCommandTest extends TestCase
             '--action' => 'create',
         ]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
+        self::assertSame(0, $this->commandTester->getStatusCode());
     }
 
     private function normalizeOutput(): string
@@ -147,7 +147,7 @@ class AuditExportCommandTest extends TestCase
 
     private function createAuditLog(int $id, string $entityClass, string $entityId, string $action): AuditLog
     {
-        $audit = $this->createStub(AuditLog::class);
+        $audit = self::createStub(AuditLog::class);
 
         $audit->method('getId')->willReturn($id);
         $audit->method('getEntityClass')->willReturn($entityClass);

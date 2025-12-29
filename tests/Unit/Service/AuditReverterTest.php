@@ -105,7 +105,7 @@ class AuditReverterTest extends TestCase
         $this->validator->expects($this->once())->method('validate')->willReturn(new ConstraintViolationList());
 
         $this->em->expects($this->exactly(2))->method('persist')
-            ->with($this->callback(fn ($arg) => $arg === $entity || $arg instanceof AuditLog));
+            ->with(self::callback(fn ($arg) => $arg === $entity || $arg instanceof AuditLog));
 
         $this->em->expects($this->exactly(2))->method('flush'); // Once for entity, once for log
 
@@ -120,7 +120,7 @@ class AuditReverterTest extends TestCase
 
         $changes = $this->reverter->revert($log);
 
-        $this->assertEquals(['name' => 'Old Name'], $changes);
+        self::assertEquals(['name' => 'Old Name'], $changes);
     }
 
     public function testRevertCreateRequiresForce(): void
@@ -155,14 +155,14 @@ class AuditReverterTest extends TestCase
         });
 
         $this->em->expects($this->once())->method('remove')->with($entity);
-        $this->em->expects($this->once())->method('persist')->with($this->isInstanceOf(AuditLog::class));
+        $this->em->expects($this->once())->method('persist')->with(self::isInstanceOf(AuditLog::class));
 
         $revertLog = new AuditLog();
         $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($revertLog);
 
         $changes = $this->reverter->revert($log, false, true);
 
-        $this->assertEquals(['action' => 'delete'], $changes);
+        self::assertEquals(['action' => 'delete'], $changes);
     }
 
     public function testRevertSoftDeleteRestores(): void
@@ -210,11 +210,11 @@ class AuditReverterTest extends TestCase
         $this->validator->method('validate')->willReturn(new ConstraintViolationList());
 
         $this->em->expects($this->exactly(2))->method('persist')
-            ->with($this->callback(fn ($arg) => $arg === $entity || $arg instanceof AuditLog));
+            ->with(self::callback(fn ($arg) => $arg === $entity || $arg instanceof AuditLog));
 
         $changes = $this->reverter->revert($log);
 
-        $this->assertEquals(['action' => 'restore'], $changes);
-        $this->assertNull($entity->getDeletedAt());
+        self::assertEquals(['action' => 'restore'], $changes);
+        self::assertNull($entity->getDeletedAt());
     }
 }

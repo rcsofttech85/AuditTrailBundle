@@ -20,8 +20,8 @@ final class DiffGenerator implements DiffGeneratorInterface
         $oldValues ??= [];
         $newValues ??= [];
 
-        $raw = $options['raw'] ?? false;
-        $includeTimestamps = $options['include_timestamps'] ?? false;
+        $raw = (bool) ($options['raw'] ?? false);
+        $includeTimestamps = (bool) ($options['include_timestamps'] ?? false);
 
         $diff = [];
 

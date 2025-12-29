@@ -471,7 +471,7 @@ final class AuditSubscriber implements ResetInterface
             'em' => $em,
         ];
 
-        if ($uow) {
+        if ($uow instanceof UnitOfWork) {
             $context['uow'] = $uow;
         }
 

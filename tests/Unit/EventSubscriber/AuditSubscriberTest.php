@@ -24,8 +24,8 @@ class AuditSubscriberTest extends TestCase
     protected function setUp(): void
     {
         // Use stubs by default - individual tests will create mocks if needed
-        $this->auditService = $this->createStub(AuditService::class);
-        $this->transport = $this->createStub(AuditTransportInterface::class);
+        $this->auditService = self::createStub(AuditService::class);
+        $this->transport = self::createStub(AuditTransportInterface::class);
         $this->subscriber = new AuditSubscriber($this->auditService, $this->transport);
     }
 
@@ -34,9 +34,9 @@ class AuditSubscriberTest extends TestCase
         $entity = new \stdClass();
         $auditLog = new AuditLog();
 
-        $em = $this->createStub(EntityManagerInterface::class);
-        $uow = $this->createStub(UnitOfWork::class);
-        $args = $this->createStub(OnFlushEventArgs::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $uow = self::createStub(UnitOfWork::class);
+        $args = self::createStub(OnFlushEventArgs::class);
 
         $args->method('getObjectManager')->willReturn($em);
         $em->method('getUnitOfWork')->willReturn($uow);
@@ -66,9 +66,9 @@ class AuditSubscriberTest extends TestCase
         $entity = new \stdClass();
         $auditLog = new AuditLog();
 
-        $em = $this->createStub(EntityManagerInterface::class);
-        $uow = $this->createStub(UnitOfWork::class);
-        $args = $this->createStub(OnFlushEventArgs::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $uow = self::createStub(UnitOfWork::class);
+        $args = self::createStub(OnFlushEventArgs::class);
 
         $args->method('getObjectManager')->willReturn($em);
         $em->method('getUnitOfWork')->willReturn($uow);
@@ -84,12 +84,12 @@ class AuditSubscriberTest extends TestCase
         $subscriber->onFlush($args);
 
         // Now trigger postFlush
-        $postFlushArgs = $this->createStub(PostFlushEventArgs::class);
+        $postFlushArgs = self::createStub(PostFlushEventArgs::class);
         $postFlushArgs->method('getObjectManager')->willReturn($em);
 
         $transport->expects($this->once())
             ->method('send')
-            ->with($auditLog, $this->callback(fn ($context) => 'post_flush' === $context['phase']));
+            ->with($auditLog, self::callback(fn ($context) => 'post_flush' === $context['phase']));
 
         $subscriber->postFlush($postFlushArgs);
     }
@@ -102,9 +102,9 @@ class AuditSubscriberTest extends TestCase
 
         $entity = new \stdClass();
 
-        $em = $this->createStub(EntityManagerInterface::class);
-        $uow = $this->createStub(UnitOfWork::class);
-        $args = $this->createStub(OnFlushEventArgs::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $uow = self::createStub(UnitOfWork::class);
+        $args = self::createStub(OnFlushEventArgs::class);
 
         $args->method('getObjectManager')->willReturn($em);
         $em->method('getUnitOfWork')->willReturn($uow);
@@ -139,21 +139,21 @@ class AuditSubscriberTest extends TestCase
 
         $this->subscriber->reset();
 
-        $this->assertEmpty($scheduledProp->getValue($this->subscriber));
-        $this->assertEmpty($pendingProp->getValue($this->subscriber));
+        self::assertEmpty($scheduledProp->getValue($this->subscriber));
+        self::assertEmpty($pendingProp->getValue($this->subscriber));
     }
 
     public function testTransportFailureTriggersDbFallback(): void
     {
         // Create stub for transport (we don't verify method calls)
-        $transport = $this->createStub(AuditTransportInterface::class);
+        $transport = self::createStub(AuditTransportInterface::class);
 
         $entity = new \stdClass();
         $auditLog = new AuditLog();
 
         $em = $this->createMock(EntityManagerInterface::class); // Mock because we verify persist()
-        $uow = $this->createStub(UnitOfWork::class);
-        $args = $this->createStub(OnFlushEventArgs::class);
+        $uow = self::createStub(UnitOfWork::class);
+        $args = self::createStub(OnFlushEventArgs::class);
 
         $args->method('getObjectManager')->willReturn($em);
         $em->method('getUnitOfWork')->willReturn($uow);
@@ -198,10 +198,10 @@ class AuditSubscriberTest extends TestCase
         $auditLog = new AuditLog();
 
         $em = $this->createMock(EntityManagerInterface::class);
-        $metadata = $this->createStub(ClassMetadata::class);
-        $reflProp = $this->createStub(\ReflectionProperty::class);
+        $metadata = self::createStub(ClassMetadata::class);
+        $reflProp = self::createStub(\ReflectionProperty::class);
 
-        $args = $this->createStub(PostFlushEventArgs::class);
+        $args = self::createStub(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
         $em->method('getClassMetadata')->willReturn($metadata);
@@ -219,8 +219,8 @@ class AuditSubscriberTest extends TestCase
             ->with(
                 $entity,
                 AuditLog::ACTION_SOFT_DELETE,
-                $this->anything(),
-                $this->anything()
+                self::anything(),
+                self::anything()
             )
             ->willReturn($auditLog);
 
@@ -254,9 +254,9 @@ class AuditSubscriberTest extends TestCase
         $auditLog = new AuditLog();
 
         $em = $this->createMock(EntityManagerInterface::class);
-        $metadata = $this->createStub(ClassMetadata::class);
+        $metadata = self::createStub(ClassMetadata::class);
 
-        $args = $this->createStub(PostFlushEventArgs::class);
+        $args = self::createStub(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
         $em->method('getClassMetadata')->willReturn($metadata);
@@ -271,7 +271,7 @@ class AuditSubscriberTest extends TestCase
             ->with(
                 $entity,
                 AuditLog::ACTION_DELETE,
-                $this->anything(),
+                self::anything(),
                 null
             )
             ->willReturn($auditLog);
@@ -305,9 +305,9 @@ class AuditSubscriberTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Maximum audit queue size exceeded');
 
-        $em = $this->createStub(EntityManagerInterface::class);
-        $uow = $this->createStub(UnitOfWork::class);
-        $args = $this->createStub(OnFlushEventArgs::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $uow = self::createStub(UnitOfWork::class);
+        $args = self::createStub(OnFlushEventArgs::class);
 
         $args->method('getObjectManager')->willReturn($em);
         $em->method('getUnitOfWork')->willReturn($uow);

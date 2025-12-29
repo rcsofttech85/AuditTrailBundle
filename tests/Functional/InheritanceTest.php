@@ -35,7 +35,7 @@ class InheritanceTest extends KernelTestCase
     }
 
     /**
-     * @param array<string, mixed> $options
+     * @param array<mixed> $options
      */
     protected static function createKernel(array $options = []): KernelInterface
     {
@@ -72,12 +72,12 @@ class InheritanceTest extends KernelTestCase
         $auditRepo = $em->getRepository(AuditLog::class);
         $logs = $auditRepo->findAll();
 
-        $this->assertCount(1, $logs, 'Should have 1 audit log for Car (STI)');
-        $this->assertSame(Car::class, $logs[0]->getEntityClass());
+        self::assertCount(1, $logs, 'Should have 1 audit log for Car (STI)');
+        self::assertSame(Car::class, $logs[0]->getEntityClass());
         $newValues = $logs[0]->getNewValues();
-        $this->assertNotNull($newValues);
-        $this->assertSame('Tesla Model S', $newValues['model']);
-        $this->assertSame(4, $newValues['doors']);
+        self::assertNotNull($newValues);
+        self::assertSame('Tesla Model S', $newValues['model']);
+        self::assertSame(4, $newValues['doors']);
 
         self::ensureKernelShutdown();
     }
@@ -99,11 +99,11 @@ class InheritanceTest extends KernelTestCase
         $auditRepo = $em->getRepository(AuditLog::class);
         $logs = $auditRepo->findAll();
 
-        $this->assertCount(1, $logs, 'Should have 1 audit log for Dog (JTI)');
-        $this->assertSame(Dog::class, $logs[0]->getEntityClass());
+        self::assertCount(1, $logs, 'Should have 1 audit log for Dog (JTI)');
+        self::assertSame(Dog::class, $logs[0]->getEntityClass());
         $newValues = $logs[0]->getNewValues();
-        $this->assertNotNull($newValues);
-        $this->assertSame('Buddy', $newValues['name']);
-        $this->assertSame('Golden Retriever', $newValues['breed']);
+        self::assertNotNull($newValues);
+        self::assertSame('Buddy', $newValues['name']);
+        self::assertSame('Golden Retriever', $newValues['breed']);
     }
 }

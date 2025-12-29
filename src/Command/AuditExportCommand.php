@@ -179,49 +179,45 @@ HELP
     {
         $filters = [];
 
-        if ($entity = $input->getOption('entity')) {
-            if (is_string($entity)) {
-                $filters['entityClass'] = $entity;
+        $entity = $input->getOption('entity');
+        if (is_string($entity) && '' !== $entity) {
+            $filters['entityClass'] = $entity;
+        }
+
+        $action = $input->getOption('action');
+        if (is_string($action) && '' !== $action) {
+            $availableActions = $this->getAvailableActions();
+            if (!in_array($action, $availableActions, true)) {
+                $io->error(sprintf(
+                    'Invalid action "%s". Available actions: %s',
+                    $action,
+                    implode(', ', $availableActions)
+                ));
+
+                return null;
+            }
+            $filters['action'] = $action;
+        }
+
+        $from = $input->getOption('from');
+        if (is_string($from) && '' !== $from) {
+            try {
+                $filters['from'] = new \DateTimeImmutable($from);
+            } catch (\Exception $e) {
+                $io->error(sprintf('Invalid "from" date: %s. Error: %s', $from, $e->getMessage()));
+
+                return null;
             }
         }
 
-        if ($action = $input->getOption('action')) {
-            if (is_string($action)) {
-                $availableActions = $this->getAvailableActions();
-                if (!in_array($action, $availableActions, true)) {
-                    $io->error(sprintf(
-                        'Invalid action "%s". Available actions: %s',
-                        $action,
-                        implode(', ', $availableActions)
-                    ));
+        $to = $input->getOption('to');
+        if (is_string($to) && '' !== $to) {
+            try {
+                $filters['to'] = new \DateTimeImmutable($to);
+            } catch (\Exception $e) {
+                $io->error(sprintf('Invalid "to" date: %s. Error: %s', $to, $e->getMessage()));
 
-                    return null;
-                }
-                $filters['action'] = $action;
-            }
-        }
-
-        if ($from = $input->getOption('from')) {
-            if (is_string($from)) {
-                try {
-                    $filters['from'] = new \DateTimeImmutable($from);
-                } catch (\Exception $e) {
-                    $io->error(sprintf('Invalid "from" date: %s. Error: %s', $from, $e->getMessage()));
-
-                    return null;
-                }
-            }
-        }
-
-        if ($to = $input->getOption('to')) {
-            if (is_string($to)) {
-                try {
-                    $filters['to'] = new \DateTimeImmutable($to);
-                } catch (\Exception $e) {
-                    $io->error(sprintf('Invalid "to" date: %s. Error: %s', $to, $e->getMessage()));
-
-                    return null;
-                }
+                return null;
             }
         }
 

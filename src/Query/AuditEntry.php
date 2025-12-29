@@ -36,7 +36,9 @@ readonly class AuditEntry
     {
         $parts = explode('\\', $this->log->getEntityClass());
 
-        return end($parts) ?: $this->log->getEntityClass();
+        $shortName = end($parts);
+
+        return ('' !== $shortName) ? $shortName : $this->log->getEntityClass();
     }
 
     public function getEntityId(): string

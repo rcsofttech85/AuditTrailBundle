@@ -181,7 +181,7 @@ class AuditService
                 $reflection = new \ReflectionClass($currentClass);
                 $attributes = $reflection->getAttributes(Auditable::class);
 
-                if (!empty($attributes)) {
+                if ([] !== $attributes) {
                     $attribute = $attributes[0]->newInstance();
                     break;
                 }
@@ -247,7 +247,7 @@ class AuditService
             // Check #[Sensitive] on properties
             foreach ($reflection->getProperties() as $property) {
                 $attributes = $property->getAttributes(Sensitive::class);
-                if (!empty($attributes)) {
+                if ([] !== $attributes) {
                     /** @var Sensitive $sensitive */
                     $sensitive = $attributes[0]->newInstance();
                     $sensitiveFields[$property->getName()] = $sensitive->mask;
@@ -260,7 +260,7 @@ class AuditService
             if (null !== $constructor) {
                 foreach ($constructor->getParameters() as $param) {
                     $attributes = $param->getAttributes(\SensitiveParameter::class);
-                    if (!empty($attributes) && $param->isPromoted()) {
+                    if ([] !== $attributes && $param->isPromoted()) {
                         // Only add if not already defined by #[Sensitive] (which allows custom mask)
                         if (!isset($sensitiveFields[$param->getName()])) {
                             $sensitiveFields[$param->getName()] = '**REDACTED**';
@@ -432,7 +432,7 @@ class AuditService
             $meta = $this->entityManager->getClassMetadata($entity::class);
             $ids = $meta->getIdentifierValues($entity);
 
-            if (empty($ids)) {
+            if ([] === $ids) {
                 // Fallback: Try getId() method directly
                 if (method_exists($entity, 'getId')) {
                     $id = $entity->getId();
@@ -449,13 +449,13 @@ class AuditService
                 fn ($id) => '' !== $id
             );
 
-            if (empty($idValues)) {
+            if ([] === $idValues) {
                 return self::PENDING_ID;
             }
 
             return count($idValues) > 1
                 ? json_encode(array_values($idValues), JSON_THROW_ON_ERROR)
-                : (string) reset($idValues);
+                : reset($idValues);
         } catch (\Throwable $e) {
             // Fallback: Try getId() method directly on exception
             if (method_exists($entity, 'getId')) {

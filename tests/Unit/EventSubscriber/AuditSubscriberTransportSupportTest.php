@@ -20,10 +20,10 @@ class AuditSubscriberTransportSupportTest extends TestCase
     public function testOnFlushDefersWhenTransportDoesNotSupportIt(): void
     {
         // Stubs for objects without expectations
-        $auditService = $this->createStub(AuditService::class);
+        $auditService = self::createStub(AuditService::class);
         $transport = $this->createMock(AuditTransportInterface::class);
-        $em = $this->createStub(EntityManagerInterface::class);
-        $uow = $this->createStub(UnitOfWork::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $uow = self::createStub(UnitOfWork::class);
 
         // Setup Subscriber with deferTransportUntilCommit = false
         $subscriber = new AuditSubscriber(
@@ -52,7 +52,7 @@ class AuditSubscriberTransportSupportTest extends TestCase
 
         // Setup EntityManager & UnitOfWork
         $em->method('getUnitOfWork')->willReturn($uow);
-        $em->method('getClassMetadata')->willReturn($this->createStub(ClassMetadata::class));
+        $em->method('getClassMetadata')->willReturn(self::createStub(ClassMetadata::class));
         $uow->method('getScheduledEntityInsertions')->willReturn([]);
         $uow->method('getScheduledEntityUpdates')->willReturn([$entity]); // One update
         $uow->method('getScheduledCollectionUpdates')->willReturn([]);
@@ -63,7 +63,7 @@ class AuditSubscriberTransportSupportTest extends TestCase
         // If it were called in onFlush, the count would be 2 (or 1 with wrong phase).
         $transport->expects($this->once())
             ->method('send')
-            ->with($auditLog, $this->callback(function ($context) {
+            ->with($auditLog, self::callback(function ($context) {
                 return ($context['phase'] ?? '') === 'post_flush';
             }));
 

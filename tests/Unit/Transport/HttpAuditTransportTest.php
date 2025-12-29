@@ -16,7 +16,7 @@ class HttpAuditTransportTest extends TestCase
     public function testSendPostFlushSendsRequest(): void
     {
         $client = $this->createMock(HttpClientInterface::class);
-        $transport = new HttpAuditTransport($client, 'http://example.com', $this->createStub(LoggerInterface::class));
+        $transport = new HttpAuditTransport($client, 'http://example.com', self::createStub(LoggerInterface::class));
 
         $log = new AuditLog();
         $log->setEntityClass('TestEntity');
@@ -27,7 +27,7 @@ class HttpAuditTransportTest extends TestCase
             ->method('request')
             ->withAnyParameters()
             ->willReturnCallback(function () {
-                return $this->createStub(ResponseInterface::class);
+                return self::createStub(ResponseInterface::class);
             });
 
         $transport->send($log, ['phase' => 'post_flush']);
@@ -36,7 +36,7 @@ class HttpAuditTransportTest extends TestCase
     public function testSendResolvesPendingId(): void
     {
         $client = $this->createMock(HttpClientInterface::class);
-        $transport = new HttpAuditTransport($client, 'http://example.com', $this->createStub(LoggerInterface::class));
+        $transport = new HttpAuditTransport($client, 'http://example.com', self::createStub(LoggerInterface::class));
 
         $log = new AuditLog();
         $log->setEntityClass('TestEntity');
@@ -44,18 +44,18 @@ class HttpAuditTransportTest extends TestCase
         $log->setAction('create');
 
         $entity = new \stdClass();
-        $em = $this->createStub(EntityManagerInterface::class);
-        $meta = $this->createStub(ClassMetadata::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $meta = self::createStub(ClassMetadata::class);
 
         $em->method('getClassMetadata')->willReturn($meta);
         $meta->method('getIdentifierValues')->willReturn(['id' => 100]);
 
         $client->expects($this->once())
             ->method('request')
-            ->with('POST', 'http://example.com', $this->callback(function ($options) {
+            ->with('POST', 'http://example.com', self::callback(function ($options) {
                 return isset($options['json']) && '100' === $options['json']['entity_id'];
             }))
-            ->willReturn($this->createStub(ResponseInterface::class));
+            ->willReturn(self::createStub(ResponseInterface::class));
 
         $transport->send($log, [
             'phase' => 'post_flush',

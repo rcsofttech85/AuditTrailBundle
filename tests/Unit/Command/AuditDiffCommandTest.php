@@ -51,10 +51,10 @@ class AuditDiffCommandTest extends TestCase
 
         $this->commandTester->assertCommandIsSuccessful();
         $output = $this->commandTester->getDisplay();
-        $this->assertStringContainsString('Audit Diff for App\Entity\Post #123', $output);
-        $this->assertStringContainsString('title', $output);
-        $this->assertStringContainsString('Old Title', $output);
-        $this->assertStringContainsString('New Title', $output);
+        self::assertStringContainsString('Audit Diff for App\Entity\Post #123', $output);
+        self::assertStringContainsString('title', $output);
+        self::assertStringContainsString('Old Title', $output);
+        self::assertStringContainsString('New Title', $output);
     }
 
     public function testExecuteWithEntityClassAndId(): void
@@ -79,7 +79,7 @@ class AuditDiffCommandTest extends TestCase
         ]);
 
         $this->commandTester->assertCommandIsSuccessful();
-        $this->assertStringContainsString('Audit Diff for App\Entity\Post #123', $this->commandTester->getDisplay());
+        self::assertStringContainsString('Audit Diff for App\Entity\Post #123', $this->commandTester->getDisplay());
     }
 
     public function testExecuteWithEntityShortName(): void
@@ -104,7 +104,7 @@ class AuditDiffCommandTest extends TestCase
         ]);
 
         $this->commandTester->assertCommandIsSuccessful();
-        $this->assertStringContainsString('Audit Diff for App\Entity\Post #123', $this->commandTester->getDisplay());
+        self::assertStringContainsString('Audit Diff for App\Entity\Post #123', $this->commandTester->getDisplay());
     }
 
     public function testExecuteWithJsonOption(): void
@@ -123,8 +123,8 @@ class AuditDiffCommandTest extends TestCase
 
         $this->commandTester->assertCommandIsSuccessful();
         $output = $this->commandTester->getDisplay();
-        $this->assertJson($output);
-        $this->assertStringContainsString('"old": "A"', $output);
+        self::assertJson($output);
+        self::assertStringContainsString('"old": "A"', $output);
     }
 
     public function testExecuteNotFound(): void
@@ -133,9 +133,9 @@ class AuditDiffCommandTest extends TestCase
 
         $this->commandTester->execute(['identifier' => '999']);
 
-        $this->assertEquals(1, $this->commandTester->getStatusCode());
+        self::assertEquals(1, $this->commandTester->getStatusCode());
         $output = $this->commandTester->getDisplay();
-        $this->assertStringContainsString('No audit log', $output);
-        $this->assertStringContainsString('found.', $output);
+        self::assertStringContainsString('No audit log', $output);
+        self::assertStringContainsString('found.', $output);
     }
 }

@@ -54,7 +54,7 @@ final class AuditTrailExtension extends Extension
         $transports = [];
 
         // Doctrine Transport
-        if ($config['transports']['doctrine']) {
+        if (true === $config['transports']['doctrine']) {
             $id = 'rcsofttech_audit_trail.transport.doctrine';
             $container->register($id, DoctrineAuditTransport::class)
                 ->setAutowired(true);
@@ -62,7 +62,7 @@ final class AuditTrailExtension extends Extension
         }
 
         // HTTP Transport
-        if ($config['transports']['http']['enabled']) {
+        if (true === $config['transports']['http']['enabled']) {
             if (!interface_exists(HttpClientInterface::class)) {
                 throw new \LogicException('To use the HTTP transport, you must install the symfony/http-client package.');
             }
@@ -75,7 +75,7 @@ final class AuditTrailExtension extends Extension
         }
 
         // Queue Transport
-        if ($config['transports']['queue']['enabled']) {
+        if (true === $config['transports']['queue']['enabled']) {
             if (!interface_exists(MessageBusInterface::class)) {
                 throw new \LogicException('To use the Queue transport, you must install the symfony/messenger package.');
             }
@@ -84,7 +84,7 @@ final class AuditTrailExtension extends Extension
             $definition = $container->register($id, QueueAuditTransport::class)
                 ->setAutowired(true);
 
-            if ($config['transports']['queue']['bus']) {
+            if (isset($config['transports']['queue']['bus']) && '' !== $config['transports']['queue']['bus']) {
                 $definition->setArgument('$bus', new Reference($config['transports']['queue']['bus']));
             }
 

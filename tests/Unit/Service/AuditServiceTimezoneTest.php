@@ -19,9 +19,9 @@ final class AuditServiceTimezoneTest extends TestCase
 {
     public function testCreateAuditLogWithCustomTimezone(): void
     {
-        $entityManager = $this->createStub(EntityManagerInterface::class);
-        $userResolver = $this->createStub(UserResolverInterface::class);
-        $clock = $this->createStub(ClockInterface::class);
+        $entityManager = self::createStub(EntityManagerInterface::class);
+        $userResolver = self::createStub(UserResolverInterface::class);
+        $clock = self::createStub(ClockInterface::class);
 
         // Mock current time as UTC
         $now = new \DateTimeImmutable('2023-01-01 12:00:00', new \DateTimeZone('UTC'));
@@ -32,7 +32,7 @@ final class AuditServiceTimezoneTest extends TestCase
             $entityManager,
             $userResolver,
             $clock,
-            $this->createStub(TransactionIdGenerator::class),
+            self::createStub(TransactionIdGenerator::class),
             [],
             [],
             null,
@@ -47,21 +47,21 @@ final class AuditServiceTimezoneTest extends TestCase
         };
 
         // Mock metadata for getEntityId
-        $metadata = $this->createStub(ClassMetadata::class);
+        $metadata = self::createStub(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $entityManager->method('getClassMetadata')->willReturn($metadata);
 
         $auditLog = $service->createAuditLog($entity, AuditLog::ACTION_CREATE);
 
-        $this->assertEquals('Asia/Kolkata', $auditLog->getCreatedAt()->getTimezone()->getName());
-        $this->assertEquals('2023-01-01 17:30:00', $auditLog->getCreatedAt()->format('Y-m-d H:i:s'));
+        self::assertEquals('Asia/Kolkata', $auditLog->getCreatedAt()->getTimezone()->getName());
+        self::assertEquals('2023-01-01 17:30:00', $auditLog->getCreatedAt()->format('Y-m-d H:i:s'));
     }
 
     public function testCreateAuditLogWithDefaultTimezone(): void
     {
-        $entityManager = $this->createStub(EntityManagerInterface::class);
-        $userResolver = $this->createStub(UserResolverInterface::class);
-        $clock = $this->createStub(ClockInterface::class);
+        $entityManager = self::createStub(EntityManagerInterface::class);
+        $userResolver = self::createStub(UserResolverInterface::class);
+        $clock = self::createStub(ClockInterface::class);
 
         $now = new \DateTimeImmutable('2023-01-01 12:00:00', new \DateTimeZone('UTC'));
         $clock->method('now')->willReturn($now);
@@ -71,7 +71,7 @@ final class AuditServiceTimezoneTest extends TestCase
             $entityManager,
             $userResolver,
             $clock,
-            $this->createStub(TransactionIdGenerator::class)
+            self::createStub(TransactionIdGenerator::class)
         );
 
         $entity = new class () {
@@ -81,13 +81,13 @@ final class AuditServiceTimezoneTest extends TestCase
             }
         };
 
-        $metadata = $this->createStub(ClassMetadata::class);
+        $metadata = self::createStub(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $entityManager->method('getClassMetadata')->willReturn($metadata);
 
         $auditLog = $service->createAuditLog($entity, AuditLog::ACTION_CREATE);
 
-        $this->assertEquals('UTC', $auditLog->getCreatedAt()->getTimezone()->getName());
-        $this->assertEquals('2023-01-01 12:00:00', $auditLog->getCreatedAt()->format('Y-m-d H:i:s'));
+        self::assertEquals('UTC', $auditLog->getCreatedAt()->getTimezone()->getName());
+        self::assertEquals('2023-01-01 12:00:00', $auditLog->getCreatedAt()->format('Y-m-d H:i:s'));
     }
 }

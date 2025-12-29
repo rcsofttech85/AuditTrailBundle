@@ -101,11 +101,11 @@ class AuditServiceTest extends TestCase
     protected function setUp(): void
     {
         // - Create stubs by default
-        $this->entityManager = $this->createStub(EntityManagerInterface::class);
-        $this->userResolver = $this->createStub(UserResolverInterface::class);
-        $this->clock = $this->createStub(ClockInterface::class);
-        $this->logger = $this->createStub(LoggerInterface::class);
-        $this->transactionIdGenerator = $this->createStub(TransactionIdGenerator::class);
+        $this->entityManager = self::createStub(EntityManagerInterface::class);
+        $this->userResolver = self::createStub(UserResolverInterface::class);
+        $this->clock = self::createStub(ClockInterface::class);
+        $this->logger = self::createStub(LoggerInterface::class);
+        $this->transactionIdGenerator = self::createStub(TransactionIdGenerator::class);
         $this->transactionIdGenerator->method('getTransactionId')->willReturn('test-transaction-id');
 
         $this->service = new AuditService(
@@ -122,7 +122,7 @@ class AuditServiceTest extends TestCase
     public function testShouldAuditReturnsTrueForAuditableEntity(): void
     {
         $entity = new TestEntity();
-        $this->assertTrue($this->service->shouldAudit($entity));
+        self::assertTrue($this->service->shouldAudit($entity));
     }
 
     public function testShouldAuditReturnsFalseForIgnoredEntity(): void
@@ -130,15 +130,15 @@ class AuditServiceTest extends TestCase
         $service = new AuditService(
             $this->entityManager,
             $this->userResolver,
-            $this->createStub(ClockInterface::class),
-            $this->createStub(TransactionIdGenerator::class),
+            self::createStub(ClockInterface::class),
+            self::createStub(TransactionIdGenerator::class),
             [],
             [TestEntity::class], // Ignore TestEntity
             $this->logger
         );
 
         $entity = new TestEntity();
-        $this->assertFalse($service->shouldAudit($entity));
+        self::assertFalse($service->shouldAudit($entity));
     }
 
     public function testGetEntityDataExtractsFields(): void
@@ -156,7 +156,7 @@ class AuditServiceTest extends TestCase
         );
 
         $entity = new TestEntity();
-        $metadata = $this->createStub(ClassMetadata::class);
+        $metadata = self::createStub(ClassMetadata::class);
         $metadata->method('getFieldNames')->willReturn(['name', 'ignoredField']);
         $metadata->method('getAssociationNames')->willReturn([]);
         $metadata->method('getFieldValue')->willReturnMap([
@@ -168,9 +168,9 @@ class AuditServiceTest extends TestCase
 
         $data = $service->getEntityData($entity);
 
-        $this->assertArrayHasKey('name', $data);
-        $this->assertEquals('Test Name', $data['name']);
-        $this->assertArrayNotHasKey('ignoredField', $data);
+        self::assertArrayHasKey('name', $data);
+        self::assertEquals('Test Name', $data['name']);
+        self::assertArrayNotHasKey('ignoredField', $data);
     }
 
     public function testCreateAuditLog(): void
@@ -192,7 +192,7 @@ class AuditServiceTest extends TestCase
         );
 
         $entity = new TestEntity();
-        $entityManager->expects($this->once())->method('getClassMetadata')->willReturn($this->createStub(ClassMetadata::class));
+        $entityManager->expects($this->once())->method('getClassMetadata')->willReturn(self::createStub(ClassMetadata::class));
 
         $userResolver->expects($this->once())->method('getUserId')->willReturn(123);
         $userResolver->expects($this->once())->method('getUsername')->willReturn('testuser');
@@ -209,21 +209,21 @@ class AuditServiceTest extends TestCase
             ['name' => 'New']
         );
 
-        $this->assertEquals(TestEntity::class, $log->getEntityClass());
-        $this->assertEquals(AuditLog::ACTION_UPDATE, $log->getAction());
-        $this->assertEquals(['name' => 'Old'], $log->getOldValues());
-        $this->assertEquals(['name' => 'New'], $log->getNewValues());
-        $this->assertEquals(['name'], $log->getChangedFields());
-        $this->assertEquals(123, $log->getUserId());
-        $this->assertEquals('testuser', $log->getUsername());
-        $this->assertEquals($now, $log->getCreatedAt());
-        $this->assertEquals('test-transaction-id', $log->getTransactionHash());
+        self::assertEquals(TestEntity::class, $log->getEntityClass());
+        self::assertEquals(AuditLog::ACTION_UPDATE, $log->getAction());
+        self::assertEquals(['name' => 'Old'], $log->getOldValues());
+        self::assertEquals(['name' => 'New'], $log->getNewValues());
+        self::assertEquals(['name'], $log->getChangedFields());
+        self::assertEquals(123, $log->getUserId());
+        self::assertEquals('testuser', $log->getUsername());
+        self::assertEquals($now, $log->getCreatedAt());
+        self::assertEquals('test-transaction-id', $log->getTransactionHash());
     }
 
     public function testCompositeKeySerialization(): void
     {
         $entity = new TestEntity();
-        $metadata = $this->createStub(ClassMetadata::class);
+        $metadata = self::createStub(ClassMetadata::class);
 
         // Mock composite key
         $metadata->method('getIdentifierValues')->willReturn(['id1' => 'uuid-1', 'id2' => 'uuid-2']);
@@ -233,14 +233,14 @@ class AuditServiceTest extends TestCase
         $id = $this->service->getEntityId($entity);
 
         // Should be JSON encoded array
-        $this->assertJson($id);
-        $this->assertEquals('["uuid-1","uuid-2"]', $id);
+        self::assertJson($id);
+        self::assertEquals('["uuid-1","uuid-2"]', $id);
     }
 
     public function testSingleKeySerialization(): void
     {
         $entity = new TestEntity();
-        $metadata = $this->createStub(ClassMetadata::class);
+        $metadata = self::createStub(ClassMetadata::class);
 
         // Mock single key
         $metadata->method('getIdentifierValues')->willReturn(['id' => 41]);
@@ -250,7 +250,7 @@ class AuditServiceTest extends TestCase
         $id = $this->service->getEntityId($entity);
 
         // Should be plain string
-        $this->assertEquals('41', $id);
+        self::assertEquals('41', $id);
     }
 
     public function testFloatComparisonWithEpsilon(): void
@@ -261,16 +261,16 @@ class AuditServiceTest extends TestCase
         $method->setAccessible(true);
 
         // Difference less than epsilon (1e-9) should be false
-        $this->assertFalse($method->invoke($this->service, 1.0000000001, 1.0000000002));
+        self::assertFalse($method->invoke($this->service, 1.0000000001, 1.0000000002));
 
         // Significant difference should be true
-        $this->assertTrue($method->invoke($this->service, 1.0, 1.000001));
+        self::assertTrue($method->invoke($this->service, 1.0, 1.000001));
     }
 
     public function testCollectionTruncation(): void
     {
         $entity = new TestEntity();
-        $metadata = $this->createStub(ClassMetadata::class);
+        $metadata = self::createStub(ClassMetadata::class);
         $metadata->method('getFieldNames')->willReturn([]);
         $metadata->method('getAssociationNames')->willReturn(['items']);
 
@@ -282,12 +282,12 @@ class AuditServiceTest extends TestCase
 
         $data = $this->service->getEntityData($entity);
 
-        $this->assertArrayHasKey('items', $data);
-        $this->assertIsArray($data['items']);
-        $this->assertArrayHasKey('_truncated', $data['items']);
-        $this->assertTrue($data['items']['_truncated']);
-        $this->assertEquals(105, $data['items']['_total_count']);
-        $this->assertCount(100, $data['items']['_sample']);
+        self::assertArrayHasKey('items', $data);
+        self::assertIsArray($data['items']);
+        self::assertArrayHasKey('_truncated', $data['items']);
+        self::assertTrue($data['items']['_truncated']);
+        self::assertEquals(105, $data['items']['_total_count']);
+        self::assertCount(100, $data['items']['_sample']);
     }
 
     public function testExtractionFailureHandling(): void
@@ -299,9 +299,9 @@ class AuditServiceTest extends TestCase
 
         $data = $this->service->getEntityData($entity);
 
-        $this->assertArrayHasKey('_extraction_failed', $data);
-        $this->assertTrue($data['_extraction_failed']);
-        $this->assertEquals('DB Error', $data['_error']);
+        self::assertArrayHasKey('_extraction_failed', $data);
+        self::assertTrue($data['_extraction_failed']);
+        self::assertEquals('DB Error', $data['_error']);
     }
 
     // ========================================
@@ -337,7 +337,7 @@ class AuditServiceTest extends TestCase
 
         foreach ($validActions as $action) {
             $log->setAction($action);
-            $this->assertEquals($action, $log->getAction());
+            self::assertEquals($action, $log->getAction());
         }
     }
 
@@ -361,7 +361,7 @@ class AuditServiceTest extends TestCase
         $log = new AuditLog();
         $log->setIpAddress('192.168.1.1');
 
-        $this->assertEquals('192.168.1.1', $log->getIpAddress());
+        self::assertEquals('192.168.1.1', $log->getIpAddress());
     }
 
     /**
@@ -373,7 +373,7 @@ class AuditServiceTest extends TestCase
         $ipv6 = '2001:0db8:85a3:0000:0000:8a2e:0370:7334';
         $log->setIpAddress($ipv6);
 
-        $this->assertEquals($ipv6, $log->getIpAddress());
+        self::assertEquals($ipv6, $log->getIpAddress());
     }
 
     /**
@@ -384,7 +384,7 @@ class AuditServiceTest extends TestCase
         $log = new AuditLog();
         $log->setIpAddress(null);
 
-        $this->assertNull($log->getIpAddress());
+        self::assertNull($log->getIpAddress());
     }
 
     /**
@@ -407,7 +407,7 @@ class AuditServiceTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass('  App\Entity\User  ');
 
-        $this->assertEquals('App\Entity\User', $log->getEntityClass());
+        self::assertEquals('App\Entity\User', $log->getEntityClass());
     }
 
     /**
@@ -430,7 +430,7 @@ class AuditServiceTest extends TestCase
         $log = new AuditLog();
         $log->setEntityId('  123  ');
 
-        $this->assertEquals('123', $log->getEntityId());
+        self::assertEquals('123', $log->getEntityId());
     }
 
     /**
@@ -446,7 +446,7 @@ class AuditServiceTest extends TestCase
             ->setUserId(1)
             ->setUsername('testuser');
 
-        $this->assertSame($log, $result);
+        self::assertSame($log, $result);
     }
 
     /**
@@ -454,8 +454,8 @@ class AuditServiceTest extends TestCase
      */
     public function testChangedFieldsDetectionIgnoresUnchangedFields(): void
     {
-        $entityManager = $this->createStub(EntityManagerInterface::class);
-        $clock = $this->createStub(ClockInterface::class);
+        $entityManager = self::createStub(EntityManagerInterface::class);
+        $clock = self::createStub(ClockInterface::class);
 
         $service = new AuditService(
             $entityManager,
@@ -468,7 +468,7 @@ class AuditServiceTest extends TestCase
         );
 
         $entity = new TestEntity();
-        $entityManager->method('getClassMetadata')->willReturn($this->createStub(ClassMetadata::class));
+        $entityManager->method('getClassMetadata')->willReturn(self::createStub(ClassMetadata::class));
         $clock->method('now')->willReturn(new \DateTimeImmutable());
 
         $log = $service->createAuditLog(
@@ -479,7 +479,7 @@ class AuditServiceTest extends TestCase
         );
 
         // Only 'name' changed
-        $this->assertEquals(['name'], $log->getChangedFields());
+        self::assertEquals(['name'], $log->getChangedFields());
     }
 
     // ========================================
@@ -496,14 +496,14 @@ class AuditServiceTest extends TestCase
             $entityManager,
             $this->userResolver,
             $this->clock,
-            $this->createStub(TransactionIdGenerator::class),
+            self::createStub(TransactionIdGenerator::class),
             [],
             [],
             $this->logger
         );
 
         $entity = new SensitivePropertyEntity();
-        $metadata = $this->createStub(ClassMetadata::class);
+        $metadata = self::createStub(ClassMetadata::class);
         $metadata->method('getFieldNames')->willReturn(['name', 'password', 'ssn']);
         $metadata->method('getAssociationNames')->willReturn([]);
         $metadata->method('getFieldValue')->willReturnCallback(fn ($e, $f) => match ($f) {
@@ -517,9 +517,9 @@ class AuditServiceTest extends TestCase
 
         $data = $service->getEntityData($entity);
 
-        $this->assertEquals('John', $data['name']);
-        $this->assertEquals('**REDACTED**', $data['password']);
-        $this->assertEquals('****', $data['ssn']);
+        self::assertEquals('John', $data['name']);
+        self::assertEquals('**REDACTED**', $data['password']);
+        self::assertEquals('****', $data['ssn']);
     }
 
     /**
@@ -532,14 +532,14 @@ class AuditServiceTest extends TestCase
             $entityManager,
             $this->userResolver,
             $this->clock,
-            $this->createStub(TransactionIdGenerator::class),
+            self::createStub(TransactionIdGenerator::class),
             [],
             [],
             $this->logger
         );
 
         $entity = new SensitiveConstructorEntity();
-        $metadata = $this->createStub(ClassMetadata::class);
+        $metadata = self::createStub(ClassMetadata::class);
         $metadata->method('getFieldNames')->willReturn(['name', 'apiKey']);
         $metadata->method('getAssociationNames')->willReturn([]);
         $metadata->method('getFieldValue')->willReturnCallback(fn ($e, $f) => match ($f) {
@@ -552,7 +552,7 @@ class AuditServiceTest extends TestCase
 
         $data = $service->getEntityData($entity);
 
-        $this->assertEquals('John', $data['name']);
-        $this->assertEquals('**REDACTED**', $data['apiKey']);
+        self::assertEquals('John', $data['name']);
+        self::assertEquals('**REDACTED**', $data['apiKey']);
     }
 }

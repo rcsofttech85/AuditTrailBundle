@@ -17,9 +17,9 @@ class AuditLogRepositoryTest extends TestCase
 {
     public function testFindByTransactionHash(): void
     {
-        $registry = $this->createStub(ManagerRegistry::class);
-        $entityManager = $this->createStub(EntityManagerInterface::class);
-        $classMetadata = $this->createStub(ClassMetadata::class);
+        $registry = self::createStub(ManagerRegistry::class);
+        $entityManager = self::createStub(EntityManagerInterface::class);
+        $classMetadata = self::createStub(ClassMetadata::class);
         $queryBuilder = $this->createMock(QueryBuilder::class);
         $query = $this->createMock(Query::class);
 
@@ -41,6 +41,6 @@ class AuditLogRepositoryTest extends TestCase
         $repository = new AuditLogRepository($registry);
         $result = $repository->findByTransactionHash('abc-123');
 
-        $this->assertSame([], $result);
+        self::assertSame([], $result);
     }
 }

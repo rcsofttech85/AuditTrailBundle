@@ -100,7 +100,7 @@ class AuditReverter implements AuditReverterInterface
     private function handleRevertUpdate(AuditLog $log, object $entity): array
     {
         $oldValues = $log->getOldValues() ?? [];
-        if (empty($oldValues)) {
+        if ([] === $oldValues) {
             throw new \RuntimeException('No old values found in audit log to revert to.');
         }
 

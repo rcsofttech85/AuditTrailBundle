@@ -14,7 +14,7 @@ trait PendingIdResolver
      */
     private function resolveEntityId(AuditLog $log, array $context): ?string
     {
-        $isInsert = $context['is_insert'] ?? false;
+        $isInsert = (bool) ($context['is_insert'] ?? false);
         $currentEntityId = $log->getEntityId();
 
         // If it's not an insert and not pending, we don't need to do anything
@@ -38,7 +38,7 @@ trait PendingIdResolver
         $meta = $em->getClassMetadata($entity::class);
         $ids = $meta->getIdentifierValues($entity);
 
-        if (empty($ids)) {
+        if ([] === $ids) {
             return null;
         }
 

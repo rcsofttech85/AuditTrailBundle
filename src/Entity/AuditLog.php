@@ -244,7 +244,7 @@ class AuditLog
 
     public function setIpAddress(?string $ipAddress): self
     {
-        if (null !== $ipAddress && !filter_var($ipAddress, FILTER_VALIDATE_IP)) {
+        if (null !== $ipAddress && false === filter_var($ipAddress, FILTER_VALIDATE_IP)) {
             throw new \InvalidArgumentException(sprintf('Invalid IP address format: "%s"', $ipAddress));
         }
 

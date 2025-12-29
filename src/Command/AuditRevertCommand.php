@@ -67,7 +67,7 @@ class AuditRevertCommand extends Command
             if ($raw) {
                 $io->writeln((string) json_encode($changes, JSON_PRETTY_PRINT));
             } else {
-                if (empty($changes)) {
+                if ([] === $changes) {
                     $io->warning('No changes were applied (values might be identical or fields unmapped).');
                 } else {
                     $io->success('Revert successful.');

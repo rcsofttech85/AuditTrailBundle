@@ -50,7 +50,9 @@
         "phpstan/extension-installer": "^1.4",
         "easycorp/easyadmin-bundle": "^4.27",
         "phpstan/phpstan-doctrine": "^2.0",
-        "spaze/phpstan-disallowed-calls": "^4.7"
+        "spaze/phpstan-disallowed-calls": "^4.7",
+        "phpstan/phpstan-symfony": "*",
+        "phpstan/phpstan-strict-rules": "^2.0"
     },
     "autoload-dev": {
         "psr-4": {

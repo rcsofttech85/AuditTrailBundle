@@ -12,13 +12,13 @@ class AuditLogTest extends TestCase
     public function testTransactionHash(): void
     {
         $log = new AuditLog();
-        $this->assertNull($log->getTransactionHash());
+        self::assertNull($log->getTransactionHash());
 
         $hash = 'test-hash';
         $log->setTransactionHash($hash);
-        $this->assertEquals($hash, $log->getTransactionHash());
+        self::assertEquals($hash, $log->getTransactionHash());
 
         $log->setTransactionHash(null);
-        $this->assertNull($log->getTransactionHash());
+        self::assertNull($log->getTransactionHash());
     }
 }

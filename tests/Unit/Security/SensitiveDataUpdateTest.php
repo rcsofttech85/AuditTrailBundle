@@ -35,10 +35,10 @@ class SensitiveDataUpdateTest extends TestCase
     public function testUpdateMasksSensitiveData(): void
     {
         // Setup Service
-        $em = $this->createStub(EntityManagerInterface::class);
-        $userResolver = $this->createStub(\Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $userResolver = self::createStub(\Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface::class);
         $clock = new MockClock();
-        $transactionIdGenerator = $this->createStub(TransactionIdGenerator::class);
+        $transactionIdGenerator = self::createStub(TransactionIdGenerator::class);
         $transactionIdGenerator->method('getTransactionId')->willReturn('test-transaction-id');
 
 
@@ -61,13 +61,13 @@ class SensitiveDataUpdateTest extends TestCase
         $entity->password = 'new_secret';
 
         // Setup Doctrine Event
-        $uow = $this->createStub(UnitOfWork::class);
+        $uow = self::createStub(UnitOfWork::class);
         $args = new OnFlushEventArgs($em);
 
         $em->method('getUnitOfWork')->willReturn($uow);
 
         // Mock ClassMetadata to avoid warnings and ensure getEntityId works
-        $metadata = $this->createStub(\Doctrine\ORM\Mapping\ClassMetadata::class);
+        $metadata = self::createStub(\Doctrine\ORM\Mapping\ClassMetadata::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $metadata->method('getName')->willReturn(SensitiveUser::class);
         $metadata->method('getFieldNames')->willReturn(['id', 'password', 'username']);
@@ -89,7 +89,7 @@ class SensitiveDataUpdateTest extends TestCase
         // Expectation: The transport should receive an audit log where values are MASKED
         $transport->expects($this->once())
             ->method('send')
-            ->with($this->callback(function (AuditLog $log) {
+            ->with(self::callback(function (AuditLog $log) {
                 $old = $log->getOldValues();
                 $new = $log->getNewValues();
 

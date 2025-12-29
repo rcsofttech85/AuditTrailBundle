@@ -89,65 +89,60 @@ final class AuditListCommand extends Command
     {
         $filters = [];
 
-        if ($entity = $input->getOption('entity')) {
-            if (is_string($entity)) {
-                $filters['entityClass'] = $entity;
-            }
+        $entity = $input->getOption('entity');
+        if (is_string($entity) && '' !== $entity) {
+            $filters['entityClass'] = $entity;
         }
 
-        if ($entityId = $input->getOption('entity-id')) {
-            if (is_string($entityId)) {
-                $filters['entityId'] = $entityId;
-            }
+        $entityId = $input->getOption('entity-id');
+        if (is_string($entityId) && '' !== $entityId) {
+            $filters['entityId'] = $entityId;
         }
 
-        if ($user = $input->getOption('user')) {
+        $user = $input->getOption('user');
+        if (null !== $user && '' !== $user) {
             $filters['userId'] = (int) $user;
         }
 
-        if ($transaction = $input->getOption('transaction')) {
-            if (is_string($transaction)) {
-                $filters['transactionHash'] = $transaction;
+        $transaction = $input->getOption('transaction');
+        if (is_string($transaction) && '' !== $transaction) {
+            $filters['transactionHash'] = $transaction;
+        }
+
+        $action = $input->getOption('action');
+        if (is_string($action) && '' !== $action) {
+            $availableActions = $this->getAvailableActions();
+            if (!in_array($action, $availableActions, true)) {
+                $io->error(sprintf(
+                    'Invalid action "%s". Available actions: %s',
+                    $action,
+                    implode(', ', $availableActions)
+                ));
+
+                return null;
+            }
+            $filters['action'] = $action;
+        }
+
+        $from = $input->getOption('from');
+        if (is_string($from) && '' !== $from) {
+            try {
+                $filters['from'] = new \DateTimeImmutable($from);
+            } catch (\Exception $e) {
+                $io->error(sprintf('Invalid "from" date: %s. Error: %s', $from, $e->getMessage()));
+
+                return null;
             }
         }
 
-        if ($action = $input->getOption('action')) {
-            if (is_string($action)) {
-                $availableActions = $this->getAvailableActions();
-                if (!in_array($action, $availableActions, true)) {
-                    $io->error(sprintf(
-                        'Invalid action "%s". Available actions: %s',
-                        $action,
-                        implode(', ', $availableActions)
-                    ));
+        $to = $input->getOption('to');
+        if (is_string($to) && '' !== $to) {
+            try {
+                $filters['to'] = new \DateTimeImmutable($to);
+            } catch (\Exception $e) {
+                $io->error(sprintf('Invalid "to" date: %s. Error: %s', $to, $e->getMessage()));
 
-                    return null;
-                }
-                $filters['action'] = $action;
-            }
-        }
-
-        if ($from = $input->getOption('from')) {
-            if (is_string($from)) {
-                try {
-                    $filters['from'] = new \DateTimeImmutable($from);
-                } catch (\Exception $e) {
-                    $io->error(sprintf('Invalid "from" date: %s. Error: %s', $from, $e->getMessage()));
-
-                    return null;
-                }
-            }
-        }
-
-        if ($to = $input->getOption('to')) {
-            if (is_string($to)) {
-                try {
-                    $filters['to'] = new \DateTimeImmutable($to);
-                } catch (\Exception $e) {
-                    $io->error(sprintf('Invalid "to" date: %s. Error: %s', $to, $e->getMessage()));
-
-                    return null;
-                }
+                return null;
             }
         }
 
@@ -208,7 +203,7 @@ final class AuditListCommand extends Command
         $details = [];
 
         // Use changedFields if available, otherwise merge keys from oldValues and newValues
-        $fields = !empty($changedFields) ? $changedFields : array_unique(array_merge(array_keys($oldValues), array_keys($newValues)));
+        $fields = [] !== $changedFields ? $changedFields : array_unique(array_merge(array_keys($oldValues), array_keys($newValues)));
 
         foreach ($fields as $field) {
             $old = $oldValues[$field] ?? null;
@@ -234,7 +229,9 @@ final class AuditListCommand extends Command
         }
 
         if (is_array($value)) {
-            return json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]';
+            $json = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+            return false !== $json ? $json : '[]';
         }
 
         $strValue = (string) $value;

@@ -50,7 +50,7 @@ class AuditDiffCommand extends Command
 
         if (is_numeric($identifier) && null === $entityId) {
             $log = $this->auditLogRepository->find((int) $identifier);
-            if ($log) {
+            if ($log instanceof AuditLog) {
                 $auditLogs[] = $log;
             }
         } else {
@@ -66,7 +66,7 @@ class AuditDiffCommand extends Command
             );
         }
 
-        if (empty($auditLogs)) {
+        if ([] === $auditLogs) {
             $io->error('No audit log found.');
 
             return Command::FAILURE;
@@ -82,9 +82,9 @@ class AuditDiffCommand extends Command
 
         $diff = $this->diffGenerator->generate($log->getOldValues(), $log->getNewValues(), $options);
 
-        if ($input->getOption('json')) {
+        if (true === $input->getOption('json')) {
             $json = json_encode($diff, JSON_PRETTY_PRINT);
-            $output->writeln($json ?: '{}');
+            $output->writeln(false !== $json ? $json : '{}');
 
             return Command::SUCCESS;
         }
@@ -97,7 +97,7 @@ class AuditDiffCommand extends Command
             ['User' => $log->getUsername() ?? 'System']
         );
 
-        if (empty($diff)) {
+        if ([] === $diff) {
             $io->info('No semantic changes found.');
 
             return Command::SUCCESS;

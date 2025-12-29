@@ -35,8 +35,8 @@ class AuditListCommandTest extends TestCase
 
         $this->commandTester->execute([]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
-        $this->assertStringContainsString('No audit logs', $this->normalizeOutput());
+        self::assertSame(0, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('No audit logs', $this->normalizeOutput());
     }
 
     public function testListWithResults(): void
@@ -51,14 +51,14 @@ class AuditListCommandTest extends TestCase
 
         $this->commandTester->execute([]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
+        self::assertSame(0, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
-        $this->assertStringContainsString('TestEntity', $output);
-        $this->assertStringContainsString('42', $output);
-        $this->assertStringContainsString('update', $output);
+        self::assertStringContainsString('TestEntity', $output);
+        self::assertStringContainsString('42', $output);
+        self::assertStringContainsString('update', $output);
         // Default view shows tip but NOT the details column
-        $this->assertStringContainsString('--details', $output);
-        $this->assertStringNotContainsString('Old Title', $output);
+        self::assertStringContainsString('--details', $output);
+        self::assertStringNotContainsString('Old Title', $output);
     }
 
     public function testListWithDetailsFlag(): void
@@ -73,13 +73,13 @@ class AuditListCommandTest extends TestCase
 
         $this->commandTester->execute(['--details' => true]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
+        self::assertSame(0, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
         // Detailed view shows Entity ID but not Entity name or ID columns
-        $this->assertStringContainsString('42', $output);
-        $this->assertStringContainsString('Old Title', $output);
-        $this->assertStringContainsString('New Title', $output);
-        $this->assertStringNotContainsString('TestEntity', $output);
+        self::assertStringContainsString('42', $output);
+        self::assertStringContainsString('Old Title', $output);
+        self::assertStringContainsString('New Title', $output);
+        self::assertStringNotContainsString('TestEntity', $output);
     }
 
     public function testListWithFilters(): void
@@ -88,7 +88,7 @@ class AuditListCommandTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
+                self::callback(function (array $filters) {
                     return 'TestEntity' === $filters['entityClass']
                         && 'update' === $filters['action'];
                 }),
@@ -101,7 +101,7 @@ class AuditListCommandTest extends TestCase
             '--action' => 'update',
         ]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
+        self::assertSame(0, $this->commandTester->getStatusCode());
     }
 
     public function testListWithTransactionFilter(): void
@@ -110,7 +110,7 @@ class AuditListCommandTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
+                self::callback(function (array $filters) {
                     return 'abc-123' === $filters['transactionHash'];
                 }),
                 50
@@ -121,7 +121,7 @@ class AuditListCommandTest extends TestCase
             '--transaction' => 'abc-123',
         ]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
+        self::assertSame(0, $this->commandTester->getStatusCode());
     }
 
     public function testListWithCustomLimit(): void
@@ -136,7 +136,7 @@ class AuditListCommandTest extends TestCase
             '--limit' => '100',
         ]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
+        self::assertSame(0, $this->commandTester->getStatusCode());
     }
 
     public function testListWithDateFilters(): void
@@ -145,7 +145,7 @@ class AuditListCommandTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
+                self::callback(function (array $filters) {
                     return isset($filters['from'])
                         && $filters['from'] instanceof \DateTimeInterface
                         && isset($filters['to'])
@@ -160,7 +160,7 @@ class AuditListCommandTest extends TestCase
             '--to' => '2024-12-31',
         ]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
+        self::assertSame(0, $this->commandTester->getStatusCode());
     }
 
     public function testListWithInvalidAction(): void
@@ -173,8 +173,8 @@ class AuditListCommandTest extends TestCase
             '--action' => 'invalid_action',
         ]);
 
-        $this->assertSame(1, $this->commandTester->getStatusCode());
-        $this->assertStringContainsString('Invalid action', $this->normalizeOutput());
+        self::assertSame(1, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Invalid action', $this->normalizeOutput());
     }
 
     public function testListWithInvalidLimit(): void
@@ -187,8 +187,8 @@ class AuditListCommandTest extends TestCase
             '--limit' => '9999',
         ]);
 
-        $this->assertSame(1, $this->commandTester->getStatusCode());
-        $this->assertStringContainsString('Limit must be between', $this->normalizeOutput());
+        self::assertSame(1, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Limit must be between', $this->normalizeOutput());
     }
 
     public function testListWithInvalidFromDate(): void
@@ -201,10 +201,10 @@ class AuditListCommandTest extends TestCase
             '--from' => 'not-a-date',
         ]);
 
-        $this->assertSame(1, $this->commandTester->getStatusCode());
+        self::assertSame(1, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
-        $this->assertStringContainsString('Invalid', $output);
-        $this->assertStringContainsString('from', $output);
+        self::assertStringContainsString('Invalid', $output);
+        self::assertStringContainsString('from', $output);
     }
 
     public function testListWithInvalidToDate(): void
@@ -217,10 +217,10 @@ class AuditListCommandTest extends TestCase
             '--to' => 'invalid-date',
         ]);
 
-        $this->assertSame(1, $this->commandTester->getStatusCode());
+        self::assertSame(1, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
-        $this->assertStringContainsString('Invalid', $output);
-        $this->assertStringContainsString('to', $output);
+        self::assertStringContainsString('Invalid', $output);
+        self::assertStringContainsString('to', $output);
     }
 
     private function normalizeOutput(): string
@@ -230,7 +230,7 @@ class AuditListCommandTest extends TestCase
 
     private function createAuditLog(int $id, string $entityClass, string $entityId, string $action): AuditLog
     {
-        $audit = $this->createStub(AuditLog::class);
+        $audit = self::createStub(AuditLog::class);
 
         $audit->method('getId')->willReturn($id);
         $audit->method('getEntityClass')->willReturn($entityClass);
