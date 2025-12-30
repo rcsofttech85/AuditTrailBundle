@@ -11,6 +11,7 @@ use Rcsofttech\AuditTrailBundle\Command\AuditDiffCommand;
 use Rcsofttech\AuditTrailBundle\Contract\DiffGeneratorInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 
 #[AllowMockObjectsWithoutExpectations]
@@ -133,9 +134,8 @@ class AuditDiffCommandTest extends TestCase
 
         $this->commandTester->execute(['identifier' => '999']);
 
-        self::assertEquals(1, $this->commandTester->getStatusCode());
-        $output = $this->commandTester->getDisplay();
-        self::assertStringContainsString('No audit log', $output);
-        self::assertStringContainsString('found.', $output);
+        self::assertEquals(Command::FAILURE, $this->commandTester->getStatusCode());
+        $display = preg_replace('/\s+/', ' ', trim($this->commandTester->getDisplay()));
+        self::assertStringContainsString('No audit log found with ID 999', (string) $display);
     }
 }

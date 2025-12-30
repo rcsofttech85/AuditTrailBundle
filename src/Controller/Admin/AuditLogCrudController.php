@@ -35,7 +35,7 @@ class AuditLogCrudController extends AbstractCrudController
             ->setEntityLabelInSingular('Audit Log')
             ->setEntityLabelInPlural('Audit Logs')
             ->setDefaultSort(['createdAt' => 'DESC'])
-            ->setSearchFields(['entityClass', 'entityId', 'action', 'username', 'changedFields'])
+            ->setSearchFields(['entityClass', 'entityId', 'action', 'username', 'changedFields', 'transactionHash'])
             ->setPaginatorPageSize(30);
     }
 
@@ -64,6 +64,7 @@ class AuditLogCrudController extends AbstractCrudController
             ->hideOnIndex();
 
         yield TextField::new('ipAddress', 'IP Address')->hideOnIndex();
+        yield TextField::new('transactionHash', 'Transaction')->hideOnIndex();
     }
 
     public function configureFilters(Filters $filters): Filters
@@ -72,6 +73,7 @@ class AuditLogCrudController extends AbstractCrudController
             ->add(TextFilter::new('entityClass'))
             ->add(TextFilter::new('action'))
             ->add(TextFilter::new('username'))
+            ->add(TextFilter::new('transactionHash'))
             ->add(DateTimeFilter::new('createdAt'));
     }
 }

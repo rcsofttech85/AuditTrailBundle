@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditEntryCollection;
 use Rcsofttech\AuditTrailBundle\Query\AuditQuery;
@@ -174,7 +175,7 @@ class AuditReaderTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass($entity::class);
         $log->setEntityId('42');
-        $log->setAction(AuditLog::ACTION_UPDATE);
+        $log->setAction(AuditLogInterface::ACTION_UPDATE);
 
         $this->repository
             ->expects($this->once())
@@ -210,7 +211,7 @@ class AuditReaderTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass($entity::class);
         $log->setEntityId('42');
-        $log->setAction(AuditLog::ACTION_CREATE);
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
 
         $this->repository
             ->expects($this->once())
@@ -271,19 +272,19 @@ class AuditReaderTest extends TestCase
         $log1 = new AuditLog();
         $log1->setEntityClass($entity::class);
         $log1->setEntityId('42');
-        $log1->setAction(AuditLog::ACTION_CREATE);
+        $log1->setAction(AuditLogInterface::ACTION_CREATE);
         $log1->setTransactionHash('tx1');
 
         $log2 = new AuditLog();
         $log2->setEntityClass($entity::class);
         $log2->setEntityId('42');
-        $log2->setAction(AuditLog::ACTION_UPDATE);
+        $log2->setAction(AuditLogInterface::ACTION_UPDATE);
         $log2->setTransactionHash('tx1');
 
         $log3 = new AuditLog();
         $log3->setEntityClass($entity::class);
         $log3->setEntityId('42');
-        $log3->setAction(AuditLog::ACTION_UPDATE);
+        $log3->setAction(AuditLogInterface::ACTION_UPDATE);
         $log3->setTransactionHash('tx2');
 
         $this->repository

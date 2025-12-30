@@ -15,7 +15,10 @@ class TransactionIdGeneratorTest extends TestCase
         $id = $generator->getTransactionId();
 
         self::assertNotEmpty($id);
-        self::assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', $id);
+        self::assertMatchesRegularExpression(
+            '/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/',
+            $id
+        );
     }
 
     public function testGetTransactionIdReturnsSameIdForSameInstance(): void

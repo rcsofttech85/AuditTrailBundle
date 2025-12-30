@@ -50,12 +50,12 @@ class TestKernel extends Kernel implements CompilerPassInterface
 
     public function getCacheDir(): string
     {
-        return sys_get_temp_dir().'/audit_trail_test/cache/'.md5(serialize($this->auditConfig));
+        return sys_get_temp_dir() . '/audit_trail_test/cache/' . md5(serialize($this->auditConfig));
     }
 
     public function getLogDir(): string
     {
-        return sys_get_temp_dir().'/audit_trail_test/logs';
+        return sys_get_temp_dir() . '/audit_trail_test/logs';
     }
 
     public function registerBundles(): iterable
@@ -98,7 +98,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
                     'TestEntity' => [
                         'is_bundle' => false,
                         'type' => 'attribute',
-                        'dir' => __DIR__.'/Entity',
+                        'dir' => __DIR__ . '/Entity',
                         'prefix' => 'Rcsofttech\AuditTrailBundle\Tests\Functional\Entity',
                         'alias' => 'TestEntity',
                     ],

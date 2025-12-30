@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Entity;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 
 #[ORM\Entity(repositoryClass: AuditLogRepository::class)]
@@ -20,65 +21,96 @@ use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
         new ORM\Index(name: 'transaction_idx', columns: ['transaction_hash']),
     ]
 )]
-class AuditLog
+class AuditLog implements AuditLogInterface
 {
-    public const string ACTION_CREATE = 'create';
-    public const string ACTION_UPDATE = 'update';
-    public const string ACTION_DELETE = 'delete';
-    public const string ACTION_SOFT_DELETE = 'soft_delete';
-    public const string ACTION_RESTORE = 'restore';
-    public const string ACTION_REVERT = 'revert';
-
     private const array VALID_ACTIONS = [
-        self::ACTION_CREATE,
-        self::ACTION_UPDATE,
-        self::ACTION_DELETE,
-        self::ACTION_SOFT_DELETE,
-        self::ACTION_RESTORE,
-        self::ACTION_REVERT,
+        AuditLogInterface::ACTION_CREATE,
+        AuditLogInterface::ACTION_UPDATE,
+        AuditLogInterface::ACTION_DELETE,
+        AuditLogInterface::ACTION_SOFT_DELETE,
+        AuditLogInterface::ACTION_RESTORE,
+        AuditLogInterface::ACTION_REVERT,
     ];
 
     #[ORM\Id, ORM\GeneratedValue, ORM\Column]
-    private ?int $id = null;
+    public private(set) ?int $id = null;
 
     #[ORM\Column(length: 255)]
-    private string $entityClass;
+    public private(set) string $entityClass {
+        get => $this->entityClass;
+        set {
+            $trimmed = trim($value);
+            if ('' === $trimmed) {
+                throw new \InvalidArgumentException('Entity class cannot be empty');
+            }
+            $this->entityClass = $trimmed;
+        }
+    }
 
     #[ORM\Column(length: 255)]
-    private string $entityId;
+    public private(set) string $entityId {
+        get => $this->entityId;
+        set {
+            $trimmed = trim($value);
+            if ('' === $trimmed) {
+                throw new \InvalidArgumentException('Entity ID cannot be empty');
+            }
+            $this->entityId = $trimmed;
+        }
+    }
 
     #[ORM\Column(length: 50)]
-    private string $action;
+    public private(set) string $action {
+        get => $this->action;
+        set {
+            if (!\in_array($value, self::VALID_ACTIONS, true)) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Invalid action "%s". Must be one of: %s',
+                    $value,
+                    implode(', ', self::VALID_ACTIONS)
+                ));
+            }
+            $this->action = $value;
+        }
+    }
 
     /** @var array<string, mixed>|null */
     #[ORM\Column(type: Types::JSON, nullable: true)]
-    private ?array $oldValues = null;
+    public private(set) ?array $oldValues = null;
 
     /** @var array<string, mixed>|null */
     #[ORM\Column(type: Types::JSON, nullable: true)]
-    private ?array $newValues = null;
+    public private(set) ?array $newValues = null;
 
     /** @var array<int, string>|null */
     #[ORM\Column(type: Types::JSON, nullable: true)]
-    private ?array $changedFields = null;
+    public private(set) ?array $changedFields = null;
 
     #[ORM\Column(nullable: true)]
-    private ?int $userId = null;
+    public private(set) ?int $userId = null;
 
     #[ORM\Column(length: 255, nullable: true)]
-    private ?string $username = null;
+    public private(set) ?string $username = null;
 
     #[ORM\Column(length: 50, nullable: true)]
-    private ?string $ipAddress = null;
+    public private(set) ?string $ipAddress = null {
+        get => $this->ipAddress;
+        set {
+            if (null !== $value && false === filter_var($value, FILTER_VALIDATE_IP)) {
+                throw new \InvalidArgumentException(sprintf('Invalid IP address format: "%s"', $value));
+            }
+            $this->ipAddress = $value;
+        }
+    }
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
-    private ?string $userAgent = null;
+    public private(set) ?string $userAgent = null;
 
     #[ORM\Column(length: 40, nullable: true)]
-    private ?string $transactionHash = null;
+    public private(set) ?string $transactionHash = null;
 
     #[ORM\Column]
-    private \DateTimeImmutable $createdAt;
+    public private(set) \DateTimeImmutable $createdAt;
 
     public function __construct()
     {
@@ -165,34 +197,20 @@ class AuditLog
 
     public function setEntityClass(string $entityClass): self
     {
-        $trimmed = trim($entityClass);
-        if ('' === $trimmed) {
-            throw new \InvalidArgumentException('Entity class cannot be empty');
-        }
-
-        $this->entityClass = $trimmed;
+        $this->entityClass = $entityClass;
 
         return $this;
     }
 
     public function setEntityId(string $entityId): self
     {
-        $trimmed = trim($entityId);
-        if ('' === $trimmed) {
-            throw new \InvalidArgumentException('Entity ID cannot be empty');
-        }
-
-        $this->entityId = $trimmed;
+        $this->entityId = $entityId;
 
         return $this;
     }
 
     public function setAction(string $action): self
     {
-        if (!\in_array($action, self::VALID_ACTIONS, true)) {
-            throw new \InvalidArgumentException(sprintf('Invalid action "%s". Must be one of: %s', $action, implode(', ', self::VALID_ACTIONS)));
-        }
-
         $this->action = $action;
 
         return $this;
@@ -244,10 +262,6 @@ class AuditLog
 
     public function setIpAddress(?string $ipAddress): self
     {
-        if (null !== $ipAddress && false === filter_var($ipAddress, FILTER_VALIDATE_IP)) {
-            throw new \InvalidArgumentException(sprintf('Invalid IP address format: "%s"', $ipAddress));
-        }
-
         $this->ipAddress = $ipAddress;
 
         return $this;

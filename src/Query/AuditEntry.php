@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Query;
 
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 
 /**
  * Rich value object wrapping an AuditLog with diff helpers.
@@ -12,74 +12,133 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
  * Provides a developer-friendly interface for accessing audit data
  * and computing field-level differences.
  */
-readonly class AuditEntry
+class AuditEntry
 {
     public function __construct(
-        private AuditLog $log,
+        private readonly AuditLogInterface $log,
     ) {
+    }
+
+    public ?int $id {
+        get {
+            return $this->log->getId();
+        }
     }
 
     public function getId(): ?int
     {
-        return $this->log->getId();
+        return $this->id;
+    }
+
+    public string $entityClass {
+        get {
+            return $this->log->getEntityClass();
+        }
     }
 
     public function getEntityClass(): string
     {
-        return $this->log->getEntityClass();
+        return $this->entityClass;
     }
 
     /**
      * Get the short entity class name (without namespace).
      */
+    public string $entityShortName {
+        get {
+            $parts = explode('\\', $this->log->getEntityClass());
+            $shortName = end($parts);
+
+            return ('' !== $shortName) ? $shortName : $this->log->getEntityClass();
+        }
+    }
+
     public function getEntityShortName(): string
     {
-        $parts = explode('\\', $this->log->getEntityClass());
+        return $this->entityShortName;
+    }
 
-        $shortName = end($parts);
-
-        return ('' !== $shortName) ? $shortName : $this->log->getEntityClass();
+    public string $entityId {
+        get {
+            return $this->log->getEntityId();
+        }
     }
 
     public function getEntityId(): string
     {
-        return $this->log->getEntityId();
+        return $this->entityId;
+    }
+
+    public string $action {
+        get {
+            return $this->log->getAction();
+        }
     }
 
     public function getAction(): string
     {
-        return $this->log->getAction();
+        return $this->action;
+    }
+
+    public ?int $userId {
+        get {
+            return $this->log->getUserId();
+        }
     }
 
     public function getUserId(): ?int
     {
-        return $this->log->getUserId();
+        return $this->userId;
+    }
+
+    public ?string $username {
+        get {
+            return $this->log->getUsername();
+        }
     }
 
     public function getUsername(): ?string
     {
-        return $this->log->getUsername();
+        return $this->username;
+    }
+
+    public ?string $ipAddress {
+        get {
+            return $this->log->getIpAddress();
+        }
     }
 
     public function getIpAddress(): ?string
     {
-        return $this->log->getIpAddress();
+        return $this->ipAddress;
+    }
+
+    public ?string $transactionHash {
+        get {
+            return $this->log->getTransactionHash();
+        }
     }
 
     public function getTransactionHash(): ?string
     {
-        return $this->log->getTransactionHash();
+        return $this->transactionHash;
+    }
+
+    public \DateTimeImmutable $createdAt {
+        get {
+            return $this->log->getCreatedAt();
+        }
     }
 
     public function getCreatedAt(): \DateTimeImmutable
     {
-        return $this->log->getCreatedAt();
+        return $this->createdAt;
     }
 
     /**
      * Get the underlying AuditLog entity.
      */
-    public function getAuditLog(): AuditLog
+    public function getAuditLog(): AuditLogInterface
     {
         return $this->log;
     }
@@ -88,27 +147,27 @@ readonly class AuditEntry
 
     public function isCreate(): bool
     {
-        return AuditLog::ACTION_CREATE === $this->log->getAction();
+        return AuditLogInterface::ACTION_CREATE === $this->log->getAction();
     }
 
     public function isUpdate(): bool
     {
-        return AuditLog::ACTION_UPDATE === $this->log->getAction();
+        return AuditLogInterface::ACTION_UPDATE === $this->log->getAction();
     }
 
     public function isDelete(): bool
     {
-        return AuditLog::ACTION_DELETE === $this->log->getAction();
+        return AuditLogInterface::ACTION_DELETE === $this->log->getAction();
     }
 
     public function isSoftDelete(): bool
     {
-        return AuditLog::ACTION_SOFT_DELETE === $this->log->getAction();
+        return AuditLogInterface::ACTION_SOFT_DELETE === $this->log->getAction();
     }
 
     public function isRestore(): bool
     {
-        return AuditLog::ACTION_RESTORE === $this->log->getAction();
+        return AuditLogInterface::ACTION_RESTORE === $this->log->getAction();
     }
 
     // ========== Diff Helpers ==========

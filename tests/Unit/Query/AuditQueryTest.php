@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditQuery;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
@@ -27,7 +28,7 @@ class AuditQueryTest extends TestCase
     {
         $query1 = new AuditQuery($this->repository);
         $query2 = $query1->entity('App\\Entity\\User');
-        $query3 = $query2->action(AuditLog::ACTION_CREATE);
+        $query3 = $query2->action(AuditLogInterface::ACTION_CREATE);
 
         self::assertNotSame($query1, $query2);
         self::assertNotSame($query2, $query3);
@@ -58,14 +59,14 @@ class AuditQueryTest extends TestCase
             ->method('findWithFilters')
             ->with(
                 self::callback(function (array $filters) {
-                    return AuditLog::ACTION_UPDATE === $filters['action'];
+                    return AuditLogInterface::ACTION_UPDATE === $filters['action'];
                 }),
                 self::anything()
             )
             ->willReturn([]);
 
         $query = new AuditQuery($this->repository);
-        $query->action(AuditLog::ACTION_UPDATE)->getResults();
+        $query->action(AuditLogInterface::ACTION_UPDATE)->getResults();
     }
 
     public function testUserFilter(): void
@@ -200,7 +201,7 @@ class AuditQueryTest extends TestCase
             ->method('findWithFilters')
             ->with(
                 self::callback(function (array $filters) {
-                    return AuditLog::ACTION_CREATE === $filters['action'];
+                    return AuditLogInterface::ACTION_CREATE === $filters['action'];
                 }),
                 self::anything()
             )
@@ -217,7 +218,7 @@ class AuditQueryTest extends TestCase
             ->method('findWithFilters')
             ->with(
                 self::callback(function (array $filters) {
-                    return AuditLog::ACTION_UPDATE === $filters['action'];
+                    return AuditLogInterface::ACTION_UPDATE === $filters['action'];
                 }),
                 self::anything()
             )
@@ -232,7 +233,7 @@ class AuditQueryTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass('App\\Entity\\User');
         $log->setEntityId('1');
-        $log->setAction(AuditLog::ACTION_CREATE);
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
 
         $this->repository
             ->expects($this->once())
@@ -253,7 +254,7 @@ class AuditQueryTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass('App\\Entity\\User');
         $log->setEntityId('1');
-        $log->setAction(AuditLog::ACTION_CREATE);
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
 
         $this->repository
             ->expects($this->once())
@@ -286,7 +287,7 @@ class AuditQueryTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass('App\\Entity\\User');
         $log->setEntityId('1');
-        $log->setAction(AuditLog::ACTION_CREATE);
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
 
         $this->repository
             ->expects($this->once())
@@ -315,13 +316,13 @@ class AuditQueryTest extends TestCase
         $log1 = new AuditLog();
         $log1->setEntityClass('App\\Entity\\User');
         $log1->setEntityId('1');
-        $log1->setAction(AuditLog::ACTION_UPDATE);
+        $log1->setAction(AuditLogInterface::ACTION_UPDATE);
         $log1->setChangedFields(['name', 'email']);
 
         $log2 = new AuditLog();
         $log2->setEntityClass('App\\Entity\\User');
         $log2->setEntityId('2');
-        $log2->setAction(AuditLog::ACTION_UPDATE);
+        $log2->setAction(AuditLogInterface::ACTION_UPDATE);
         $log2->setChangedFields(['password']);
 
         $this->repository
@@ -347,7 +348,7 @@ class AuditQueryTest extends TestCase
             ->with(
                 self::callback(function (array $filters) {
                     return 'App\\Entity\\User' === $filters['entityClass']
-                        && AuditLog::ACTION_UPDATE === $filters['action']
+                        && AuditLogInterface::ACTION_UPDATE === $filters['action']
                         && 42 === $filters['userId'];
                 }),
                 50
@@ -368,7 +369,7 @@ class AuditQueryTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass('App\\Entity\\User');
         $log->setEntityId('1');
-        $log->setAction(AuditLog::ACTION_CREATE);
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
 
         // Use reflection to set the ID
         $reflection = new \ReflectionClass($log);

@@ -9,10 +9,12 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
+use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
 
 #[CoversClass(AuditService::class)]
 final class AuditServiceTimezoneTest extends TestCase
@@ -33,7 +35,8 @@ final class AuditServiceTimezoneTest extends TestCase
             $userResolver,
             $clock,
             self::createStub(TransactionIdGenerator::class),
-            [],
+            self::createStub(EntityDataExtractor::class),
+            self::createStub(MetadataCache::class),
             [],
             null,
             'Asia/Kolkata'
@@ -51,7 +54,7 @@ final class AuditServiceTimezoneTest extends TestCase
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $entityManager->method('getClassMetadata')->willReturn($metadata);
 
-        $auditLog = $service->createAuditLog($entity, AuditLog::ACTION_CREATE);
+        $auditLog = $service->createAuditLog($entity, AuditLogInterface::ACTION_CREATE);
 
         self::assertEquals('Asia/Kolkata', $auditLog->getCreatedAt()->getTimezone()->getName());
         self::assertEquals('2023-01-01 17:30:00', $auditLog->getCreatedAt()->format('Y-m-d H:i:s'));
@@ -71,7 +74,9 @@ final class AuditServiceTimezoneTest extends TestCase
             $entityManager,
             $userResolver,
             $clock,
-            self::createStub(TransactionIdGenerator::class)
+            self::createStub(TransactionIdGenerator::class),
+            self::createStub(EntityDataExtractor::class),
+            self::createStub(MetadataCache::class)
         );
 
         $entity = new class () {
@@ -85,7 +90,7 @@ final class AuditServiceTimezoneTest extends TestCase
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $entityManager->method('getClassMetadata')->willReturn($metadata);
 
-        $auditLog = $service->createAuditLog($entity, AuditLog::ACTION_CREATE);
+        $auditLog = $service->createAuditLog($entity, AuditLogInterface::ACTION_CREATE);
 
         self::assertEquals('UTC', $auditLog->getCreatedAt()->getTimezone()->getName());
         self::assertEquals('2023-01-01 12:00:00', $auditLog->getCreatedAt()->format('Y-m-d H:i:s'));

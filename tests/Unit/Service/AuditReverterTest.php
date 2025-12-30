@@ -11,9 +11,12 @@ use Doctrine\ORM\Query\FilterCollection;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditReverter;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
+use Rcsofttech\AuditTrailBundle\Service\RevertValueDenormalizer;
+use Rcsofttech\AuditTrailBundle\Service\SoftDeleteHandler;
 use Symfony\Component\Validator\ConstraintViolationList;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
@@ -68,7 +71,9 @@ class AuditReverterTest extends TestCase
         $this->reverter = new AuditReverter(
             $this->em,
             $this->validator,
-            $this->auditService
+            $this->auditService,
+            new RevertValueDenormalizer($this->em),
+            new SoftDeleteHandler($this->em)
         );
     }
 
@@ -77,7 +82,7 @@ class AuditReverterTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass(TestUser::class);
         $log->setEntityId('1');
-        $log->setAction(AuditLog::ACTION_UPDATE);
+        $log->setAction(AuditLogInterface::ACTION_UPDATE);
         $log->setOldValues(['name' => 'Old Name']);
 
         $entity = new class () {
@@ -126,7 +131,7 @@ class AuditReverterTest extends TestCase
     public function testRevertCreateRequiresForce(): void
     {
         $log = new AuditLog();
-        $log->setAction(AuditLog::ACTION_CREATE);
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
         $log->setEntityClass(TestUser::class);
         $log->setEntityId('1');
 
@@ -142,7 +147,7 @@ class AuditReverterTest extends TestCase
     public function testRevertCreateWithForce(): void
     {
         $log = new AuditLog();
-        $log->setAction(AuditLog::ACTION_CREATE);
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
         $log->setEntityClass(TestUser::class);
         $log->setEntityId('1');
 
@@ -168,7 +173,7 @@ class AuditReverterTest extends TestCase
     public function testRevertSoftDeleteRestores(): void
     {
         $log = new AuditLog();
-        $log->setAction(AuditLog::ACTION_SOFT_DELETE);
+        $log->setAction(AuditLogInterface::ACTION_SOFT_DELETE);
         $log->setEntityClass(TestUser::class);
         $log->setEntityId('1');
 

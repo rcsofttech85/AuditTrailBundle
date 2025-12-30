@@ -21,7 +21,7 @@ class AuditListCommandTest extends TestCase
     protected function setUp(): void
     {
         $this->repository = $this->createMock(AuditLogRepository::class);
-        $command = new AuditListCommand($this->repository);
+        $command = new AuditListCommand($this->repository, new \Rcsofttech\AuditTrailBundle\Service\AuditRenderer());
         $this->commandTester = new CommandTester($command);
     }
 

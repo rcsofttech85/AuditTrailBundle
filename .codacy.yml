@@ -1,0 +1,7 @@
+
+engines:
+  phpcs:
+    exclude_paths:
+      - "src/Entity/AuditLog.php"
+      - "src/Query/AuditEntry.php"
+      - "src/Event/AuditLogCreatedEvent.php"

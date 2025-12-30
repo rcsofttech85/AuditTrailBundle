@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Command;
 
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
-use Rcsofttech\AuditTrailBundle\Service\AuditReverterInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -33,7 +33,12 @@ class AuditRevertCommand extends Command
         $this
             ->addArgument('auditId', InputArgument::REQUIRED, 'The ID of the audit log entry to revert')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview changes without executing them')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Allow destructive operations (e.g. reverting a creation)')
+            ->addOption(
+                'force',
+                null,
+                InputOption::VALUE_NONE,
+                'Allow destructive operations (e.g. reverting a creation)'
+            )
             ->addOption('raw', null, InputOption::VALUE_NONE, 'Output raw result data (skip formatting)')
         ;
     }
@@ -48,7 +53,7 @@ class AuditRevertCommand extends Command
 
         $log = $this->auditLogRepository->find($auditId);
 
-        if (!$log instanceof AuditLog) {
+        if (!$log instanceof AuditLogInterface) {
             $io->error(sprintf('Audit log with ID %d not found.', $auditId));
 
             return Command::FAILURE;

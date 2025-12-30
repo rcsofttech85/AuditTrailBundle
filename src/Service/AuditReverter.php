@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 class AuditReverter implements AuditReverterInterface
@@ -14,72 +16,100 @@ class AuditReverter implements AuditReverterInterface
         private readonly EntityManagerInterface $em,
         private readonly ValidatorInterface $validator,
         private readonly AuditService $auditService,
+        private readonly RevertValueDenormalizer $denormalizer,
+        private readonly SoftDeleteHandler $softDeleteHandler,
     ) {
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function revert(AuditLog $log, bool $dryRun = false, bool $force = false): array
+    public function revert(AuditLogInterface $log, bool $dryRun = false, bool $force = false): array
     {
-        $entityClass = $log->getEntityClass();
-        $entityId = $log->getEntityId();
-        $action = $log->getAction();
-
-        // 1. Fetch Entity (handling soft-deletes)
-        $entity = $this->findEntity($entityClass, $entityId);
+        $entity = $this->findEntity($log->getEntityClass(), $log->getEntityId());
 
         if (null === $entity) {
-            throw new \RuntimeException(sprintf('Entity %s:%s not found.', $entityClass, $entityId));
+            throw new \RuntimeException(sprintf(
+                'Entity %s:%s not found.',
+                $log->getEntityClass(),
+                $log->getEntityId()
+            ));
         }
 
-        // 2. Determine changes
-        $changes = match ($action) {
-            AuditLog::ACTION_CREATE => $this->handleRevertCreate($force),
-            AuditLog::ACTION_UPDATE => $this->handleRevertUpdate($log, $entity),
-            AuditLog::ACTION_SOFT_DELETE => $this->handleRevertSoftDelete($entity),
-            default => throw new \RuntimeException(sprintf('Reverting action "%s" is not supported.', $action)),
-        };
+        $changes = $this->determineChanges($log, $entity, $force);
 
         if ($dryRun) {
             return $changes;
         }
 
+        $this->applyAndPersist($entity, $log, $changes);
+
+        return $changes;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function determineChanges(AuditLogInterface $log, object $entity, bool $force): array
+    {
+        return match ($log->getAction()) {
+            AuditLogInterface::ACTION_CREATE => $this->handleRevertCreate($force),
+            AuditLogInterface::ACTION_UPDATE => $this->handleRevertUpdate($log, $entity),
+            AuditLogInterface::ACTION_SOFT_DELETE => $this->handleRevertSoftDelete($entity),
+            default => throw new \RuntimeException(sprintf(
+                'Reverting action "%s" is not supported.',
+                $log->getAction()
+            )),
+        };
+    }
+
+    /**
+     * @param array<string, mixed> $changes
+     */
+    private function applyAndPersist(object $entity, AuditLogInterface $log, array $changes): void
+    {
         $isDelete = isset($changes['action']) && 'delete' === $changes['action'];
 
-        // 3. Apply and Persist
         $this->em->wrapInTransaction(function () use ($entity, $isDelete, $log, $changes) {
             if ($isDelete) {
                 $this->em->remove($entity);
             } else {
-                // Validate if updating/restoring
-                $errors = $this->validator->validate($entity);
-                if (count($errors) > 0) {
-                    throw new \RuntimeException((string) $errors);
-                }
+                $this->validateEntity($entity);
                 $this->em->persist($entity);
             }
 
             $this->em->flush();
-
-            // Create Revert Audit Log
-            $revertLog = $this->auditService->createAuditLog(
-                $entity,
-                AuditLog::ACTION_REVERT,
-                $isDelete ? null : $changes,
-                null
-            );
-
-            $revertLog->setOldValues($isDelete ? null : $changes);
-            $revertLog->setNewValues(null);
-            $revertLog->setEntityId($log->getEntityId());
-            $revertLog->setEntityClass($log->getEntityClass());
-
-            $this->em->persist($revertLog);
-            $this->em->flush();
+            $this->createRevertAuditLog($entity, $log, $changes, $isDelete);
         });
+    }
 
-        return $changes;
+    private function validateEntity(object $entity): void
+    {
+        $errors = $this->validator->validate($entity);
+        if (count($errors) > 0) {
+            throw new \RuntimeException((string) $errors);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $changes
+     */
+    private function createRevertAuditLog(object $entity, AuditLogInterface $log, array $changes, bool $isDelete): void
+    {
+        $revertLog = $this->auditService->createAuditLog(
+            $entity,
+            AuditLogInterface::ACTION_REVERT,
+            $isDelete ? null : $changes,
+            null
+        );
+
+        $revertLog->setOldValues($isDelete ? null : $changes);
+        $revertLog->setNewValues(null);
+        $revertLog->setEntityId($log->getEntityId());
+        $revertLog->setEntityClass($log->getEntityClass());
+
+        $this->em->persist($revertLog);
+        $this->em->flush();
     }
 
     /**
@@ -97,7 +127,7 @@ class AuditReverter implements AuditReverterInterface
     /**
      * @return array<string, mixed>
      */
-    private function handleRevertUpdate(AuditLog $log, object $entity): array
+    private function handleRevertUpdate(AuditLogInterface $log, object $entity): array
     {
         $oldValues = $log->getOldValues() ?? [];
         if ([] === $oldValues) {
@@ -112,8 +142,8 @@ class AuditReverter implements AuditReverterInterface
      */
     private function handleRevertSoftDelete(object $entity): array
     {
-        if ($this->isSoftDeleted($entity)) {
-            $this->restoreSoftDeleted($entity);
+        if ($this->softDeleteHandler->isSoftDeleted($entity)) {
+            $this->softDeleteHandler->restoreSoftDeleted($entity);
 
             return ['action' => 'restore'];
         }
@@ -123,32 +153,17 @@ class AuditReverter implements AuditReverterInterface
 
     private function findEntity(string $class, string $id): ?object
     {
-        $filters = $this->em->getFilters();
-        $softDeleteFilterName = null;
-
-        // Dynamically find the soft-delete filter
-        foreach ($filters->getEnabledFilters() as $name => $filter) {
-            if (is_a($filter, 'Gedmo\SoftDeleteable\Filter\SoftDeleteableFilter')) {
-                $softDeleteFilterName = $name;
-                break;
-            }
-        }
-
-        if (null !== $softDeleteFilterName) {
-            $filters->disable($softDeleteFilterName);
-        }
-
         if (!class_exists($class)) {
             return null;
         }
 
+        $disabledFilters = $this->softDeleteHandler->disableSoftDeleteFilters();
+
         try {
-            /* @var class-string<object> $class */
+            /* @var class-string $class */
             return $this->em->find($class, $id);
         } finally {
-            if (null !== $softDeleteFilterName) {
-                $filters->enable($softDeleteFilterName);
-            }
+            $this->softDeleteHandler->enableFilters($disabledFilters);
         }
     }
 
@@ -159,42 +174,34 @@ class AuditReverter implements AuditReverterInterface
      */
     private function applyChanges(object $entity, array $values): array
     {
-        $metadata = $this->em->getClassMetadata($entity::class);
+        $metadata = $this->em->getClassMetadata(get_class($entity));
         $appliedChanges = [];
 
         foreach ($values as $field => $value) {
-            if ($metadata->isIdentifier($field)) {
-                continue; // Never revert identifiers
+            $denormalizedValue = $this->denormalizer->denormalize($metadata, $field, $value);
+
+            if ($this->shouldSkipField($metadata, $field, $entity, $denormalizedValue)) {
+                continue;
             }
 
-            if (!$metadata->hasField($field) && !$metadata->hasAssociation($field)) {
-                continue; // Ignore unmapped fields
-            }
-
-            $currentValue = $metadata->getFieldValue($entity, $field);
-
-            if ($currentValue !== $value) {
-                $metadata->setFieldValue($entity, $field, $value);
-                $appliedChanges[$field] = $value;
-            }
+            $metadata->setFieldValue($entity, $field, $denormalizedValue);
+            $appliedChanges[$field] = $denormalizedValue;
         }
 
         return $appliedChanges;
     }
 
-    private function isSoftDeleted(object $entity): bool
+    /**
+     * @param ClassMetadata<object> $metadata
+     */
+    private function shouldSkipField(ClassMetadata $metadata, string $field, object $entity, mixed $value): bool
     {
-        if (method_exists($entity, 'getDeletedAt')) {
-            return null !== $entity->getDeletedAt();
+        if ($metadata->isIdentifier($field) || (!$metadata->hasField($field) && !$metadata->hasAssociation($field))) {
+            return true;
         }
 
-        return false;
-    }
+        $currentValue = $metadata->getFieldValue($entity, $field);
 
-    private function restoreSoftDeleted(object $entity): void
-    {
-        if (method_exists($entity, 'setDeletedAt')) {
-            $entity->setDeletedAt(null);
-        }
+        return $this->denormalizer->valuesAreEqual($currentValue, $value);
     }
 }

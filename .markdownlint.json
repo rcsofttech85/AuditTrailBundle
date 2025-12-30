@@ -1,14 +1,14 @@
 {
-    "default": true,
-    "MD013": false,
-    "MD033": false,
-    "MD041": false,
-    "MD030": {
-        "ul_single": 1,
-        "ol_single": 1,
-        "ul_multi": 1,
-        "ol_multi": 1
-    },
-    "MD022": true,
-    "MD032": true
+  "default": true,
+  "MD013": false,
+  "MD033": false,
+  "MD041": false,
+  "MD030": {
+    "ul_single": 1,
+    "ol_single": 1,
+    "ul_multi": 1,
+    "ol_multi": 1
+  },
+  "MD022": true,
+  "MD032": true
 }

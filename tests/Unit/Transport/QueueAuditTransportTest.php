@@ -4,6 +4,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
@@ -29,7 +30,7 @@ class QueueAuditTransportTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass('TestEntity');
         $log->setEntityId('1');
-        $log->setAction('create');
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
         $log->setCreatedAt(new \DateTimeImmutable());
 
         $this->bus->expects($this->once())

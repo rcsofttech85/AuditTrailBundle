@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditRevertCommand;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
-use Rcsofttech\AuditTrailBundle\Service\AuditReverterInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 

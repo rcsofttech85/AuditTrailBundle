@@ -5,324 +5,111 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\EventSubscriber;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
-use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
-use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
-use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
+use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
+use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
+use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
+use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 
 class AuditSubscriberTest extends TestCase
 {
-    // - FIXED: Added Stub intersection type for PHPStan
-    private AuditService&Stub $auditService;
-    private AuditTransportInterface&Stub $transport;
+    private AuditService $auditService;
+    private ChangeProcessor $changeProcessor;
+    private AuditDispatcher $dispatcher;
+    private ScheduledAuditManager $auditManager;
+    private EntityProcessor $entityProcessor;
     private AuditSubscriber $subscriber;
 
     protected function setUp(): void
     {
-        // Use stubs by default - individual tests will create mocks if needed
         $this->auditService = self::createStub(AuditService::class);
-        $this->transport = self::createStub(AuditTransportInterface::class);
-        $this->subscriber = new AuditSubscriber($this->auditService, $this->transport);
+        $this->changeProcessor = self::createStub(ChangeProcessor::class);
+        $this->dispatcher = self::createStub(AuditDispatcher::class);
+        $this->auditManager = self::createStub(ScheduledAuditManager::class);
+        $this->entityProcessor = self::createStub(EntityProcessor::class);
+
+        $this->subscriber = new AuditSubscriber(
+            $this->auditService,
+            $this->changeProcessor,
+            $this->dispatcher,
+            $this->auditManager,
+            $this->entityProcessor
+        );
     }
 
-    public function testOnFlushHandlesInsertions(): void
+    public function testOnFlushDelegatesToEntityProcessor(): void
     {
-        $entity = new \stdClass();
-        $auditLog = new AuditLog();
-
         $em = self::createStub(EntityManagerInterface::class);
         $uow = self::createStub(UnitOfWork::class);
         $args = self::createStub(OnFlushEventArgs::class);
+        $entityProcessor = self::createMock(EntityProcessor::class);
 
         $args->method('getObjectManager')->willReturn($em);
         $em->method('getUnitOfWork')->willReturn($uow);
 
-        $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
-        $uow->method('getScheduledEntityUpdates')->willReturn([]);
-        $uow->method('getScheduledEntityDeletions')->willReturn([]);
+        $entityProcessor->expects($this->once())->method('processInsertions')->with($em, $uow);
+        $entityProcessor->expects($this->once())->method('processUpdates')->with($em, $uow);
+        $entityProcessor->expects($this->once())->method('processCollectionUpdates')->with($em, $uow, self::anything());
+        $entityProcessor->expects($this->once())->method('processDeletions')->with($em, $uow);
 
-        $this->auditService->method('shouldAudit')->willReturn(true);
-        $this->auditService->method('createAuditLog')->willReturn($auditLog);
-        $this->auditService->method('getEntityData')->willReturn([]);
+        $this->subscriber = new AuditSubscriber(
+            $this->auditService,
+            $this->changeProcessor,
+            $this->dispatcher,
+            $this->auditManager,
+            $entityProcessor
+        );
 
-        // No exceptions = success
         $this->subscriber->onFlush($args);
-
-        // - FIXED: Remove redundant assertion
-        $this->expectNotToPerformAssertions();
     }
 
-    public function testPostFlushHandlesPendingAudits(): void
+    public function testPostFlushDelegatesToAuditManagerAndDispatcher(): void
     {
-        // Create mock only for this test since we verify send()
-        $transport = $this->createMock(AuditTransportInterface::class);
-        $subscriber = new AuditSubscriber($this->auditService, $transport);
-
-        // First trigger onFlush to populate pending audits
-        $entity = new \stdClass();
-        $auditLog = new AuditLog();
-
         $em = self::createStub(EntityManagerInterface::class);
-        $uow = self::createStub(UnitOfWork::class);
-        $args = self::createStub(OnFlushEventArgs::class);
-
+        $args = self::createStub(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
-        $em->method('getUnitOfWork')->willReturn($uow);
 
-        $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
-        $uow->method('getScheduledEntityUpdates')->willReturn([]);
-        $uow->method('getScheduledEntityDeletions')->willReturn([]);
+        $auditLog = self::createStub(\Rcsofttech\AuditTrailBundle\Entity\AuditLog::class);
+        $auditManager = self::createMock(ScheduledAuditManager::class);
+        $dispatcher = self::createMock(AuditDispatcher::class);
 
-        $this->auditService->method('shouldAudit')->willReturn(true);
-        $this->auditService->method('createAuditLog')->willReturn($auditLog);
-        $this->auditService->method('getEntityId')->willReturn('123');
+        $auditManager->method('getScheduledAudits')->willReturn([
+            [
+                'entity' => new \stdClass(),
+                'audit' => $auditLog,
+                'is_insert' => false,
+            ],
+        ]);
+        $auditManager->method('getPendingDeletions')->willReturn([]);
 
-        $subscriber->onFlush($args);
+        $dispatcher->expects($this->once())->method('dispatch')->with($auditLog, $em, 'post_flush');
+        $auditManager->expects($this->once())->method('clear');
 
-        // Now trigger postFlush
-        $postFlushArgs = self::createStub(PostFlushEventArgs::class);
-        $postFlushArgs->method('getObjectManager')->willReturn($em);
+        $this->subscriber = new AuditSubscriber(
+            $this->auditService,
+            $this->changeProcessor,
+            $dispatcher,
+            $auditManager,
+            $this->entityProcessor
+        );
 
-        $transport->expects($this->once())
-            ->method('send')
-            ->with($auditLog, self::callback(fn ($context) => 'post_flush' === $context['phase']));
-
-        $subscriber->postFlush($postFlushArgs);
+        $this->subscriber->postFlush($args);
     }
 
-    public function testOnFlushPreventsRecursion(): void
+    public function testResetClearsAuditManager(): void
     {
-        // Create mock only for this test since we verify never()
-        $auditService = $this->createMock(AuditService::class);
-        $subscriber = new AuditSubscriber($auditService, $this->transport);
-
-        $entity = new \stdClass();
-
-        $em = self::createStub(EntityManagerInterface::class);
-        $uow = self::createStub(UnitOfWork::class);
-        $args = self::createStub(OnFlushEventArgs::class);
-
-        $args->method('getObjectManager')->willReturn($em);
-        $em->method('getUnitOfWork')->willReturn($uow);
-
-        $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
-        $uow->method('getScheduledEntityUpdates')->willReturn([]);
-        $uow->method('getScheduledEntityDeletions')->willReturn([]);
-
-        // Simulate recursion by setting depth
-        $reflection = new \ReflectionClass($subscriber);
-        $property = $reflection->getProperty('recursionDepth');
-        $property->setAccessible(true);
-        $property->setValue($subscriber, 1);
-
-        // Expect NO calls to createAuditLog if recursion is detected
-        $auditService->expects($this->never())->method('createAuditLog');
-
-        $subscriber->onFlush($args);
-    }
-
-    public function testResetClearsState(): void
-    {
-        $reflection = new \ReflectionClass($this->subscriber);
-
-        $scheduledProp = $reflection->getProperty('scheduledAudits');
-        $scheduledProp->setAccessible(true);
-        $scheduledProp->setValue($this->subscriber, [['entity' => new \stdClass(), 'audit' => new AuditLog()]]);
-
-        $pendingProp = $reflection->getProperty('pendingDeletions');
-        $pendingProp->setAccessible(true);
-        $pendingProp->setValue($this->subscriber, [['entity' => new \stdClass()]]);
-
+        $auditManager = self::createMock(ScheduledAuditManager::class);
+        $auditManager->expects($this->once())->method('clear');
+        $this->subscriber = new AuditSubscriber(
+            $this->auditService,
+            $this->changeProcessor,
+            $this->dispatcher,
+            $auditManager,
+            $this->entityProcessor
+        );
         $this->subscriber->reset();
-
-        self::assertEmpty($scheduledProp->getValue($this->subscriber));
-        self::assertEmpty($pendingProp->getValue($this->subscriber));
-    }
-
-    public function testTransportFailureTriggersDbFallback(): void
-    {
-        // Create stub for transport (we don't verify method calls)
-        $transport = self::createStub(AuditTransportInterface::class);
-
-        $entity = new \stdClass();
-        $auditLog = new AuditLog();
-
-        $em = $this->createMock(EntityManagerInterface::class); // Mock because we verify persist()
-        $uow = self::createStub(UnitOfWork::class);
-        $args = self::createStub(OnFlushEventArgs::class);
-
-        $args->method('getObjectManager')->willReturn($em);
-        $em->method('getUnitOfWork')->willReturn($uow);
-        $em->method('isOpen')->willReturn(true);
-        $em->method('contains')->willReturn(false);
-
-        $uow->method('getScheduledEntityInsertions')->willReturn([]);
-        $uow->method('getScheduledEntityUpdates')->willReturn([$entity]);
-        $uow->method('getScheduledEntityDeletions')->willReturn([]);
-        $uow->method('getEntityChangeSet')->willReturn(['name' => ['old', 'new']]);
-
-        $this->auditService->method('shouldAudit')->willReturn(true);
-        $this->auditService->method('createAuditLog')->willReturn($auditLog);
-        $this->auditService->method('getEntityId')->willReturn('123');
-
-        // Transport throws exception
-        $transport->method('send')
-            ->willThrowException(new \RuntimeException('Transport down'));
-        $transport->method('supports')->willReturn(true);
-
-        // Subscriber with fallback enabled
-        $subscriber = new AuditSubscriber(
-            $this->auditService,
-            $transport,
-            fallbackToDatabase: true,
-            deferTransportUntilCommit: false // Process immediately
-        );
-
-        // Expect persist to be called for fallback
-        $em->expects($this->once())->method('persist')->with($auditLog);
-
-        $subscriber->onFlush($args);
-    }
-
-    public function testSoftDeleteDetection(): void
-    {
-        $entity = new class () {
-            public ?\DateTimeInterface $deletedAt = null;
-        };
-        $entity->deletedAt = new \DateTimeImmutable();
-
-        $auditLog = new AuditLog();
-
-        $em = $this->createMock(EntityManagerInterface::class);
-        $metadata = self::createStub(ClassMetadata::class);
-        $reflProp = self::createStub(\ReflectionProperty::class);
-
-        $args = self::createStub(PostFlushEventArgs::class);
-        $args->method('getObjectManager')->willReturn($em);
-
-        $em->method('getClassMetadata')->willReturn($metadata);
-        $em->method('contains')->willReturn(true);
-        $em->method('isOpen')->willReturn(true);
-
-        $metadata->method('hasField')->willReturn(true);
-        $metadata->method('getReflectionProperty')->willReturn($reflProp);
-
-        $reflProp->method('getValue')->willReturn($entity->deletedAt);
-
-        $this->auditService->method('shouldAudit')->willReturn(true);
-        $this->auditService->method('getEntityData')->willReturn(['id' => 1]);
-        $this->auditService->method('createAuditLog')
-            ->with(
-                $entity,
-                AuditLog::ACTION_SOFT_DELETE,
-                self::anything(),
-                self::anything()
-            )
-            ->willReturn($auditLog);
-
-        $subscriber = new AuditSubscriber(
-            $this->auditService,
-            $this->transport,
-            enableSoftDelete: true
-        );
-
-        // Populate pending deletions
-        $reflection = new \ReflectionClass($subscriber);
-        $property = $reflection->getProperty('pendingDeletions');
-        $property->setAccessible(true);
-        $property->setValue($subscriber, [
-            [
-                'entity' => $entity,
-                'data' => ['id' => 1],
-                'is_managed' => true,
-            ],
-        ]);
-
-        $em->expects($this->once())->method('persist');
-        $em->expects($this->once())->method('flush');
-
-        $subscriber->postFlush($args);
-    }
-
-    public function testHardDeleteDetection(): void
-    {
-        $entity = new \stdClass();
-        $auditLog = new AuditLog();
-
-        $em = $this->createMock(EntityManagerInterface::class);
-        $metadata = self::createStub(ClassMetadata::class);
-
-        $args = self::createStub(PostFlushEventArgs::class);
-        $args->method('getObjectManager')->willReturn($em);
-
-        $em->method('getClassMetadata')->willReturn($metadata);
-        $em->method('contains')->willReturn(false); // Not managed = hard delete
-        $em->method('isOpen')->willReturn(true);
-
-        $metadata->method('hasField')->willReturn(false); // No soft delete field
-
-        $this->auditService->method('shouldAudit')->willReturn(true);
-        $this->auditService->method('getEntityData')->willReturn(['id' => 1]);
-        $this->auditService->method('createAuditLog')
-            ->with(
-                $entity,
-                AuditLog::ACTION_DELETE,
-                self::anything(),
-                null
-            )
-            ->willReturn($auditLog);
-
-        $subscriber = new AuditSubscriber(
-            $this->auditService,
-            $this->transport,
-            enableHardDelete: true
-        );
-
-        // Populate pending deletions
-        $reflection = new \ReflectionClass($subscriber);
-        $property = $reflection->getProperty('pendingDeletions');
-        $property->setAccessible(true);
-        $property->setValue($subscriber, [
-            [
-                'entity' => $entity,
-                'data' => ['id' => 1],
-                'is_managed' => false,
-            ],
-        ]);
-
-        $em->expects($this->once())->method('persist');
-        $em->expects($this->once())->method('flush');
-
-        $subscriber->postFlush($args);
-    }
-
-    public function testMaxAuditLimitThrowsException(): void
-    {
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Maximum audit queue size exceeded');
-
-        $em = self::createStub(EntityManagerInterface::class);
-        $uow = self::createStub(UnitOfWork::class);
-        $args = self::createStub(OnFlushEventArgs::class);
-
-        $args->method('getObjectManager')->willReturn($em);
-        $em->method('getUnitOfWork')->willReturn($uow);
-
-        // Create 1001 entities (exceeds MAX_SCHEDULED_AUDITS = 1000)
-        $entities = array_fill(0, 1001, new \stdClass());
-
-        $uow->method('getScheduledEntityInsertions')->willReturn($entities);
-        $uow->method('getScheduledEntityUpdates')->willReturn([]);
-        $uow->method('getScheduledEntityDeletions')->willReturn([]);
-
-        $this->auditService->method('shouldAudit')->willReturn(true);
-        $this->auditService->method('createAuditLog')->willReturn(new AuditLog());
-        $this->auditService->method('getEntityData')->willReturn([]);
-
-        $this->subscriber->onFlush($args);
     }
 }
