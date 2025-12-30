@@ -10,6 +10,7 @@ use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpKernel\KernelInterface;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 
 #[AllowMockObjectsWithoutExpectations]
 class TransactionSafetyTest extends KernelTestCase
@@ -70,6 +71,7 @@ class TransactionSafetyTest extends KernelTestCase
         return $em;
     }
 
+    #[RunInSeparateProcess]
     public function testAtomicModeRollsBackDataOnTransportFailure(): void
     {
         // Configure for Atomic Mode (defer = false)
@@ -115,6 +117,7 @@ class TransactionSafetyTest extends KernelTestCase
         }
     }
 
+    #[RunInSeparateProcess]
     public function testDeferredModePersistsDataEvenIfTransportFails(): void
     {
         // Configure for Deferred Mode (defer = true)
@@ -151,6 +154,7 @@ class TransactionSafetyTest extends KernelTestCase
         }
     }
 
+    #[RunInSeparateProcess]
     public function testDeferredModeWithFailOnErrorThrowsButPersistsData(): void
     {
         // Configure for Deferred Mode with fail_on_transport_error = true

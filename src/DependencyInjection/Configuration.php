@@ -22,7 +22,6 @@ final class Configuration implements ConfigurationInterface
             ->defaultValue(['updatedAt', 'updated_at'])
             ->end()
             ->scalarNode('table_prefix')->defaultValue('')->end()
-            ->scalarNode('table_prefix')->defaultValue('')->end()
             ->scalarNode('table_suffix')->defaultValue('')->end()
             ->scalarNode('timezone')->defaultValue('UTC')->end()
             ->arrayNode('ignored_entities')

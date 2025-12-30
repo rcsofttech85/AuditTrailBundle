@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rcsofttech\AuditTrailBundle\Query;
+namespace Rcsofttech\AuditTrailBundle\Contract;
 
 /**
  * Iterable collection of AuditEntry objects with utility methods.

@@ -49,59 +49,96 @@ final class AuditTrailExtension extends Extension
     /**
      * @param array<string, mixed> $config
      */
+    /**
+     * @param array<string, mixed> $config
+     */
     private function configureTransports(array $config, ContainerBuilder $container): void
     {
         $transports = [];
 
-        // Doctrine Transport
         if (true === $config['transports']['doctrine']) {
-            $id = 'rcsofttech_audit_trail.transport.doctrine';
-            $container->register($id, DoctrineAuditTransport::class)
-                ->setAutowired(true);
-            $transports[] = $id;
+            $transports[] = $this->registerDoctrineTransport($container);
         }
 
-        // HTTP Transport
         if (true === $config['transports']['http']['enabled']) {
-            if (!interface_exists(HttpClientInterface::class)) {
-                throw new \LogicException('To use the HTTP transport, you must install the symfony/http-client package.');
-            }
-
-            $id = 'rcsofttech_audit_trail.transport.http';
-            $container->register($id, HttpAuditTransport::class)
-                ->setAutowired(true)
-                ->setArgument('$endpoint', $config['transports']['http']['endpoint']);
-            $transports[] = $id;
+            $transports[] = $this->registerHttpTransport($container, $config['transports']['http']);
         }
 
-        // Queue Transport
         if (true === $config['transports']['queue']['enabled']) {
-            if (!interface_exists(MessageBusInterface::class)) {
-                throw new \LogicException('To use the Queue transport, you must install the symfony/messenger package.');
-            }
-
-            $id = 'rcsofttech_audit_trail.transport.queue';
-            $definition = $container->register($id, QueueAuditTransport::class)
-                ->setAutowired(true);
-
-            if (isset($config['transports']['queue']['bus']) && '' !== $config['transports']['queue']['bus']) {
-                $definition->setArgument('$bus', new Reference($config['transports']['queue']['bus']));
-            }
-
-            $transports[] = $id;
+            $transports[] = $this->registerQueueTransport($container, $config['transports']['queue']);
         }
 
-        // Alias AuditTransportInterface
+        $this->registerMainTransport($container, $transports);
+    }
+
+    private function registerDoctrineTransport(ContainerBuilder $container): string
+    {
+        $id = 'rcsofttech_audit_trail.transport.doctrine';
+        $container->register($id, DoctrineAuditTransport::class)
+            ->setAutowired(true)
+            ->addTag('audit_trail.transport');
+
+        return $id;
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    private function registerHttpTransport(ContainerBuilder $container, array $config): string
+    {
+        if (!interface_exists(HttpClientInterface::class)) {
+            throw new \LogicException('To use the HTTP transport, you must install the symfony/http-client package.');
+        }
+
+        $id = 'rcsofttech_audit_trail.transport.http';
+        $container->register($id, HttpAuditTransport::class)
+            ->setAutowired(true)
+            ->setArgument('$endpoint', $config['endpoint'])
+            ->addTag('audit_trail.transport');
+
+        return $id;
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    private function registerQueueTransport(ContainerBuilder $container, array $config): string
+    {
+        if (!interface_exists(MessageBusInterface::class)) {
+            throw new \LogicException('To use the Queue transport, you must install the symfony/messenger package.');
+        }
+
+        $id = 'rcsofttech_audit_trail.transport.queue';
+        $definition = $container->register($id, QueueAuditTransport::class)
+            ->setAutowired(true)
+            ->addTag('audit_trail.transport');
+
+        if (isset($config['bus']) && '' !== $config['bus']) {
+            $definition->setArgument('$bus', new Reference($config['bus']));
+        }
+
+        return $id;
+    }
+
+    /**
+     * @param array<string> $transports
+     */
+    private function registerMainTransport(ContainerBuilder $container, array $transports): void
+    {
         if (1 === count($transports)) {
             $container->setAlias(AuditTransportInterface::class, $transports[0]);
-        } elseif (count($transports) > 1) {
-            $chainTransportId = 'rcsofttech_audit_trail.transport.chain';
-            $transportReferences = array_map(fn ($id) => new Reference($id), $transports);
 
-            $container->register($chainTransportId, ChainAuditTransport::class)
-                ->setArgument('$transports', $transportReferences);
+            return;
+        }
 
-            $container->setAlias(AuditTransportInterface::class, $chainTransportId);
+        if (count($transports) > 1) {
+            $id = 'rcsofttech_audit_trail.transport.chain';
+            $references = array_map(fn ($id) => new Reference($id), $transports);
+
+            $container->register($id, ChainAuditTransport::class)
+                ->setArgument('$transports', $references);
+
+            $container->setAlias(AuditTransportInterface::class, $id);
         }
     }
 

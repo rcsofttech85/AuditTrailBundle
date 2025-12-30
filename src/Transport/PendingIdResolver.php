@@ -5,14 +5,13 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use Doctrine\ORM\EntityManagerInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
 trait PendingIdResolver
 {
     /**
      * @param array<string, mixed> $context
      */
-    private function resolveEntityId(AuditLog $log, array $context): ?string
+    private function resolveEntityId(\Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface $log, array $context): ?string
     {
         $isInsert = (bool) ($context['is_insert'] ?? false);
         $currentEntityId = $log->getEntityId();

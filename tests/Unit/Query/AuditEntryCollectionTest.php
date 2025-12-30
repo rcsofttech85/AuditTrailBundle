@@ -8,8 +8,8 @@ use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Query\AuditEntry;
-use Rcsofttech\AuditTrailBundle\Query\AuditEntryCollection;
+use Rcsofttech\AuditTrailBundle\Contract\AuditEntry;
+use Rcsofttech\AuditTrailBundle\Contract\AuditEntryCollection;
 
 #[CoversClass(AuditEntryCollection::class)]
 #[AllowMockObjectsWithoutExpectations()]

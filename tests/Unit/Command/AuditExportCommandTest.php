@@ -21,7 +21,7 @@ class AuditExportCommandTest extends TestCase
     protected function setUp(): void
     {
         $this->repository = $this->createMock(AuditLogRepository::class);
-        $command = new AuditExportCommand($this->repository);
+        $command = new AuditExportCommand($this->repository, new \Rcsofttech\AuditTrailBundle\Service\AuditExporter());
         $this->commandTester = new CommandTester($command);
     }
 
