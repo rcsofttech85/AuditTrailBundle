@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Query;
 
+use Rcsofttech\AuditTrailBundle\Contract\AuditEntry;
+use Rcsofttech\AuditTrailBundle\Contract\AuditEntryCollection;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 
@@ -44,20 +46,7 @@ readonly class AuditQuery
      */
     public function entity(string $class, ?string $id = null): self
     {
-        return new self(
-            repository: $this->repository,
-            entityClass: $class,
-            entityId: $id,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->with(['entityClass' => $class, 'entityId' => $id]);
     }
 
     /**
@@ -65,20 +54,7 @@ readonly class AuditQuery
      */
     public function entityId(string $id): self
     {
-        return new self(
-            repository: $this->repository,
-            entityClass: $this->entityClass,
-            entityId: $id,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->with(['entityId' => $id]);
     }
 
     /**
@@ -86,20 +62,7 @@ readonly class AuditQuery
      */
     public function action(string ...$actions): self
     {
-        return new self(
-            repository: $this->repository,
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->with(['actions' => $actions]);
     }
 
     /**
@@ -131,20 +94,7 @@ readonly class AuditQuery
      */
     public function user(int $userId): self
     {
-        return new self(
-            repository: $this->repository,
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->with(['userId' => $userId]);
     }
 
     /**
@@ -152,20 +102,7 @@ readonly class AuditQuery
      */
     public function transaction(string $hash): self
     {
-        return new self(
-            repository: $this->repository,
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $hash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->with(['transactionHash' => $hash]);
     }
 
     /**
@@ -173,20 +110,7 @@ readonly class AuditQuery
      */
     public function since(\DateTimeInterface $from): self
     {
-        return new self(
-            repository: $this->repository,
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $from,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->with(['since' => $from]);
     }
 
     /**
@@ -194,20 +118,7 @@ readonly class AuditQuery
      */
     public function until(\DateTimeInterface $to): self
     {
-        return new self(
-            repository: $this->repository,
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $to,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->with(['until' => $to]);
     }
 
     /**
@@ -223,20 +134,7 @@ readonly class AuditQuery
      */
     public function changedField(string ...$fields): self
     {
-        return new self(
-            repository: $this->repository,
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $fields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->with(['changedFields' => $fields]);
     }
 
     /**
@@ -244,68 +142,52 @@ readonly class AuditQuery
      */
     public function limit(int $limit): self
     {
-        return new self(
-            repository: $this->repository,
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->with(['limit' => $limit]);
     }
 
     /**
      * Keyset pagination: Get results after a specific audit log ID.
-     * Use this for "next page" navigation.
-     *
-     * @param int $id The last ID from the previous page
      */
     public function after(int $id): self
     {
-        return new self(
-            repository: $this->repository,
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $id,
-            beforeId: null,
-        );
+        return $this->with(['afterId' => $id, 'beforeId' => null]);
     }
 
     /**
      * Keyset pagination: Get results before a specific audit log ID.
-     * Use this for "previous page" navigation.
-     *
-     * @param int $id The first ID from the current page
      */
     public function before(int $id): self
     {
-        return new self(
-            repository: $this->repository,
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: null,
-            beforeId: $id,
-        );
+        return $this->with(['afterId' => null, 'beforeId' => $id]);
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private function with(array $params): self
+    {
+        $state = [
+            'repository' => $this->repository,
+            'entityClass' => $this->entityClass,
+            'entityId' => $this->entityId,
+            'actions' => $this->actions,
+            'userId' => $this->userId,
+            'transactionHash' => $this->transactionHash,
+            'since' => $this->since,
+            'until' => $this->until,
+            'changedFields' => $this->changedFields,
+            'limit' => $this->limit,
+            'afterId' => $this->afterId,
+            'beforeId' => $this->beforeId,
+        ];
+
+        foreach ($params as $key => $value) {
+            if (array_key_exists($key, $state)) {
+                $state[$key] = $value;
+            }
+        }
+
+        return new self(...$state);
     }
 
     /**
@@ -313,22 +195,10 @@ readonly class AuditQuery
      */
     public function getResults(): AuditEntryCollection
     {
-        $filters = $this->buildFilters();
-        $logs = $this->repository->findWithFilters($filters, $this->limit);
+        $logs = $this->fetchLogs($this->limit);
+        $entries = array_map(fn (AuditLog $log) => new AuditEntry($log), $logs);
 
-
-
-        // Apply post-fetch filters (changedFields requires PHP filtering)
-        if ([] !== $this->changedFields) {
-            $logs = $this->filterByChangedFields($logs);
-        }
-
-        $entries = array_values(array_map(
-            fn (AuditLog $log) => new AuditEntry($log),
-            $logs
-        ));
-
-        return new AuditEntryCollection($entries);
+        return new AuditEntryCollection(array_values($entries));
     }
 
     /**
@@ -336,17 +206,24 @@ readonly class AuditQuery
      */
     public function count(): int
     {
-        // For accurate count with changedFields filter, we need to fetch and filter
         if ([] !== $this->changedFields) {
             return $this->getResults()->count();
         }
 
         $filters = $this->buildFilters();
-        // Remove cursor filters for count
         unset($filters['afterId'], $filters['beforeId']);
-        $logs = $this->repository->findWithFilters($filters, PHP_INT_MAX);
 
-        return \count($logs);
+        return count($this->repository->findWithFilters($filters, PHP_INT_MAX));
+    }
+
+    /**
+     * @return array<AuditLog>
+     */
+    private function fetchLogs(int $limit): array
+    {
+        $logs = $this->repository->findWithFilters($this->buildFilters(), $limit);
+
+        return [] !== $this->changedFields ? $this->filterByChangedFields($logs) : $logs;
     }
 
     /**
@@ -367,70 +244,34 @@ readonly class AuditQuery
 
     /**
      * Get the cursor (last ID) for pagination.
-     * Use this to get the ID for the next page.
      */
     public function getNextCursor(): ?int
     {
-        $results = $this->getResults();
-        $last = $results->last();
-
-        return $last?->getId();
+        return $this->getResults()->last()?->getId();
     }
 
     /**
-     * Build filters array for repository.
-     *
      * @return array<string, mixed>
      */
     private function buildFilters(): array
     {
-        $filters = [];
-
-        if (null !== $this->entityClass) {
-            $filters['entityClass'] = $this->entityClass;
-        }
-
-        if (null !== $this->entityId) {
-            $filters['entityId'] = $this->entityId;
-        }
-
-        if ([] !== $this->actions) {
-            // Repository uses single action, we'll handle multiple in PHP
-            if (1 === \count($this->actions)) {
-                $filters['action'] = $this->actions[0];
-            }
-        }
-
-        if (null !== $this->userId) {
-            $filters['userId'] = $this->userId;
-        }
-
-        if (null !== $this->transactionHash) {
-            $filters['transactionHash'] = $this->transactionHash;
-        }
+        $filters = array_filter([
+            'entityClass' => $this->entityClass,
+            'entityId' => $this->entityId,
+            'userId' => $this->userId,
+            'transactionHash' => $this->transactionHash,
+            'afterId' => $this->afterId,
+            'beforeId' => $this->beforeId,
+            'action' => 1 === count($this->actions) ? $this->actions[0] : null,
+        ], fn ($v) => null !== $v);
 
         if (null !== $this->since) {
-            $filters['from'] = $this->since instanceof \DateTimeImmutable
-                ? $this->since
-                : \DateTimeImmutable::createFromInterface($this->since);
+            $filters['from'] = \DateTimeImmutable::createFromInterface($this->since);
         }
 
         if (null !== $this->until) {
-            $filters['to'] = $this->until instanceof \DateTimeImmutable
-                ? $this->until
-                : \DateTimeImmutable::createFromInterface($this->until);
+            $filters['to'] = \DateTimeImmutable::createFromInterface($this->until);
         }
-
-        // Keyset pagination cursors
-        if (null !== $this->afterId) {
-            $filters['afterId'] = $this->afterId;
-        }
-
-        if (null !== $this->beforeId) {
-            $filters['beforeId'] = $this->beforeId;
-        }
-
-
 
         return $filters;
     }
@@ -447,13 +288,7 @@ readonly class AuditQuery
         return array_values(array_filter($logs, function (AuditLog $log) {
             $logChangedFields = $log->getChangedFields() ?? [];
 
-            foreach ($this->changedFields as $field) {
-                if (\in_array($field, $logChangedFields, true)) {
-                    return true;
-                }
-            }
-
-            return false;
+            return [] !== array_intersect($this->changedFields, $logChangedFields);
         }));
     }
 }

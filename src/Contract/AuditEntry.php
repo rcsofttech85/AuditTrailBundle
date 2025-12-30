@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rcsofttech\AuditTrailBundle\Query;
+namespace Rcsofttech\AuditTrailBundle\Contract;
 
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
@@ -15,7 +15,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 readonly class AuditEntry
 {
     public function __construct(
-        private AuditLog $log,
+        private AuditLogInterface $log,
     ) {
     }
 
@@ -79,7 +79,7 @@ readonly class AuditEntry
     /**
      * Get the underlying AuditLog entity.
      */
-    public function getAuditLog(): AuditLog
+    public function getAuditLog(): AuditLogInterface
     {
         return $this->log;
     }
@@ -88,27 +88,27 @@ readonly class AuditEntry
 
     public function isCreate(): bool
     {
-        return AuditLog::ACTION_CREATE === $this->log->getAction();
+        return AuditLogInterface::ACTION_CREATE === $this->log->getAction();
     }
 
     public function isUpdate(): bool
     {
-        return AuditLog::ACTION_UPDATE === $this->log->getAction();
+        return AuditLogInterface::ACTION_UPDATE === $this->log->getAction();
     }
 
     public function isDelete(): bool
     {
-        return AuditLog::ACTION_DELETE === $this->log->getAction();
+        return AuditLogInterface::ACTION_DELETE === $this->log->getAction();
     }
 
     public function isSoftDelete(): bool
     {
-        return AuditLog::ACTION_SOFT_DELETE === $this->log->getAction();
+        return AuditLogInterface::ACTION_SOFT_DELETE === $this->log->getAction();
     }
 
     public function isRestore(): bool
     {
-        return AuditLog::ACTION_RESTORE === $this->log->getAction();
+        return AuditLogInterface::ACTION_RESTORE === $this->log->getAction();
     }
 
     // ========== Diff Helpers ==========

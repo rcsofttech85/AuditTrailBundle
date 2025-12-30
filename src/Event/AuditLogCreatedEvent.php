@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Event;
 
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Symfony\Contracts\EventDispatcher\Event;
 
 /**
@@ -21,17 +20,17 @@ final class AuditLogCreatedEvent extends Event
     public const string NAME = 'audit_trail.audit_log_created';
 
     public function __construct(
-        private AuditLog $auditLog,
+        private \Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface $auditLog,
         private readonly object $entity,
     ) {
     }
 
-    public function getAuditLog(): AuditLog
+    public function getAuditLog(): \Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface
     {
         return $this->auditLog;
     }
 
-    public function setAuditLog(AuditLog $auditLog): void
+    public function setAuditLog(\Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface $auditLog): void
     {
         $this->auditLog = $auditLog;
     }

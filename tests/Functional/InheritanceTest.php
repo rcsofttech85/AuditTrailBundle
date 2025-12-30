@@ -12,6 +12,7 @@ use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\Dog;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpKernel\KernelInterface;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 
 #[AllowMockObjectsWithoutExpectations]
 class InheritanceTest extends KernelTestCase
@@ -29,8 +30,6 @@ class InheritanceTest extends KernelTestCase
 
     protected function tearDown(): void
     {
-        self::ensureKernelShutdown();
-        restore_exception_handler();
         parent::tearDown();
     }
 
@@ -56,6 +55,7 @@ class InheritanceTest extends KernelTestCase
     }
 
     #[AllowMockObjectsWithoutExpectations]
+    #[RunInSeparateProcess]
     public function testSTIInheritanceAudit(): void
     {
         self::bootKernel();
@@ -78,11 +78,10 @@ class InheritanceTest extends KernelTestCase
         self::assertNotNull($newValues);
         self::assertSame('Tesla Model S', $newValues['model']);
         self::assertSame(4, $newValues['doors']);
-
-        self::ensureKernelShutdown();
     }
 
     #[AllowMockObjectsWithoutExpectations]
+    #[RunInSeparateProcess]
     public function testJTIInheritanceAudit(): void
     {
         self::bootKernel();

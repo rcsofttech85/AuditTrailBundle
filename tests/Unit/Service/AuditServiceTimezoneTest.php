@@ -13,6 +13,8 @@ use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
+use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
 
 #[CoversClass(AuditService::class)]
 final class AuditServiceTimezoneTest extends TestCase
@@ -33,7 +35,8 @@ final class AuditServiceTimezoneTest extends TestCase
             $userResolver,
             $clock,
             self::createStub(TransactionIdGenerator::class),
-            [],
+            self::createStub(EntityDataExtractor::class),
+            self::createStub(MetadataCache::class),
             [],
             null,
             'Asia/Kolkata'
@@ -71,7 +74,9 @@ final class AuditServiceTimezoneTest extends TestCase
             $entityManager,
             $userResolver,
             $clock,
-            self::createStub(TransactionIdGenerator::class)
+            self::createStub(TransactionIdGenerator::class),
+            self::createStub(EntityDataExtractor::class),
+            self::createStub(MetadataCache::class)
         );
 
         $entity = new class () {

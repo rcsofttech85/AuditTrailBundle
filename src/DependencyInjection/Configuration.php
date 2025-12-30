@@ -22,7 +22,6 @@ final class Configuration implements ConfigurationInterface
             ->defaultValue(['updatedAt', 'updated_at'])
             ->end()
             ->scalarNode('table_prefix')->defaultValue('')->end()
-            ->scalarNode('table_prefix')->defaultValue('')->end()
             ->scalarNode('table_suffix')->defaultValue('')->end()
             ->scalarNode('timezone')->defaultValue('UTC')->end()
             ->arrayNode('ignored_entities')
@@ -50,7 +49,8 @@ final class Configuration implements ConfigurationInterface
             ->end()
             ->arrayNode('queue')
             ->canBeEnabled()
-            ->info("When enabled, audit logs are dispatched via Symfony Messenger. You must define a transport named 'audit_trail'.")
+            ->info('When enabled, audit logs are dispatched via Symfony Messenger. ' .
+                "You must define a transport named 'audit_trail'.")
 
             ->children()
             ->scalarNode('bus')

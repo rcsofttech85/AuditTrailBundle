@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Entity;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 
 #[ORM\Entity(repositoryClass: AuditLogRepository::class)]
@@ -20,22 +21,15 @@ use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
         new ORM\Index(name: 'transaction_idx', columns: ['transaction_hash']),
     ]
 )]
-class AuditLog
+class AuditLog implements AuditLogInterface
 {
-    public const string ACTION_CREATE = 'create';
-    public const string ACTION_UPDATE = 'update';
-    public const string ACTION_DELETE = 'delete';
-    public const string ACTION_SOFT_DELETE = 'soft_delete';
-    public const string ACTION_RESTORE = 'restore';
-    public const string ACTION_REVERT = 'revert';
-
     private const array VALID_ACTIONS = [
-        self::ACTION_CREATE,
-        self::ACTION_UPDATE,
-        self::ACTION_DELETE,
-        self::ACTION_SOFT_DELETE,
-        self::ACTION_RESTORE,
-        self::ACTION_REVERT,
+        AuditLogInterface::ACTION_CREATE,
+        AuditLogInterface::ACTION_UPDATE,
+        AuditLogInterface::ACTION_DELETE,
+        AuditLogInterface::ACTION_SOFT_DELETE,
+        AuditLogInterface::ACTION_RESTORE,
+        AuditLogInterface::ACTION_REVERT,
     ];
 
     #[ORM\Id, ORM\GeneratedValue, ORM\Column]

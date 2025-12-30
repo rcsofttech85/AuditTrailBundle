@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rcsofttech\AuditTrailBundle\Query;
+namespace Rcsofttech\AuditTrailBundle\Contract;
 
 /**
  * Iterable collection of AuditEntry objects with utility methods.
@@ -114,7 +114,7 @@ readonly class AuditEntryCollection implements \IteratorAggregate, \Countable
     {
         $grouped = [];
         foreach ($this->entries as $entry) {
-            $key = $entry->getEntityClass().':'.$entry->getEntityId();
+            $key = $entry->getEntityClass() . ':' . $entry->getEntityId();
             if (!isset($grouped[$key])) {
                 $grouped[$key] = [];
             }

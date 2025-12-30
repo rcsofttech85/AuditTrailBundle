@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Contract;
 
-use Rcsofttech\AuditTrailBundle\Query\AuditEntryCollection;
 use Rcsofttech\AuditTrailBundle\Query\AuditQuery;
 
 /**

@@ -33,7 +33,12 @@ class AuditRevertCommand extends Command
         $this
             ->addArgument('auditId', InputArgument::REQUIRED, 'The ID of the audit log entry to revert')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview changes without executing them')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Allow destructive operations (e.g. reverting a creation)')
+            ->addOption(
+                'force',
+                null,
+                InputOption::VALUE_NONE,
+                'Allow destructive operations (e.g. reverting a creation)'
+            )
             ->addOption('raw', null, InputOption::VALUE_NONE, 'Output raw result data (skip formatting)')
         ;
     }

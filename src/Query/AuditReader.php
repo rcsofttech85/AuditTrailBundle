@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Query;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditEntry;
+use Rcsofttech\AuditTrailBundle\Contract\AuditEntryCollection;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReaderInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 
