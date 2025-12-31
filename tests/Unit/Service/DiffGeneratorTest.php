@@ -23,10 +23,10 @@ class DiffGeneratorTest extends TestCase
 
         $diff = $this->generator->generate($old, $new);
 
-        $this->assertCount(1, $diff);
-        $this->assertArrayHasKey('name', $diff);
-        $this->assertEquals('John', $diff['name']['old']);
-        $this->assertEquals('Jane', $diff['name']['new']);
+        self::assertCount(1, $diff);
+        self::assertArrayHasKey('name', $diff);
+        self::assertEquals('John', $diff['name']['old']);
+        self::assertEquals('Jane', $diff['name']['new']);
     }
 
     public function testGenerateWithNormalization(): void
@@ -39,14 +39,14 @@ class DiffGeneratorTest extends TestCase
 
         // By default updatedAt is ignored
         $diff = $this->generator->generate($old, $new);
-        $this->assertCount(1, $diff);
-        $this->assertArrayHasKey('data', $diff);
-        $this->assertStringContainsString('"foo": "baz"', $diff['data']['new']);
+        self::assertCount(1, $diff);
+        self::assertArrayHasKey('data', $diff);
+        self::assertStringContainsString('"foo": "baz"', $diff['data']['new']);
 
         // Include timestamps
         $diff = $this->generator->generate($old, $new, ['include_timestamps' => true]);
-        $this->assertCount(2, $diff);
-        $this->assertEquals('2023-01-01 10:00:00 UTC', $diff['updatedAt']['old']);
+        self::assertCount(2, $diff);
+        self::assertEquals('2023-01-01 10:00:00 UTC', $diff['updatedAt']['old']);
     }
 
     public function testGenerateRaw(): void
@@ -56,8 +56,8 @@ class DiffGeneratorTest extends TestCase
 
         $diff = $this->generator->generate($old, $new, ['raw' => true]);
 
-        $this->assertIsArray($diff['data']['old']);
-        $this->assertEquals('bar', $diff['data']['old']['foo']);
+        self::assertIsArray($diff['data']['old']);
+        self::assertEquals('bar', $diff['data']['old']['foo']);
     }
 
     public function testNormalizationOfJsonString(): void
@@ -67,7 +67,7 @@ class DiffGeneratorTest extends TestCase
 
         $diff = $this->generator->generate($old, $new);
 
-        $this->assertStringContainsString('"a": 1', $diff['config']['old']);
-        $this->assertStringContainsString('"a": 2', $diff['config']['new']);
+        self::assertStringContainsString('"a": 1', $diff['config']['old']);
+        self::assertStringContainsString('"a": 2', $diff['config']['new']);
     }
 }

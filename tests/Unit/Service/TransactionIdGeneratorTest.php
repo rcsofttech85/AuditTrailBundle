@@ -14,8 +14,11 @@ class TransactionIdGeneratorTest extends TestCase
         $generator = new TransactionIdGenerator();
         $id = $generator->getTransactionId();
 
-        $this->assertNotEmpty($id);
-        $this->assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', $id);
+        self::assertNotEmpty($id);
+        self::assertMatchesRegularExpression(
+            '/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/',
+            $id
+        );
     }
 
     public function testGetTransactionIdReturnsSameIdForSameInstance(): void
@@ -24,7 +27,7 @@ class TransactionIdGeneratorTest extends TestCase
         $id1 = $generator->getTransactionId();
         $id2 = $generator->getTransactionId();
 
-        $this->assertSame($id1, $id2);
+        self::assertSame($id1, $id2);
     }
 
     public function testDifferentInstancesReturnDifferentIds(): void
@@ -32,7 +35,7 @@ class TransactionIdGeneratorTest extends TestCase
         $generator1 = new TransactionIdGenerator();
         $generator2 = new TransactionIdGenerator();
 
-        $this->assertNotSame($generator1->getTransactionId(), $generator2->getTransactionId());
+        self::assertNotSame($generator1->getTransactionId(), $generator2->getTransactionId());
     }
 
     public function testResetGeneratesNewId(): void
@@ -43,7 +46,7 @@ class TransactionIdGeneratorTest extends TestCase
         $generator->reset();
         $id2 = $generator->getTransactionId();
 
-        $this->assertNotSame($id1, $id2);
-        $this->assertNotEmpty($id2);
+        self::assertNotSame($id1, $id2);
+        self::assertNotEmpty($id2);
     }
 }

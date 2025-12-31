@@ -36,10 +36,10 @@ class AuditPurgeCommandTest extends TestCase
 
         $this->commandTester->execute([]);
 
-        $this->assertSame(1, $this->commandTester->getStatusCode());
+        self::assertSame(1, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
-        $this->assertStringContainsString('--before', $output);
-        $this->assertStringContainsString('required', $output);
+        self::assertStringContainsString('--before', $output);
+        self::assertStringContainsString('required', $output);
     }
 
     public function testPurgeWithInvalidDate(): void
@@ -56,8 +56,8 @@ class AuditPurgeCommandTest extends TestCase
             '--before' => 'not-a-valid-date-format-xyz',
         ]);
 
-        $this->assertSame(1, $this->commandTester->getStatusCode());
-        $this->assertStringContainsString('Invalid date format', $this->normalizeOutput());
+        self::assertSame(1, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Invalid date format', $this->normalizeOutput());
     }
 
     public function testPurgeWithNoLogsToDelete(): void
@@ -65,7 +65,7 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('countOlderThan')
-            ->with($this->isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(\DateTimeInterface::class))
             ->willReturn(0);
 
         $this->repository
@@ -76,8 +76,8 @@ class AuditPurgeCommandTest extends TestCase
             '--before' => '30 days ago',
         ]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
-        $this->assertStringContainsString('No audit logs', $this->normalizeOutput());
+        self::assertSame(0, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('No audit logs', $this->normalizeOutput());
     }
 
     public function testPurgeDryRun(): void
@@ -85,7 +85,7 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('countOlderThan')
-            ->with($this->isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(\DateTimeInterface::class))
             ->willReturn(100);
 
         $this->repository
@@ -97,10 +97,10 @@ class AuditPurgeCommandTest extends TestCase
             '--dry-run' => true,
         ]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
+        self::assertSame(0, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
-        $this->assertStringContainsString('100', $output);
-        $this->assertStringContainsString('Dry run', $output);
+        self::assertStringContainsString('100', $output);
+        self::assertStringContainsString('Dry run', $output);
     }
 
     public function testPurgeWithForce(): void
@@ -108,13 +108,13 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('countOlderThan')
-            ->with($this->isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(\DateTimeInterface::class))
             ->willReturn(50);
 
         $this->repository
             ->expects($this->once())
             ->method('deleteOldLogs')
-            ->with($this->isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(\DateTimeInterface::class))
             ->willReturn(50);
 
         $this->commandTester->execute([
@@ -122,10 +122,10 @@ class AuditPurgeCommandTest extends TestCase
             '--force' => true,
         ]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
+        self::assertSame(0, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
-        $this->assertStringContainsString('Successfully deleted', $output);
-        $this->assertStringContainsString('50', $output);
+        self::assertStringContainsString('Successfully deleted', $output);
+        self::assertStringContainsString('50', $output);
     }
 
     public function testPurgeCancelledByUser(): void
@@ -133,7 +133,7 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('countOlderThan')
-            ->with($this->isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(\DateTimeInterface::class))
             ->willReturn(50);
 
         $this->repository
@@ -146,8 +146,8 @@ class AuditPurgeCommandTest extends TestCase
             '--before' => '30 days ago',
         ]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
-        $this->assertStringContainsString('Operation cancelled', $this->normalizeOutput());
+        self::assertSame(0, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Operation cancelled', $this->normalizeOutput());
     }
 
     public function testPurgeConfirmedByUser(): void
@@ -155,13 +155,13 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('countOlderThan')
-            ->with($this->isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(\DateTimeInterface::class))
             ->willReturn(75);
 
         $this->repository
             ->expects($this->once())
             ->method('deleteOldLogs')
-            ->with($this->isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(\DateTimeInterface::class))
             ->willReturn(75);
 
         $this->commandTester->setInputs(['yes']);
@@ -170,10 +170,10 @@ class AuditPurgeCommandTest extends TestCase
             '--before' => '60 days ago',
         ]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
+        self::assertSame(0, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
-        $this->assertStringContainsString('Successfully deleted', $output);
-        $this->assertStringContainsString('75', $output);
+        self::assertStringContainsString('Successfully deleted', $output);
+        self::assertStringContainsString('75', $output);
     }
 
     public function testPurgeWithSpecificDateFormat(): void
@@ -181,7 +181,7 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('countOlderThan')
-            ->with($this->callback(function (\DateTimeInterface $date) {
+            ->with(self::callback(function (\DateTimeInterface $date) {
                 return '2024-01-01' === $date->format('Y-m-d');
             }))
             ->willReturn(25);
@@ -189,7 +189,7 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('deleteOldLogs')
-            ->with($this->isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(\DateTimeInterface::class))
             ->willReturn(25);
 
         $this->commandTester->execute([
@@ -197,7 +197,7 @@ class AuditPurgeCommandTest extends TestCase
             '--force' => true,
         ]);
 
-        $this->assertSame(0, $this->commandTester->getStatusCode());
+        self::assertSame(0, $this->commandTester->getStatusCode());
     }
 
     private function normalizeOutput(): string

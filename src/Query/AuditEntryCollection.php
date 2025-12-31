@@ -114,7 +114,7 @@ readonly class AuditEntryCollection implements \IteratorAggregate, \Countable
     {
         $grouped = [];
         foreach ($this->entries as $entry) {
-            $key = $entry->getEntityClass().':'.$entry->getEntityId();
+            $key = $entry->getEntityClass() . ':' . $entry->getEntityId();
             if (!isset($grouped[$key])) {
                 $grouped[$key] = [];
             }
@@ -156,6 +156,36 @@ readonly class AuditEntryCollection implements \IteratorAggregate, \Countable
     public function toArray(): array
     {
         return $this->entries;
+    }
+
+    /**
+     * Find the first entry matching a predicate.
+     *
+     * @param callable(AuditEntry): bool $predicate
+     */
+    public function find(callable $predicate): ?AuditEntry
+    {
+        return array_find($this->entries, $predicate);
+    }
+
+    /**
+     * Check if any entry matches a predicate.
+     *
+     * @param callable(AuditEntry): bool $predicate
+     */
+    public function any(callable $predicate): bool
+    {
+        return array_any($this->entries, $predicate);
+    }
+
+    /**
+     * Check if all entries match a predicate.
+     *
+     * @param callable(AuditEntry): bool $predicate
+     */
+    public function all(callable $predicate): bool
+    {
+        return array_all($this->entries, $predicate);
     }
 
     /**

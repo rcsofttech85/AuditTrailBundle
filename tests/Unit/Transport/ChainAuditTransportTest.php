@@ -11,28 +11,28 @@ class ChainAuditTransportTest extends TestCase
 {
     public function testSupportsReturnsTrueIfAnyTransportSupportsPhase(): void
     {
-        $t1 = $this->createStub(AuditTransportInterface::class);
+        $t1 = self::createStub(AuditTransportInterface::class);
         $t1->method('supports')->willReturnMap([['on_flush', true]]);
 
-        $t2 = $this->createStub(AuditTransportInterface::class);
+        $t2 = self::createStub(AuditTransportInterface::class);
         $t2->method('supports')->willReturnMap([['on_flush', false]]);
 
         $chain = new ChainAuditTransport([$t1, $t2]);
 
-        $this->assertTrue($chain->supports('on_flush'), 'Chain should support phase if at least one child supports it');
+        self::assertTrue($chain->supports('on_flush'), 'Chain should support phase if at least one child supports it');
     }
 
     public function testSupportsReturnsFalseIfNoTransportSupportsPhase(): void
     {
-        $t1 = $this->createStub(AuditTransportInterface::class);
+        $t1 = self::createStub(AuditTransportInterface::class);
         $t1->method('supports')->willReturnMap([['on_flush', false]]);
 
-        $t2 = $this->createStub(AuditTransportInterface::class);
+        $t2 = self::createStub(AuditTransportInterface::class);
         $t2->method('supports')->willReturnMap([['on_flush', false]]);
 
         $chain = new ChainAuditTransport([$t1, $t2]);
 
-        $this->assertFalse($chain->supports('on_flush'));
+        self::assertFalse($chain->supports('on_flush'));
     }
 
     public function testSendOnlyCallsTransportsThatSupportThePhase(): void

@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditEntryCollection;
 use Rcsofttech\AuditTrailBundle\Query\AuditQuery;
@@ -36,7 +37,7 @@ class AuditReaderTest extends TestCase
         $query = $this->reader->createQuery();
 
         // Verify the query has expected methods (proves it's an AuditQuery)
-        $this->assertSame(AuditQuery::class, $query::class);
+        self::assertSame(AuditQuery::class, $query::class);
     }
 
     public function testForEntityReturnsPreFilteredQuery(): void
@@ -45,11 +46,11 @@ class AuditReaderTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
+                self::callback(function (array $filters) {
                     return 'App\\Entity\\User' === $filters['entityClass']
                         && '123' === $filters['entityId'];
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
@@ -62,10 +63,10 @@ class AuditReaderTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
+                self::callback(function (array $filters) {
                     return 42 === $filters['userId'];
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
@@ -78,10 +79,10 @@ class AuditReaderTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
+                self::callback(function (array $filters) {
                     return 'abc123' === $filters['transactionHash'];
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
@@ -112,17 +113,17 @@ class AuditReaderTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) use ($entity) {
+                self::callback(function (array $filters) use ($entity) {
                     return $entity::class === $filters['entityClass']
                         && '42' === $filters['entityId'];
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
         $result = $this->reader->getHistoryFor($entity);
 
-        $this->assertSame(AuditEntryCollection::class, $result::class);
+        self::assertSame(AuditEntryCollection::class, $result::class);
     }
 
     public function testGetHistoryForReturnsEmptyCollectionWhenNoId(): void
@@ -147,8 +148,8 @@ class AuditReaderTest extends TestCase
 
         $result = $this->reader->getHistoryFor($entity);
 
-        $this->assertSame(AuditEntryCollection::class, $result::class);
-        $this->assertTrue($result->isEmpty());
+        self::assertSame(AuditEntryCollection::class, $result::class);
+        self::assertTrue($result->isEmpty());
     }
 
     public function testGetLatestForReturnsLatestEntry(): void
@@ -174,7 +175,7 @@ class AuditReaderTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass($entity::class);
         $log->setEntityId('42');
-        $log->setAction(AuditLog::ACTION_UPDATE);
+        $log->setAction(AuditLogInterface::ACTION_UPDATE);
 
         $this->repository
             ->expects($this->once())
@@ -183,8 +184,8 @@ class AuditReaderTest extends TestCase
 
         $result = $this->reader->getLatestFor($entity);
 
-        $this->assertNotNull($result);
-        $this->assertTrue($result->isUpdate());
+        self::assertNotNull($result);
+        self::assertTrue($result->isUpdate());
     }
 
     public function testHasHistoryForReturnsTrue(): void
@@ -210,14 +211,14 @@ class AuditReaderTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass($entity::class);
         $log->setEntityId('42');
-        $log->setAction(AuditLog::ACTION_CREATE);
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
 
         $this->repository
             ->expects($this->once())
             ->method('findWithFilters')
             ->willReturn([$log]);
 
-        $this->assertTrue($this->reader->hasHistoryFor($entity));
+        self::assertTrue($this->reader->hasHistoryFor($entity));
     }
 
     public function testHasHistoryForReturnsFalse(): void
@@ -245,7 +246,7 @@ class AuditReaderTest extends TestCase
             ->method('findWithFilters')
             ->willReturn([]);
 
-        $this->assertFalse($this->reader->hasHistoryFor($entity));
+        self::assertFalse($this->reader->hasHistoryFor($entity));
     }
 
     public function testGetTimelineForGroupsByTransaction(): void
@@ -271,19 +272,19 @@ class AuditReaderTest extends TestCase
         $log1 = new AuditLog();
         $log1->setEntityClass($entity::class);
         $log1->setEntityId('42');
-        $log1->setAction(AuditLog::ACTION_CREATE);
+        $log1->setAction(AuditLogInterface::ACTION_CREATE);
         $log1->setTransactionHash('tx1');
 
         $log2 = new AuditLog();
         $log2->setEntityClass($entity::class);
         $log2->setEntityId('42');
-        $log2->setAction(AuditLog::ACTION_UPDATE);
+        $log2->setAction(AuditLogInterface::ACTION_UPDATE);
         $log2->setTransactionHash('tx1');
 
         $log3 = new AuditLog();
         $log3->setEntityClass($entity::class);
         $log3->setEntityId('42');
-        $log3->setAction(AuditLog::ACTION_UPDATE);
+        $log3->setAction(AuditLogInterface::ACTION_UPDATE);
         $log3->setTransactionHash('tx2');
 
         $this->repository
@@ -293,9 +294,9 @@ class AuditReaderTest extends TestCase
 
         $timeline = $this->reader->getTimelineFor($entity);
 
-        $this->assertArrayHasKey('tx1', $timeline);
-        $this->assertArrayHasKey('tx2', $timeline);
-        $this->assertCount(2, $timeline['tx1']);
-        $this->assertCount(1, $timeline['tx2']);
+        self::assertArrayHasKey('tx1', $timeline);
+        self::assertArrayHasKey('tx2', $timeline);
+        self::assertCount(2, $timeline['tx1']);
+        self::assertCount(1, $timeline['tx2']);
     }
 }

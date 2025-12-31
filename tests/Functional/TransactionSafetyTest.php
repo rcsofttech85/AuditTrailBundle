@@ -10,6 +10,7 @@ use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpKernel\KernelInterface;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 
 #[AllowMockObjectsWithoutExpectations]
 class TransactionSafetyTest extends KernelTestCase
@@ -35,7 +36,7 @@ class TransactionSafetyTest extends KernelTestCase
     }
 
     /**
-     * @param array<string, mixed> $options
+     * @param array<mixed> $options
      */
     protected static function createKernel(array $options = []): KernelInterface
     {
@@ -70,6 +71,7 @@ class TransactionSafetyTest extends KernelTestCase
         return $em;
     }
 
+    #[RunInSeparateProcess]
     public function testAtomicModeRollsBackDataOnTransportFailure(): void
     {
         // Configure for Atomic Mode (defer = false)
@@ -100,21 +102,22 @@ class TransactionSafetyTest extends KernelTestCase
                 $em->flush();
             } catch (\RuntimeException $e) {
                 $exceptionThrown = true;
-                $this->assertEquals('Transport failed intentionally.', $e->getMessage());
+                self::assertEquals('Transport failed intentionally.', $e->getMessage());
             }
 
-            $this->assertTrue($exceptionThrown, 'Flush should have failed due to transport exception.');
+            self::assertTrue($exceptionThrown, 'Flush should have failed due to transport exception.');
 
             // Verify Entity is NOT in Database (Rollback happened)
             // Verify Entity is NOT in Database (Rollback happened)
             $em = $this->getFreshEntityManager($options);
             $savedEntity = $em->getRepository(TestEntity::class)->findOneBy(['name' => 'Atomic Test']);
-            $this->assertNull($savedEntity, 'Entity should NOT be saved in Atomic mode if transport fails.');
+            self::assertNull($savedEntity, 'Entity should NOT be saved in Atomic mode if transport fails.');
         } catch (\Exception $e) {
             throw $e;
         }
     }
 
+    #[RunInSeparateProcess]
     public function testDeferredModePersistsDataEvenIfTransportFails(): void
     {
         // Configure for Deferred Mode (defer = true)
@@ -145,12 +148,13 @@ class TransactionSafetyTest extends KernelTestCase
             // Verify Entity IS in Database (Commit happened)
             $em = $this->getFreshEntityManager($options);
             $savedEntity = $em->getRepository(TestEntity::class)->findOneBy(['name' => 'Deferred Test']);
-            $this->assertNotNull($savedEntity, 'Entity SHOULD be saved in Deferred mode even if transport fails.');
+            self::assertNotNull($savedEntity, 'Entity SHOULD be saved in Deferred mode even if transport fails.');
         } catch (\Exception $e) {
             throw $e;
         }
     }
 
+    #[RunInSeparateProcess]
     public function testDeferredModeWithFailOnErrorThrowsButPersistsData(): void
     {
         // Configure for Deferred Mode with fail_on_transport_error = true
@@ -180,15 +184,18 @@ class TransactionSafetyTest extends KernelTestCase
                 $em->flush();
             } catch (\RuntimeException $e) {
                 $exceptionThrown = true;
-                $this->assertEquals('Transport failed intentionally.', $e->getMessage());
+                self::assertEquals('Transport failed intentionally.', $e->getMessage());
             }
 
-            $this->assertTrue($exceptionThrown, 'Flush should have thrown transport exception.');
+            self::assertTrue($exceptionThrown, 'Flush should have thrown transport exception.');
 
             // Verify Entity IS in Database (data was committed before transport error)
             $em = $this->getFreshEntityManager($options);
             $savedEntity = $em->getRepository(TestEntity::class)->findOneBy(['name' => 'Deferred Fail Test']);
-            $this->assertNotNull($savedEntity, 'Entity SHOULD be saved in Deferred mode even if transport fails and exception is thrown.');
+            self::assertNotNull(
+                $savedEntity,
+                'Entity SHOULD be saved in Deferred mode even if transport fails and exception is thrown.'
+            );
         } catch (\Exception $e) {
             throw $e;
         }

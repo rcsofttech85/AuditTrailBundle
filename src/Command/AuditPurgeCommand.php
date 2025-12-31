@@ -80,7 +80,7 @@ HELP
         $this->displaySummary($io, $count, $before);
 
         // Handle dry-run mode
-        if ($input->getOption('dry-run')) {
+        if ((bool) $input->getOption('dry-run')) {
             $io->warning('Dry run mode - no logs were deleted.');
 
             return Command::SUCCESS;
@@ -140,7 +140,7 @@ HELP
     private function confirmDeletion(InputInterface $input, SymfonyStyle $io, int $count): bool
     {
         // Skip confirmation if --force is used
-        if ($input->getOption('force')) {
+        if ((bool) $input->getOption('force')) {
             return true;
         }
 

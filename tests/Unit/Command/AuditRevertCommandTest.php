@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditRevertCommand;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
-use Rcsofttech\AuditTrailBundle\Service\AuditReverterInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -54,9 +54,9 @@ class AuditRevertCommandTest extends TestCase
 
         $output = $this->commandTester->getDisplay();
         $normalizedOutput = (string) preg_replace('/\s+/', ' ', $output);
-        $this->assertStringContainsString('Revert successful', $normalizedOutput);
-        $this->assertStringContainsString('name: Old Name', $normalizedOutput);
-        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Revert successful', $normalizedOutput);
+        self::assertStringContainsString('name: Old Name', $normalizedOutput);
+        self::assertEquals(0, $this->commandTester->getStatusCode());
     }
 
     public function testExecuteRevertDryRun(): void
@@ -83,8 +83,8 @@ class AuditRevertCommandTest extends TestCase
 
         $output = $this->commandTester->getDisplay();
         $normalizedOutput = (string) preg_replace('/\s+/', ' ', $output);
-        $this->assertStringContainsString('DRY-RUN', $normalizedOutput);
-        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('DRY-RUN', $normalizedOutput);
+        self::assertEquals(0, $this->commandTester->getStatusCode());
     }
 
     public function testExecuteRevertForce(): void
@@ -109,7 +109,7 @@ class AuditRevertCommandTest extends TestCase
             '--force' => true,
         ]);
 
-        $this->assertEquals(0, $this->commandTester->getStatusCode());
+        self::assertEquals(0, $this->commandTester->getStatusCode());
     }
 
     public function testExecuteAuditNotFound(): void
@@ -123,8 +123,8 @@ class AuditRevertCommandTest extends TestCase
 
         $output = $this->commandTester->getDisplay();
         $normalizedOutput = (string) preg_replace('/\s+/', ' ', $output);
-        $this->assertStringContainsString('Audit log with ID 999 not found', $normalizedOutput);
-        $this->assertEquals(1, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Audit log with ID 999 not found', $normalizedOutput);
+        self::assertEquals(1, $this->commandTester->getStatusCode());
     }
 
     public function testExecuteRevertFailure(): void
@@ -146,7 +146,7 @@ class AuditRevertCommandTest extends TestCase
         $this->commandTester->execute(['auditId' => 123]);
 
         $output = $this->commandTester->getDisplay();
-        $this->assertStringContainsString('Revert failed', $output);
-        $this->assertEquals(1, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Revert failed', $output);
+        self::assertEquals(1, $this->commandTester->getStatusCode());
     }
 }

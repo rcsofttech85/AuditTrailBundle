@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditQuery;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
@@ -27,10 +28,10 @@ class AuditQueryTest extends TestCase
     {
         $query1 = new AuditQuery($this->repository);
         $query2 = $query1->entity('App\\Entity\\User');
-        $query3 = $query2->action(AuditLog::ACTION_CREATE);
+        $query3 = $query2->action(AuditLogInterface::ACTION_CREATE);
 
-        $this->assertNotSame($query1, $query2);
-        $this->assertNotSame($query2, $query3);
+        self::assertNotSame($query1, $query2);
+        self::assertNotSame($query2, $query3);
     }
 
     public function testEntityFilter(): void
@@ -39,11 +40,11 @@ class AuditQueryTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
+                self::callback(function (array $filters) {
                     return 'App\\Entity\\User' === $filters['entityClass']
                         && '123' === $filters['entityId'];
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
@@ -57,15 +58,15 @@ class AuditQueryTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
-                    return AuditLog::ACTION_UPDATE === $filters['action'];
+                self::callback(function (array $filters) {
+                    return AuditLogInterface::ACTION_UPDATE === $filters['action'];
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
         $query = new AuditQuery($this->repository);
-        $query->action(AuditLog::ACTION_UPDATE)->getResults();
+        $query->action(AuditLogInterface::ACTION_UPDATE)->getResults();
     }
 
     public function testUserFilter(): void
@@ -74,10 +75,10 @@ class AuditQueryTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
+                self::callback(function (array $filters) {
                     return 42 === $filters['userId'];
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
@@ -91,10 +92,10 @@ class AuditQueryTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
+                self::callback(function (array $filters) {
                     return 'abc123' === $filters['transactionHash'];
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
@@ -111,10 +112,11 @@ class AuditQueryTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) use ($from, $to) {
-                    return $filters['from'] == $from && $filters['to'] == $to;
+                self::callback(function (array $filters) use ($from, $to) {
+                    return $filters['from']->getTimestamp() === $from->getTimestamp()
+                        && $filters['to']->getTimestamp() === $to->getTimestamp();
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
@@ -131,10 +133,11 @@ class AuditQueryTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) use ($from, $to) {
-                    return $filters['from'] == $from && $filters['to'] == $to;
+                self::callback(function (array $filters) use ($from, $to) {
+                    return $filters['from']->getTimestamp() === $from->getTimestamp()
+                        && $filters['to']->getTimestamp() === $to->getTimestamp();
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
@@ -148,7 +151,7 @@ class AuditQueryTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->anything(),
+                self::anything(),
                 50
             )
             ->willReturn([]);
@@ -163,10 +166,10 @@ class AuditQueryTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
+                self::callback(function (array $filters) {
                     return 100 === $filters['afterId'];
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
@@ -180,10 +183,10 @@ class AuditQueryTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
+                self::callback(function (array $filters) {
                     return 50 === $filters['beforeId'];
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
@@ -197,10 +200,10 @@ class AuditQueryTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
-                    return AuditLog::ACTION_CREATE === $filters['action'];
+                self::callback(function (array $filters) {
+                    return AuditLogInterface::ACTION_CREATE === $filters['action'];
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
@@ -214,10 +217,10 @@ class AuditQueryTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
-                    return AuditLog::ACTION_UPDATE === $filters['action'];
+                self::callback(function (array $filters) {
+                    return AuditLogInterface::ACTION_UPDATE === $filters['action'];
                 }),
-                $this->anything()
+                self::anything()
             )
             ->willReturn([]);
 
@@ -230,7 +233,7 @@ class AuditQueryTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass('App\\Entity\\User');
         $log->setEntityId('1');
-        $log->setAction(AuditLog::ACTION_CREATE);
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
 
         $this->repository
             ->expects($this->once())
@@ -240,10 +243,10 @@ class AuditQueryTest extends TestCase
         $query = new AuditQuery($this->repository);
         $results = $query->getResults();
 
-        $this->assertCount(1, $results);
+        self::assertCount(1, $results);
         $first = $results->first();
-        $this->assertNotNull($first);
-        $this->assertTrue($first->isCreate());
+        self::assertNotNull($first);
+        self::assertTrue($first->isCreate());
     }
 
     public function testGetFirstResult(): void
@@ -251,19 +254,19 @@ class AuditQueryTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass('App\\Entity\\User');
         $log->setEntityId('1');
-        $log->setAction(AuditLog::ACTION_CREATE);
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
 
         $this->repository
             ->expects($this->once())
             ->method('findWithFilters')
-            ->with($this->anything(), 1)
+            ->with(self::anything(), 1)
             ->willReturn([$log]);
 
         $query = new AuditQuery($this->repository);
         $result = $query->getFirstResult();
 
-        $this->assertNotNull($result);
-        $this->assertTrue($result->isCreate());
+        self::assertNotNull($result);
+        self::assertTrue($result->isCreate());
     }
 
     public function testGetFirstResultReturnsNullWhenEmpty(): void
@@ -276,7 +279,7 @@ class AuditQueryTest extends TestCase
         $query = new AuditQuery($this->repository);
         $result = $query->getFirstResult();
 
-        $this->assertNull($result);
+        self::assertNull($result);
     }
 
     public function testExists(): void
@@ -284,7 +287,7 @@ class AuditQueryTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass('App\\Entity\\User');
         $log->setEntityId('1');
-        $log->setAction(AuditLog::ACTION_CREATE);
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
 
         $this->repository
             ->expects($this->once())
@@ -293,7 +296,7 @@ class AuditQueryTest extends TestCase
 
         $query = new AuditQuery($this->repository);
 
-        $this->assertTrue($query->exists());
+        self::assertTrue($query->exists());
     }
 
     public function testExistsReturnsFalseWhenEmpty(): void
@@ -305,7 +308,7 @@ class AuditQueryTest extends TestCase
 
         $query = new AuditQuery($this->repository);
 
-        $this->assertFalse($query->exists());
+        self::assertFalse($query->exists());
     }
 
     public function testChangedFieldFilter(): void
@@ -313,13 +316,13 @@ class AuditQueryTest extends TestCase
         $log1 = new AuditLog();
         $log1->setEntityClass('App\\Entity\\User');
         $log1->setEntityId('1');
-        $log1->setAction(AuditLog::ACTION_UPDATE);
+        $log1->setAction(AuditLogInterface::ACTION_UPDATE);
         $log1->setChangedFields(['name', 'email']);
 
         $log2 = new AuditLog();
         $log2->setEntityClass('App\\Entity\\User');
         $log2->setEntityId('2');
-        $log2->setAction(AuditLog::ACTION_UPDATE);
+        $log2->setAction(AuditLogInterface::ACTION_UPDATE);
         $log2->setChangedFields(['password']);
 
         $this->repository
@@ -331,10 +334,10 @@ class AuditQueryTest extends TestCase
         $results = $query->changedField('email')->getResults();
 
         // Only log1 has 'email' in changed fields
-        $this->assertCount(1, $results);
+        self::assertCount(1, $results);
         $first = $results->first();
-        $this->assertNotNull($first);
-        $this->assertSame('1', $first->getEntityId());
+        self::assertNotNull($first);
+        self::assertSame('1', $first->getEntityId());
     }
 
     public function testChainedFilters(): void
@@ -343,9 +346,9 @@ class AuditQueryTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                $this->callback(function (array $filters) {
+                self::callback(function (array $filters) {
                     return 'App\\Entity\\User' === $filters['entityClass']
-                        && AuditLog::ACTION_UPDATE === $filters['action']
+                        && AuditLogInterface::ACTION_UPDATE === $filters['action']
                         && 42 === $filters['userId'];
                 }),
                 50
@@ -366,7 +369,7 @@ class AuditQueryTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass('App\\Entity\\User');
         $log->setEntityId('1');
-        $log->setAction(AuditLog::ACTION_CREATE);
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
 
         // Use reflection to set the ID
         $reflection = new \ReflectionClass($log);
@@ -381,7 +384,7 @@ class AuditQueryTest extends TestCase
         $query = new AuditQuery($this->repository);
         $cursor = $query->getNextCursor();
 
-        $this->assertSame(42, $cursor);
+        self::assertSame(42, $cursor);
     }
 
     public function testGetNextCursorReturnsNullWhenEmpty(): void
@@ -394,6 +397,6 @@ class AuditQueryTest extends TestCase
         $query = new AuditQuery($this->repository);
         $cursor = $query->getNextCursor();
 
-        $this->assertNull($cursor);
+        self::assertNull($cursor);
     }
 }

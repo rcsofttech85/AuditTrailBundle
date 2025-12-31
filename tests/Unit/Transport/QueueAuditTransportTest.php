@@ -4,6 +4,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
@@ -20,7 +21,7 @@ class QueueAuditTransportTest extends TestCase
     protected function setUp(): void
     {
         $this->bus = $this->createMock(MessageBusInterface::class);
-        $this->logger = $this->createStub(LoggerInterface::class);
+        $this->logger = self::createStub(LoggerInterface::class);
         $this->transport = new QueueAuditTransport($this->bus, $this->logger);
     }
 
@@ -29,15 +30,15 @@ class QueueAuditTransportTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass('TestEntity');
         $log->setEntityId('1');
-        $log->setAction('create');
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
         $log->setCreatedAt(new \DateTimeImmutable());
 
         $this->bus->expects($this->once())
             ->method('dispatch')
-            ->with($this->callback(function (AuditLogMessage $message) {
-                $this->assertSame('1', $message->entityId);
-                $this->assertSame('TestEntity', $message->entityClass);
-                $this->assertSame('create', $message->action);
+            ->with(self::callback(function (AuditLogMessage $message) {
+                self::assertSame('1', $message->entityId);
+                self::assertSame('TestEntity', $message->entityClass);
+                self::assertSame('create', $message->action);
 
                 return true;
             }))

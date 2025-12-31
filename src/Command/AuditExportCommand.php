@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Command;
 
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+use Rcsofttech\AuditTrailBundle\Service\AuditExporter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -19,15 +20,16 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class AuditExportCommand extends Command
 {
-    private const FORMAT_JSON = 'json';
-    private const FORMAT_CSV = 'csv';
-    private const VALID_FORMATS = [self::FORMAT_JSON, self::FORMAT_CSV];
+    private const string FORMAT_JSON = 'json';
+    private const string FORMAT_CSV = 'csv';
+    private const array VALID_FORMATS = [self::FORMAT_JSON, self::FORMAT_CSV];
 
-    private const DEFAULT_LIMIT = 1000;
-    private const MAX_LIMIT = 100000;
+    private const int DEFAULT_LIMIT = 1000;
+    private const int MAX_LIMIT = 100000;
 
     public function __construct(
         private readonly AuditLogRepository $repository,
+        private readonly AuditExporter $exporter,
     ) {
         parent::__construct();
     }
@@ -96,26 +98,19 @@ HELP
     {
         $io = new SymfonyStyle($input, $output);
 
-        // Validate format
         $format = $this->parseFormat($input, $io);
-        if (null === $format) {
-            return Command::FAILURE;
-        }
-
-        // Validate limit
         $limit = $this->parseLimit($input, $io);
-        if (null === $limit) {
+
+        if (null === $format || null === $limit) {
             return Command::FAILURE;
         }
 
-        // Build filters
         $filters = $this->buildFilters($input, $io);
+
         if (null === $filters) {
             return Command::FAILURE;
         }
 
-        // Fetch audit logs
-        /** @var array<AuditLog> $audits */
         $audits = $this->repository->findWithFilters($filters, $limit);
 
         if ([] === $audits) {
@@ -126,11 +121,9 @@ HELP
 
         $io->note(sprintf('Found %s audit logs', number_format(count($audits))));
 
-        // Format data
-        $data = $this->formatAudits($audits, $format);
-
-        // Write output
+        $data = $this->exporter->formatAudits($audits, $format);
         $outputFile = $input->getOption('output');
+
         if (is_string($outputFile) && '' !== $outputFile) {
             $this->writeToFile($io, $outputFile, $data, count($audits));
         } else {
@@ -142,15 +135,10 @@ HELP
 
     private function parseFormat(InputInterface $input, SymfonyStyle $io): ?string
     {
-        $formatOption = $input->getOption('format');
-        $format = is_string($formatOption) ? strtolower($formatOption) : self::FORMAT_JSON;
+        $format = strtolower((string) $input->getOption('format'));
 
         if (!in_array($format, self::VALID_FORMATS, true)) {
-            $io->error(sprintf(
-                'Invalid format "%s". Valid formats: %s',
-                $format,
-                implode(', ', self::VALID_FORMATS)
-            ));
+            $io->error(sprintf('Invalid format "%s". Valid: %s', $format, implode(', ', self::VALID_FORMATS)));
 
             return null;
         }
@@ -160,8 +148,7 @@ HELP
 
     private function parseLimit(InputInterface $input, SymfonyStyle $io): ?int
     {
-        $limitOption = $input->getOption('limit');
-        $limit = is_numeric($limitOption) ? (int) $limitOption : self::DEFAULT_LIMIT;
+        $limit = (int) $input->getOption('limit');
 
         if ($limit < 1 || $limit > self::MAX_LIMIT) {
             $io->error(sprintf('Limit must be between 1 and %d', self::MAX_LIMIT));
@@ -173,145 +160,93 @@ HELP
     }
 
     /**
-     * @return array{entityClass?: string, action?: string, from?: \DateTimeImmutable, to?: \DateTimeImmutable}|null
+     * @return array<string, mixed>|null
      */
     private function buildFilters(InputInterface $input, SymfonyStyle $io): ?array
     {
         $filters = [];
 
-        if ($entity = $input->getOption('entity')) {
-            if (is_string($entity)) {
-                $filters['entityClass'] = $entity;
-            }
+        $this->addEntityFilter($filters, $input);
+
+        if (!$this->addActionFilter($filters, $input, $io)) {
+            return null;
         }
 
-        if ($action = $input->getOption('action')) {
-            if (is_string($action)) {
-                $availableActions = $this->getAvailableActions();
-                if (!in_array($action, $availableActions, true)) {
-                    $io->error(sprintf(
-                        'Invalid action "%s". Available actions: %s',
-                        $action,
-                        implode(', ', $availableActions)
-                    ));
-
-                    return null;
-                }
-                $filters['action'] = $action;
-            }
+        if (!$this->addDateFilter($filters, $input, 'from', $io)) {
+            return null;
         }
 
-        if ($from = $input->getOption('from')) {
-            if (is_string($from)) {
-                try {
-                    $filters['from'] = new \DateTimeImmutable($from);
-                } catch (\Exception $e) {
-                    $io->error(sprintf('Invalid "from" date: %s. Error: %s', $from, $e->getMessage()));
-
-                    return null;
-                }
-            }
-        }
-
-        if ($to = $input->getOption('to')) {
-            if (is_string($to)) {
-                try {
-                    $filters['to'] = new \DateTimeImmutable($to);
-                } catch (\Exception $e) {
-                    $io->error(sprintf('Invalid "to" date: %s. Error: %s', $to, $e->getMessage()));
-
-                    return null;
-                }
-            }
+        if (!$this->addDateFilter($filters, $input, 'to', $io)) {
+            return null;
         }
 
         return $filters;
     }
 
     /**
-     * @param array<AuditLog> $audits
+     * @param array<string, mixed> $filters
      */
-    private function formatAudits(array $audits, string $format): string
+    private function addEntityFilter(array &$filters, InputInterface $input): void
     {
-        $rows = $this->convertAuditsToArray($audits);
-
-        return match ($format) {
-            self::FORMAT_JSON => $this->formatAsJson($rows),
-            self::FORMAT_CSV => $this->formatAsCsv($rows),
-            default => throw new \InvalidArgumentException(sprintf('Unsupported format: %s', $format)),
-        };
+        $entity = $input->getOption('entity');
+        if (is_string($entity) && '' !== $entity) {
+            $filters['entityClass'] = $entity;
+        }
     }
 
     /**
-     * @param array<AuditLog> $audits
-     *
-     * @return array<array<string, mixed>>
+     * @param array<string, mixed> $filters
      */
-    private function convertAuditsToArray(array $audits): array
+    private function addActionFilter(array &$filters, InputInterface $input, SymfonyStyle $io): bool
     {
-        $rows = [];
-
-        foreach ($audits as $audit) {
-            $rows[] = [
-                'id' => $audit->getId(),
-                'entity_class' => $audit->getEntityClass(),
-                'entity_id' => $audit->getEntityId(),
-                'action' => $audit->getAction(),
-                'old_values' => $audit->getOldValues(),
-                'new_values' => $audit->getNewValues(),
-                'changed_fields' => $audit->getChangedFields(),
-                'user_id' => $audit->getUserId(),
-                'username' => $audit->getUsername(),
-                'ip_address' => $audit->getIpAddress(),
-                'user_agent' => $audit->getUserAgent(),
-                'created_at' => $audit->getCreatedAt()->format(\DateTimeInterface::ATOM),
-            ];
-        }
-
-        return $rows;
-    }
-
-    /**
-     * @param array<array<string, mixed>> $rows
-     */
-    private function formatAsJson(array $rows): string
-    {
-        return json_encode($rows, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
-    }
-
-    /**
-     * @param array<array<string, mixed>> $rows
-     */
-    private function formatAsCsv(array $rows): string
-    {
-        if ([] === $rows) {
-            return '';
-        }
-
-        $output = fopen('php://temp', 'r+');
-        if (false === $output) {
-            throw new \RuntimeException('Failed to open temp stream for CSV generation');
-        }
-
-        try {
-            // Write headers
-            fputcsv($output, array_keys($rows[0]), ',', '"', '\\');
-
-            // Write data rows
-            foreach ($rows as $row) {
-                $csvRow = array_map(
-                    fn ($value) => is_array($value) ? json_encode($value, JSON_THROW_ON_ERROR) : (string) $value,
-                    $row
-                );
-                fputcsv($output, $csvRow, ',', '"', '\\');
+        $action = $input->getOption('action');
+        if (is_string($action) && '' !== $action) {
+            if (!$this->validateAction($action, $io)) {
+                return false;
             }
+            $filters['action'] = $action;
+        }
 
-            rewind($output);
-            $csv = stream_get_contents($output);
+        return true;
+    }
 
-            return false !== $csv ? $csv : '';
-        } finally {
-            fclose($output);
+    /**
+     * @param array<string, mixed> $filters
+     */
+    private function addDateFilter(array &$filters, InputInterface $input, string $param, SymfonyStyle $io): bool
+    {
+        $date = $input->getOption($param);
+        if (is_string($date) && '' !== $date) {
+            $parsedDate = $this->parseDate($date, $param, $io);
+            if (null === $parsedDate) {
+                return false;
+            }
+            $filters[$param] = $parsedDate;
+        }
+
+        return true;
+    }
+
+    private function validateAction(string $action, SymfonyStyle $io): bool
+    {
+        $available = $this->getAvailableActions();
+        if (!in_array($action, $available, true)) {
+            $io->error(sprintf('Invalid action "%s". Available: %s', $action, implode(', ', $available)));
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private function parseDate(string $date, string $param, SymfonyStyle $io): ?\DateTimeImmutable
+    {
+        try {
+            return new \DateTimeImmutable($date);
+        } catch (\Exception $e) {
+            $io->error(sprintf('Invalid "%s" date: %s. Error: %s', $param, $date, $e->getMessage()));
+
+            return null;
         }
     }
 
@@ -324,8 +259,7 @@ HELP
             return;
         }
 
-        $result = file_put_contents($outputFile, $data);
-        if (false === $result) {
+        if (false === file_put_contents($outputFile, $data)) {
             $io->error(sprintf('Failed to write to file: %s', $outputFile));
 
             return;
@@ -335,16 +269,8 @@ HELP
             'Exported %s audit logs to %s (%s)',
             number_format($count),
             $outputFile,
-            $this->formatFileSize(strlen($data))
+            $this->exporter->formatFileSize(strlen($data))
         ));
-    }
-
-    private function formatFileSize(int $bytes): string
-    {
-        $units = ['B', 'KB', 'MB', 'GB'];
-        $factor = (int) floor((strlen((string) $bytes) - 1) / 3);
-
-        return sprintf('%.2f %s', $bytes / (1024 ** $factor), $units[$factor]);
     }
 
     /**
@@ -353,11 +279,11 @@ HELP
     private function getAvailableActions(): array
     {
         return [
-            AuditLog::ACTION_CREATE,
-            AuditLog::ACTION_UPDATE,
-            AuditLog::ACTION_DELETE,
-            AuditLog::ACTION_SOFT_DELETE,
-            AuditLog::ACTION_RESTORE,
+            AuditLogInterface::ACTION_CREATE,
+            AuditLogInterface::ACTION_UPDATE,
+            AuditLogInterface::ACTION_DELETE,
+            AuditLogInterface::ACTION_SOFT_DELETE,
+            AuditLogInterface::ACTION_RESTORE,
         ];
     }
 }

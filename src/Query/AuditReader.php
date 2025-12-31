@@ -138,7 +138,7 @@ readonly class AuditReader implements AuditReaderInterface
             $meta = $this->entityManager->getClassMetadata($entity::class);
             $ids = $meta->getIdentifierValues($entity);
 
-            if (empty($ids)) {
+            if ([] === $ids) {
                 if (method_exists($entity, 'getId')) {
                     $id = $entity->getId();
 
@@ -153,13 +153,13 @@ readonly class AuditReader implements AuditReaderInterface
                 fn ($id) => '' !== $id
             );
 
-            if (empty($idValues)) {
+            if ([] === $idValues) {
                 return null;
             }
 
             return \count($idValues) > 1
                 ? json_encode(array_values($idValues), JSON_THROW_ON_ERROR)
-                : (string) reset($idValues);
+                : reset($idValues);
         } catch (\Throwable) {
             if (method_exists($entity, 'getId')) {
                 $id = $entity->getId();

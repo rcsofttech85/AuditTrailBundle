@@ -6,8 +6,10 @@ namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Service\PendingIdResolver;
 
 final class DoctrineAuditTransport implements AuditTransportInterface
 {
@@ -16,7 +18,7 @@ final class DoctrineAuditTransport implements AuditTransportInterface
     /**
      * @param array<string, mixed> $context
      */
-    public function send(AuditLog $log, array $context = []): void
+    public function send(AuditLogInterface $log, array $context = []): void
     {
         $phase = $context['phase'] ?? null;
 
@@ -30,7 +32,7 @@ final class DoctrineAuditTransport implements AuditTransportInterface
     /**
      * @param array<string, mixed> $context
      */
-    private function handleOnFlush(AuditLog $log, array $context): void
+    private function handleOnFlush(AuditLogInterface $log, array $context): void
     {
         /** @var EntityManagerInterface $em */
         $em = $context['em'];
@@ -44,7 +46,7 @@ final class DoctrineAuditTransport implements AuditTransportInterface
     /**
      * @param array<string, mixed> $context
      */
-    private function handlePostFlush(AuditLog $log, array $context): void
+    private function handlePostFlush(AuditLogInterface $log, array $context): void
     {
         /** @var EntityManagerInterface $em */
         $em = $context['em'];
@@ -62,7 +64,7 @@ final class DoctrineAuditTransport implements AuditTransportInterface
         }
     }
 
-    public function supports(string $phase): bool
+    public function supports(string $phase, array $context = []): bool
     {
         // Doctrine transport supports both phases
         return true;

@@ -48,7 +48,7 @@ final readonly class UserResolver implements UserResolverInterface
         $request = $this->requestStack->getCurrentRequest();
         $ua = $request?->headers->get('User-Agent');
 
-        if (!$ua) {
+        if (null === $ua || '' === $ua) {
             return null;
         }
 

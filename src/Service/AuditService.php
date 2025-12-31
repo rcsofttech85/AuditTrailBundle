@@ -2,31 +2,18 @@
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
-use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Mapping\ClassMetadata;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
-use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
-use Rcsofttech\AuditTrailBundle\Attribute\Sensitive;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
 class AuditService
 {
-    private const int MAX_SERIALIZATION_DEPTH = 5;
-    private const int MAX_AUDITABLE_CACHE = 100;
-    private const int MAX_COLLECTION_ITEMS = 100;
     private const string PENDING_ID = 'pending';
 
-    /** @var array<string, Auditable|null> */
-    private array $auditableCache = [];
-
-    /** @var array<string, array<string, string>> Maps class => field => mask */
-    private array $sensitiveFieldsCache = [];
-
     /**
-     * @param array<string> $ignoredProperties
      * @param array<string> $ignoredEntities
      */
     public function __construct(
@@ -34,7 +21,8 @@ class AuditService
         private readonly UserResolverInterface $userResolver,
         private readonly ClockInterface $clock,
         private readonly TransactionIdGenerator $transactionIdGenerator,
-        private readonly array $ignoredProperties = [],
+        private readonly EntityDataExtractor $dataExtractor,
+        private readonly MetadataCache $metadataCache,
         private readonly array $ignoredEntities = [],
         private readonly ?LoggerInterface $logger = null,
         private readonly string $timezone = 'UTC',
@@ -48,12 +36,11 @@ class AuditService
     {
         $class = $entity::class;
 
-        // Skip ignored entities
         if (\in_array($class, $this->ignoredEntities, true)) {
             return false;
         }
 
-        $auditable = $this->getAuditableAttribute($entity);
+        $auditable = $this->metadataCache->getAuditableAttribute($class);
 
         return null !== $auditable && $auditable->enabled;
     }
@@ -67,51 +54,7 @@ class AuditService
      */
     public function getEntityData(object $entity, array $additionalIgnored = []): array
     {
-        try {
-            $meta = $this->entityManager->getClassMetadata($entity::class);
-            $ignored = $this->buildIgnoredPropertyList($entity, $additionalIgnored);
-            $data = [];
-
-            // Extract scalar fields
-            foreach ($meta->getFieldNames() as $field) {
-                if (\in_array($field, $ignored, true)) {
-                    continue;
-                }
-
-                $value = $this->getFieldValueSafely($meta, $entity, $field);
-                if (null !== $value) {
-                    $data[$field] = $this->serializeValue($value);
-                }
-            }
-
-            // Extract associations
-            foreach ($meta->getAssociationNames() as $assoc) {
-                if (\in_array($assoc, $ignored, true)) {
-                    continue;
-                }
-
-                $value = $this->getFieldValueSafely($meta, $entity, $assoc);
-                $data[$assoc] = $this->serializeAssociation($value);
-            }
-
-            // Mask sensitive fields
-            $sensitiveFields = $this->getSensitiveFields($entity);
-            foreach ($sensitiveFields as $field => $mask) {
-                if (\array_key_exists($field, $data)) {
-                    $data[$field] = $mask;
-                }
-            }
-
-            return $data;
-        } catch (\Throwable $e) {
-            $this->logError('Failed to extract entity data', $e, ['entity' => $entity::class]);
-
-            return [
-                '_extraction_failed' => true,
-                '_error' => $e->getMessage(),
-                '_entity_class' => $entity::class,
-            ];
-        }
+        return $this->dataExtractor->extract($entity, $additionalIgnored);
     }
 
     /**
@@ -125,12 +68,12 @@ class AuditService
         string $action,
         ?array $oldValues = null,
         ?array $newValues = null,
-    ): AuditLog {
+    ): AuditLogInterface {
         $auditLog = new AuditLog();
         $auditLog->setEntityClass($entity::class);
 
         $entityId = $this->getEntityId($entity);
-        if (self::PENDING_ID === $entityId && AuditLog::ACTION_DELETE === $action && null !== $oldValues) {
+        if (self::PENDING_ID === $entityId && AuditLogInterface::ACTION_DELETE === $action && null !== $oldValues) {
             $entityId = $this->extractIdFromValues($entity, $oldValues) ?? self::PENDING_ID;
         }
         $auditLog->setEntityId($entityId);
@@ -139,216 +82,23 @@ class AuditService
         $auditLog->setOldValues($oldValues);
         $auditLog->setNewValues($newValues);
 
-        // Determine changed fields for updates
-        if (AuditLog::ACTION_UPDATE === $action && null !== $oldValues && null !== $newValues) {
-            $changedFields = $this->detectChangedFields($oldValues, $newValues);
-            $auditLog->setChangedFields($changedFields);
+        if (AuditLogInterface::ACTION_UPDATE === $action && null !== $oldValues && null !== $newValues) {
+            $auditLog->setChangedFields($this->detectChangedFields($oldValues, $newValues));
         }
 
-        // Set user context
         $this->enrichWithUserContext($auditLog);
-
-        // Set transaction hash
         $auditLog->setTransactionHash($this->transactionIdGenerator->getTransactionId());
-
         $auditLog->setCreatedAt($this->clock->now()->setTimezone(new \DateTimeZone($this->timezone)));
 
         return $auditLog;
     }
 
     /**
-     * Get cached Auditable attribute for entity, checking parent classes.
-     */
-    private function getAuditableAttribute(object $entity): ?Auditable
-    {
-        $class = $entity::class;
-
-        if (\array_key_exists($class, $this->auditableCache)) {
-            return $this->auditableCache[$class];
-        }
-
-        // Evict oldest if at limit
-        if (\count($this->auditableCache) >= self::MAX_AUDITABLE_CACHE) {
-            array_shift($this->auditableCache);
-        }
-
-        try {
-            $attribute = null;
-            $currentClass = $class;
-
-            // Traverse hierarchy to find attribute
-            while ($currentClass) {
-                $reflection = new \ReflectionClass($currentClass);
-                $attributes = $reflection->getAttributes(Auditable::class);
-
-                if (!empty($attributes)) {
-                    $attribute = $attributes[0]->newInstance();
-                    break;
-                }
-
-                $currentClass = get_parent_class($currentClass);
-            }
-
-            $this->auditableCache[$class] = $attribute;
-        } catch (\ReflectionException $e) {
-            $this->logError('Failed to get Auditable attribute', $e, ['class' => $class]);
-            $this->auditableCache[$class] = null;
-        }
-
-        return $this->auditableCache[$class];
-    }
-
-    /**
-     * Build comprehensive list of ignored properties.
-     *
-     * @param array<string> $additionalIgnored
-     *
-     * @return array<int, string>
-     */
-    private function buildIgnoredPropertyList(object $entity, array $additionalIgnored): array
-    {
-        $ignored = [...$this->ignoredProperties, ...$additionalIgnored];
-
-        $auditable = $this->getAuditableAttribute($entity);
-        if (null !== $auditable) {
-            $ignored = [...$ignored, ...$auditable->ignoredProperties];
-        }
-
-        return array_unique($ignored);
-    }
-
-    /**
-     * Get sensitive fields for an entity class.
-     *
-     * Detects fields marked with:
-     * - #[Sensitive] attribute on the property itself
-     * - #[SensitiveParameter] on constructor parameters (for promoted properties)
-     *
-     * @return array<string, string> Map of field name => mask value
+     * @return array<string, string>
      */
     public function getSensitiveFields(object $entity): array
     {
-        $class = $entity::class;
-
-        if (\array_key_exists($class, $this->sensitiveFieldsCache)) {
-            return $this->sensitiveFieldsCache[$class];
-        }
-
-        // Evict oldest if at limit
-        if (\count($this->sensitiveFieldsCache) >= self::MAX_AUDITABLE_CACHE) {
-            array_shift($this->sensitiveFieldsCache);
-        }
-
-        $sensitiveFields = [];
-
-        try {
-            $reflection = new \ReflectionClass($entity);
-
-            // Check #[Sensitive] on properties
-            foreach ($reflection->getProperties() as $property) {
-                $attributes = $property->getAttributes(Sensitive::class);
-                if (!empty($attributes)) {
-                    /** @var Sensitive $sensitive */
-                    $sensitive = $attributes[0]->newInstance();
-                    $sensitiveFields[$property->getName()] = $sensitive->mask;
-                }
-            }
-
-
-            // Check #[SensitiveParameter] on constructor parameters (for promoted properties)
-            $constructor = $reflection->getConstructor();
-            if (null !== $constructor) {
-                foreach ($constructor->getParameters() as $param) {
-                    $attributes = $param->getAttributes(\SensitiveParameter::class);
-                    if (!empty($attributes) && $param->isPromoted()) {
-                        // Only add if not already defined by #[Sensitive] (which allows custom mask)
-                        if (!isset($sensitiveFields[$param->getName()])) {
-                            $sensitiveFields[$param->getName()] = '**REDACTED**';
-                        }
-                    }
-                }
-            }
-        } catch (\ReflectionException $e) {
-            $this->logError('Failed to get sensitive fields', $e, ['class' => $class]);
-        }
-
-        $this->sensitiveFieldsCache[$class] = $sensitiveFields;
-
-        return $sensitiveFields;
-    }
-
-    /**
-     * Safely get field value with error handling.
-     *
-     * @param ClassMetadata<object> $meta
-     */
-    private function getFieldValueSafely(ClassMetadata $meta, object $entity, string $field): mixed
-    {
-        try {
-            return $meta->getFieldValue($entity, $field);
-        } catch (\Throwable $e) {
-            $this->logError('Failed to get field value', $e, [
-                'entity' => $entity::class,
-                'field' => $field,
-            ]);
-
-            return null;
-        }
-    }
-
-    /**
-     * Serialize association values.
-     */
-    private function serializeAssociation(mixed $value): mixed
-    {
-        if (null === $value) {
-            return null;
-        }
-
-        // Handle collections (OneToMany, ManyToMany)
-        if ($value instanceof Collection) {
-            $count = $value->count();
-
-            if ($count > self::MAX_COLLECTION_ITEMS) {
-                $this->logger?->warning('Collection exceeds max items for audit', [
-                    'count' => $count,
-                    'max' => self::MAX_COLLECTION_ITEMS,
-                ]);
-
-                return [
-                    '_truncated' => true,
-                    '_total_count' => $count,
-                    '_sample' => array_map(
-                        fn ($item) => $this->extractEntityIdentifier($item),
-                        $value->slice(0, self::MAX_COLLECTION_ITEMS)
-                    ),
-                ];
-            }
-
-            return $value->map(function ($item) {
-                return $this->extractEntityIdentifier($item);
-            })->toArray();
-        }
-
-        // Handle single associations
-        if (\is_object($value)) {
-            return $this->extractEntityIdentifier($value);
-        }
-
-        return null;
-    }
-
-    /**
-     * Extract identifier from entity object.
-     */
-    private function extractEntityIdentifier(object $entity): mixed
-    {
-        if (method_exists($entity, 'getId')) {
-            return $entity->getId();
-        }
-
-        // Fallback to entity class name if no ID method
-        return $entity::class;
+        return $this->metadataCache->getSensitiveFields($entity::class);
     }
 
     /**
@@ -369,10 +119,7 @@ class AuditService
                 continue;
             }
 
-            $oldValue = $oldValues[$field];
-
-            // Normalize values for comparison
-            if ($this->valuesAreDifferent($oldValue, $newValue)) {
+            if ($this->valuesAreDifferent($oldValues[$field], $newValue)) {
                 $changed[] = $field;
             }
         }
@@ -380,37 +127,19 @@ class AuditService
         return $changed;
     }
 
-    /**
-     * Compare values with type-aware logic.
-     */
     private function valuesAreDifferent(mixed $oldValue, mixed $newValue): bool
     {
-        // Handle null comparisons
         if (null === $oldValue || null === $newValue) {
             return $oldValue !== $newValue;
         }
 
-        // Numeric comparison with type coercion
         if (is_numeric($oldValue) && is_numeric($newValue)) {
-            $old = (float) $oldValue;
-            $new = (float) $newValue;
-
-            // Use epsilon for float comparison
-            return abs($old - $new) > 1e-9;
+            return abs((float) $oldValue - (float) $newValue) > 1e-9;
         }
 
-        // Array comparison
-        if (\is_array($oldValue) && is_array($newValue)) {
-            return $oldValue !== $newValue;
-        }
-
-        // Standard comparison
         return $oldValue !== $newValue;
     }
 
-    /**
-     * Enrich audit log with user context.
-     */
     private function enrichWithUserContext(AuditLog $auditLog): void
     {
         try {
@@ -419,21 +148,17 @@ class AuditService
             $auditLog->setIpAddress($this->userResolver->getIpAddress());
             $auditLog->setUserAgent($this->userResolver->getUserAgent());
         } catch (\Throwable $e) {
-            $this->logError('Failed to set user context', $e);
+            $this->logger?->error('Failed to set user context', ['exception' => $e->getMessage()]);
         }
     }
 
-    /**
-     * Get entity identifier as string (supports composite keys).
-     */
     public function getEntityId(object $entity): string
     {
         try {
             $meta = $this->entityManager->getClassMetadata($entity::class);
             $ids = $meta->getIdentifierValues($entity);
 
-            if (empty($ids)) {
-                // Fallback: Try getId() method directly
+            if ([] === $ids) {
                 if (method_exists($entity, 'getId')) {
                     $id = $entity->getId();
 
@@ -443,40 +168,35 @@ class AuditService
                 return self::PENDING_ID;
             }
 
-            // Filter out null values and convert to strings
-            $idValues = array_filter(
-                array_map('strval', $ids),
-                fn ($id) => '' !== $id
-            );
+            $idValues = array_filter(array_map('strval', $ids), fn ($id) => '' !== $id);
 
-            if (empty($idValues)) {
+            if ([] === $idValues) {
                 return self::PENDING_ID;
             }
 
             return count($idValues) > 1
                 ? json_encode(array_values($idValues), JSON_THROW_ON_ERROR)
-                : (string) reset($idValues);
+                : reset($idValues);
         } catch (\Throwable $e) {
-            // Fallback: Try getId() method directly on exception
             if (method_exists($entity, 'getId')) {
                 try {
                     $id = $entity->getId();
 
                     return null !== $id ? (string) $id : self::PENDING_ID;
                 } catch (\Throwable) {
-                    // Ignore fallback error
                 }
             }
 
-            $this->logError('Failed to get entity ID', $e, ['entity' => $entity::class]);
+            $this->logger?->error('Failed to get entity ID', [
+                'exception' => $e->getMessage(),
+                'entity' => $entity::class,
+            ]);
 
             return self::PENDING_ID;
         }
     }
 
     /**
-     * Extract ID from values array using metadata.
-     *
      * @param array<string, mixed> $values
      */
     private function extractIdFromValues(object $entity, array $values): ?string
@@ -498,79 +218,6 @@ class AuditService
                 : ($ids[0] ?? null);
         } catch (\Throwable) {
             return null;
-        }
-    }
-
-    /**
-     * Serialize values for logging with depth protection.
-     */
-    private function serializeValue(mixed $value, int $depth = 0): mixed
-    {
-        // Prevent infinite recursion
-        if ($depth >= self::MAX_SERIALIZATION_DEPTH) {
-            return '[max depth reached]';
-        }
-
-        return match (true) {
-            // DateTime serialization with timezone
-            $value instanceof \DateTimeInterface => $value->format(\DateTimeInterface::ATOM),
-
-            // Collection handling
-            $value instanceof Collection => $value->map(function ($item) use ($depth) {
-                return $this->serializeValue($item, $depth + 1);
-            })->toArray(),
-
-            // Object handling
-            \is_object($value) => $this->serializeObject($value, $depth),
-
-            // Array handling with recursion protection
-            \is_array($value) => array_map(
-                fn ($v) => $this->serializeValue($v, $depth + 1),
-                $value
-            ),
-
-            // Resource handling
-            \is_resource($value) => sprintf('[resource: %s]', get_resource_type($value)),
-
-            // Default: return as-is
-            default => $value,
-        };
-    }
-
-    /**
-     * Serialize object values.
-     */
-    private function serializeObject(object $value, int $depth = 0): mixed
-    {
-        if (method_exists($value, 'getId')) {
-            return $value->getId();
-        }
-
-        if (method_exists($value, '__toString')) {
-            try {
-                return (string) $value;
-            } catch (\Throwable $e) { // @phpstan-ignore catch.neverThrown
-                return sprintf('[toString error: %s]', $value::class);
-            }
-        }
-
-        return $value::class;
-    }
-
-    /**
-     * Log errors if logger is available.
-     *
-     * @param array<string, mixed> $context
-     */
-    private function logError(string $message, \Throwable $exception, array $context = []): void
-    {
-        if (null !== $this->logger) {
-            $this->logger->error($message, [
-                'exception' => $exception->getMessage(),
-                'exception_class' => $exception::class,
-                'code' => $exception->getCode(),
-                ...$context,
-            ]);
         }
     }
 }

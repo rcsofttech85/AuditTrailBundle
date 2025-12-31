@@ -23,7 +23,7 @@ class DoctrineAuditTransportTest extends TestCase
         $log = new AuditLog();
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
-        $meta = $this->createStub(ClassMetadata::class);
+        $meta = self::createStub(ClassMetadata::class);
 
         $em->method('getClassMetadata')->willReturn($meta);
 
@@ -43,8 +43,8 @@ class DoctrineAuditTransportTest extends TestCase
         $log->setEntityId('pending');
 
         $entity = new \stdClass();
-        $em = $this->createStub(EntityManagerInterface::class);
-        $meta = $this->createStub(ClassMetadata::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $meta = self::createStub(ClassMetadata::class);
 
         $em->method('getClassMetadata')->willReturn($meta);
         $em->method('contains')->willReturn(false);
@@ -57,7 +57,7 @@ class DoctrineAuditTransportTest extends TestCase
         ]);
 
         // The new implementation calls setEntityId instead of executeStatement
-        $this->assertEquals('100', $log->getEntityId());
+        self::assertEquals('100', $log->getEntityId());
     }
 
     public function testSendPostFlushWithIsInsertUpdatesId(): void
@@ -66,8 +66,8 @@ class DoctrineAuditTransportTest extends TestCase
         $log->setEntityId('pending');
 
         $entity = new \stdClass();
-        $em = $this->createStub(EntityManagerInterface::class);
-        $meta = $this->createStub(ClassMetadata::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $meta = self::createStub(ClassMetadata::class);
 
         $em->method('getClassMetadata')->willReturn($meta);
         $em->method('contains')->willReturn(true); // Already managed
@@ -81,6 +81,6 @@ class DoctrineAuditTransportTest extends TestCase
         ]);
 
         // Verify setEntityId was called with resolved ID
-        $this->assertEquals('456', $log->getEntityId());
+        self::assertEquals('456', $log->getEntityId());
     }
 }

@@ -20,8 +20,8 @@ final class DiffGenerator implements DiffGeneratorInterface
         $oldValues ??= [];
         $newValues ??= [];
 
-        $raw = $options['raw'] ?? false;
-        $includeTimestamps = $options['include_timestamps'] ?? false;
+        $raw = (bool) ($options['raw'] ?? false);
+        $includeTimestamps = (bool) ($options['include_timestamps'] ?? false);
 
         $diff = [];
 
@@ -58,23 +58,15 @@ final class DiffGenerator implements DiffGeneratorInterface
 
     private function normalize(mixed $value): mixed
     {
-        if ($value instanceof \DateTimeInterface) {
-            return $value->format('Y-m-d H:i:s e');
-        }
+        return match (true) {
+            $value instanceof \DateTimeInterface => $value->format('Y-m-d H:i:s e'),
+            is_array($value) => json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+            is_string($value) && json_validate($value) => (function () use ($value) {
+                $decoded = json_decode($value, true);
 
-        if (is_array($value)) {
-            return json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        }
-
-        if (is_string($value) && json_validate($value)) {
-            $decoded = json_decode($value, true);
-
-            // We only want to prettify if the decoded JSON string is actually an array structure
-            if (is_array($decoded)) {
-                return json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-            }
-        }
-
-        return $value;
+                return is_array($decoded) ? json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) : $value;
+            })(),
+            default => $value,
+        };
     }
 }

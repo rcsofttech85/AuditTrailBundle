@@ -35,7 +35,12 @@ class AuditDiffCommand extends Command
             ->addArgument('identifier', InputArgument::REQUIRED, 'Audit Log ID OR Entity Class')
             ->addArgument('entityId', InputArgument::OPTIONAL, 'Entity ID (if identifier is Entity Class)')
             ->addOption('raw', null, InputOption::VALUE_NONE, 'No normalization')
-            ->addOption('include-timestamps', null, InputOption::VALUE_NONE, 'Include timestamp fields (createdAt, updatedAt, etc.)')
+            ->addOption(
+                'include-timestamps',
+                null,
+                InputOption::VALUE_NONE,
+                'Include timestamp fields (createdAt, updatedAt, etc.)'
+            )
             ->addOption('json', null, InputOption::VALUE_NONE, 'Output in JSON format')
         ;
     }
@@ -43,52 +48,65 @@ class AuditDiffCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $identifier = $input->getArgument('identifier');
-        $entityId = $input->getArgument('entityId');
+        $log = $this->fetchAuditLog($input, $io);
 
-        $auditLogs = [];
-
-        if (is_numeric($identifier) && null === $entityId) {
-            $log = $this->auditLogRepository->find((int) $identifier);
-            if ($log) {
-                $auditLogs[] = $log;
-            }
-        } else {
-            if (null === $entityId) {
-                $io->error('Entity ID is required when providing an Entity Class.');
-
-                return Command::FAILURE;
-            }
-
-            $auditLogs = $this->auditLogRepository->findWithFilters(
-                ['entityClass' => $identifier, 'entityId' => $entityId],
-                1
-            );
-        }
-
-        if (empty($auditLogs)) {
-            $io->error('No audit log found.');
-
+        if (null === $log) {
             return Command::FAILURE;
         }
 
-        /** @var AuditLog $log */
-        $log = $auditLogs[0];
-
-        $options = [
+        $diff = $this->diffGenerator->generate($log->getOldValues(), $log->getNewValues(), [
             'raw' => $input->getOption('raw'),
             'include_timestamps' => $input->getOption('include-timestamps'),
-        ];
+        ]);
 
-        $diff = $this->diffGenerator->generate($log->getOldValues(), $log->getNewValues(), $options);
-
-        if ($input->getOption('json')) {
+        if (true === $input->getOption('json')) {
             $json = json_encode($diff, JSON_PRETTY_PRINT);
-            $output->writeln($json ?: '{}');
+            $output->writeln(false !== $json ? $json : '{}');
 
             return Command::SUCCESS;
         }
 
+        $this->renderDiff($io, $output, $log, $diff);
+
+        return Command::SUCCESS;
+    }
+
+    private function fetchAuditLog(InputInterface $input, SymfonyStyle $io): ?AuditLog
+    {
+        $identifier = $input->getArgument('identifier');
+        $entityId = $input->getArgument('entityId');
+
+        if (is_numeric($identifier) && null === $entityId) {
+            $log = $this->auditLogRepository->find((int) $identifier);
+
+            if (!$log instanceof AuditLog) {
+                $io->error(sprintf('No audit log found with ID %s', $identifier));
+
+                return null;
+            }
+
+            return $log;
+        }
+
+        if (null === $entityId) {
+            $io->error('Entity ID is required when providing an Entity Class.');
+
+            return null;
+        }
+
+        $logs = $this->auditLogRepository->findWithFilters(
+            ['entityClass' => $identifier, 'entityId' => $entityId],
+            1
+        );
+
+        return $logs[0] ?? null;
+    }
+
+    /**
+     * @param array<string, array{old: mixed, new: mixed}> $diff
+     */
+    private function renderDiff(SymfonyStyle $io, OutputInterface $output, AuditLog $log, array $diff): void
+    {
         $io->title(sprintf('Audit Diff for %s #%s', $log->getEntityClass(), $log->getEntityId()));
         $io->definitionList(
             ['Log ID' => $log->getId()],
@@ -97,10 +115,10 @@ class AuditDiffCommand extends Command
             ['User' => $log->getUsername() ?? 'System']
         );
 
-        if (empty($diff)) {
+        if ([] === $diff) {
             $io->info('No semantic changes found.');
 
-            return Command::SUCCESS;
+            return;
         }
 
         $table = new Table($output);
@@ -115,8 +133,6 @@ class AuditDiffCommand extends Command
         }
 
         $table->render();
-
-        return Command::SUCCESS;
     }
 
     private function formatValue(mixed $value): string

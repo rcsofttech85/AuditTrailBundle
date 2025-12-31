@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Query;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditEntry;
 
@@ -19,34 +20,34 @@ class AuditEntryTest extends TestCase
         $log = $this->createAuditLog();
         $entry = new AuditEntry($log);
 
-        $this->assertSame(1, $entry->getId());
-        $this->assertSame('App\\Entity\\User', $entry->getEntityClass());
-        $this->assertSame('User', $entry->getEntityShortName());
-        $this->assertSame('123', $entry->getEntityId());
-        $this->assertSame(AuditLog::ACTION_UPDATE, $entry->getAction());
-        $this->assertSame(42, $entry->getUserId());
-        $this->assertSame('admin', $entry->getUsername());
-        $this->assertSame('127.0.0.1', $entry->getIpAddress());
-        $this->assertSame('abc123', $entry->getTransactionHash());
+        self::assertSame(1, $entry->getId());
+        self::assertSame('App\\Entity\\User', $entry->getEntityClass());
+        self::assertSame('User', $entry->getEntityShortName());
+        self::assertSame('123', $entry->getEntityId());
+        self::assertSame(AuditLogInterface::ACTION_UPDATE, $entry->getAction());
+        self::assertSame(42, $entry->getUserId());
+        self::assertSame('admin', $entry->getUsername());
+        self::assertSame('127.0.0.1', $entry->getIpAddress());
+        self::assertSame('abc123', $entry->getTransactionHash());
     }
 
     public function testActionHelpers(): void
     {
-        $createLog = $this->createAuditLog(AuditLog::ACTION_CREATE);
-        $updateLog = $this->createAuditLog(AuditLog::ACTION_UPDATE);
-        $deleteLog = $this->createAuditLog(AuditLog::ACTION_DELETE);
-        $softDeleteLog = $this->createAuditLog(AuditLog::ACTION_SOFT_DELETE);
-        $restoreLog = $this->createAuditLog(AuditLog::ACTION_RESTORE);
+        $createLog = $this->createAuditLog(AuditLogInterface::ACTION_CREATE);
+        $updateLog = $this->createAuditLog(AuditLogInterface::ACTION_UPDATE);
+        $deleteLog = $this->createAuditLog(AuditLogInterface::ACTION_DELETE);
+        $softDeleteLog = $this->createAuditLog(AuditLogInterface::ACTION_SOFT_DELETE);
+        $restoreLog = $this->createAuditLog(AuditLogInterface::ACTION_RESTORE);
 
-        $this->assertTrue((new AuditEntry($createLog))->isCreate());
-        $this->assertFalse((new AuditEntry($createLog))->isUpdate());
+        self::assertTrue((new AuditEntry($createLog))->isCreate());
+        self::assertFalse((new AuditEntry($createLog))->isUpdate());
 
-        $this->assertTrue((new AuditEntry($updateLog))->isUpdate());
-        $this->assertFalse((new AuditEntry($updateLog))->isDelete());
+        self::assertTrue((new AuditEntry($updateLog))->isUpdate());
+        self::assertFalse((new AuditEntry($updateLog))->isDelete());
 
-        $this->assertTrue((new AuditEntry($deleteLog))->isDelete());
-        $this->assertTrue((new AuditEntry($softDeleteLog))->isSoftDelete());
-        $this->assertTrue((new AuditEntry($restoreLog))->isRestore());
+        self::assertTrue((new AuditEntry($deleteLog))->isDelete());
+        self::assertTrue((new AuditEntry($softDeleteLog))->isSoftDelete());
+        self::assertTrue((new AuditEntry($restoreLog))->isRestore());
     }
 
     public function testGetDiffReturnsOldAndNewValues(): void
@@ -56,13 +57,13 @@ class AuditEntryTest extends TestCase
 
         $diff = $entry->getDiff();
 
-        $this->assertArrayHasKey('name', $diff);
-        $this->assertSame('John', $diff['name']['old']);
-        $this->assertSame('Jane', $diff['name']['new']);
+        self::assertArrayHasKey('name', $diff);
+        self::assertSame('John', $diff['name']['old']);
+        self::assertSame('Jane', $diff['name']['new']);
 
-        $this->assertArrayHasKey('email', $diff);
-        $this->assertSame('john@example.com', $diff['email']['old']);
-        $this->assertSame('jane@example.com', $diff['email']['new']);
+        self::assertArrayHasKey('email', $diff);
+        self::assertSame('john@example.com', $diff['email']['old']);
+        self::assertSame('jane@example.com', $diff['email']['new']);
     }
 
     public function testGetChangedFields(): void
@@ -72,8 +73,8 @@ class AuditEntryTest extends TestCase
 
         $changedFields = $entry->getChangedFields();
 
-        $this->assertContains('name', $changedFields);
-        $this->assertContains('email', $changedFields);
+        self::assertContains('name', $changedFields);
+        self::assertContains('email', $changedFields);
     }
 
     public function testHasFieldChanged(): void
@@ -81,9 +82,9 @@ class AuditEntryTest extends TestCase
         $log = $this->createAuditLog();
         $entry = new AuditEntry($log);
 
-        $this->assertTrue($entry->hasFieldChanged('name'));
-        $this->assertTrue($entry->hasFieldChanged('email'));
-        $this->assertFalse($entry->hasFieldChanged('password'));
+        self::assertTrue($entry->hasFieldChanged('name'));
+        self::assertTrue($entry->hasFieldChanged('email'));
+        self::assertFalse($entry->hasFieldChanged('password'));
     }
 
     public function testGetOldAndNewValue(): void
@@ -91,10 +92,10 @@ class AuditEntryTest extends TestCase
         $log = $this->createAuditLog();
         $entry = new AuditEntry($log);
 
-        $this->assertSame('John', $entry->getOldValue('name'));
-        $this->assertSame('Jane', $entry->getNewValue('name'));
-        $this->assertNull($entry->getOldValue('nonexistent'));
-        $this->assertNull($entry->getNewValue('nonexistent'));
+        self::assertSame('John', $entry->getOldValue('name'));
+        self::assertSame('Jane', $entry->getNewValue('name'));
+        self::assertNull($entry->getOldValue('nonexistent'));
+        self::assertNull($entry->getNewValue('nonexistent'));
     }
 
     public function testGetAuditLogReturnsUnderlyingEntity(): void
@@ -102,7 +103,7 @@ class AuditEntryTest extends TestCase
         $log = $this->createAuditLog();
         $entry = new AuditEntry($log);
 
-        $this->assertSame($log, $entry->getAuditLog());
+        self::assertSame($log, $entry->getAuditLog());
     }
 
     public function testGetEntityShortNameWithSimpleClass(): void
@@ -110,14 +111,14 @@ class AuditEntryTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass('User');
         $log->setEntityId('1');
-        $log->setAction(AuditLog::ACTION_CREATE);
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
 
         $entry = new AuditEntry($log);
 
-        $this->assertSame('User', $entry->getEntityShortName());
+        self::assertSame('User', $entry->getEntityShortName());
     }
 
-    private function createAuditLog(string $action = AuditLog::ACTION_UPDATE): AuditLog
+    private function createAuditLog(string $action = AuditLogInterface::ACTION_UPDATE): AuditLog
     {
         $log = new AuditLog();
         $log->setEntityClass('App\\Entity\\User');

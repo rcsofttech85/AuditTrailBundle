@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Query;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditEntry;
 use Rcsofttech\AuditTrailBundle\Query\AuditEntryCollection;
@@ -18,132 +19,132 @@ class AuditEntryCollectionTest extends TestCase
     public function testCountReturnsNumberOfEntries(): void
     {
         $collection = new AuditEntryCollection([
-            $this->createEntry(AuditLog::ACTION_CREATE),
-            $this->createEntry(AuditLog::ACTION_UPDATE),
+            $this->createEntry(AuditLogInterface::ACTION_CREATE),
+            $this->createEntry(AuditLogInterface::ACTION_UPDATE),
         ]);
 
-        $this->assertCount(2, $collection);
+        self::assertCount(2, $collection);
     }
 
     public function testIsEmpty(): void
     {
         $emptyCollection = new AuditEntryCollection([]);
         $nonEmptyCollection = new AuditEntryCollection([
-            $this->createEntry(AuditLog::ACTION_CREATE),
+            $this->createEntry(AuditLogInterface::ACTION_CREATE),
         ]);
 
-        $this->assertTrue($emptyCollection->isEmpty());
-        $this->assertFalse($nonEmptyCollection->isEmpty());
+        self::assertTrue($emptyCollection->isEmpty());
+        self::assertFalse($nonEmptyCollection->isEmpty());
     }
 
     public function testFirstAndLast(): void
     {
-        $first = $this->createEntry(AuditLog::ACTION_CREATE);
-        $last = $this->createEntry(AuditLog::ACTION_DELETE);
+        $first = $this->createEntry(AuditLogInterface::ACTION_CREATE);
+        $last = $this->createEntry(AuditLogInterface::ACTION_DELETE);
 
         $collection = new AuditEntryCollection([$first, $last]);
 
-        $this->assertSame($first, $collection->first());
-        $this->assertSame($last, $collection->last());
+        self::assertSame($first, $collection->first());
+        self::assertSame($last, $collection->last());
     }
 
     public function testFirstAndLastReturnNullForEmptyCollection(): void
     {
         $collection = new AuditEntryCollection([]);
 
-        $this->assertNull($collection->first());
-        $this->assertNull($collection->last());
+        self::assertNull($collection->first());
+        self::assertNull($collection->last());
     }
 
     public function testFilter(): void
     {
-        $create = $this->createEntry(AuditLog::ACTION_CREATE);
-        $update = $this->createEntry(AuditLog::ACTION_UPDATE);
-        $delete = $this->createEntry(AuditLog::ACTION_DELETE);
+        $create = $this->createEntry(AuditLogInterface::ACTION_CREATE);
+        $update = $this->createEntry(AuditLogInterface::ACTION_UPDATE);
+        $delete = $this->createEntry(AuditLogInterface::ACTION_DELETE);
 
         $collection = new AuditEntryCollection([$create, $update, $delete]);
 
         $filtered = $collection->filter(fn (AuditEntry $e) => $e->isUpdate());
 
-        $this->assertCount(1, $filtered);
+        self::assertCount(1, $filtered);
         $first = $filtered->first();
-        $this->assertNotNull($first);
-        $this->assertTrue($first->isUpdate());
+        self::assertNotNull($first);
+        self::assertTrue($first->isUpdate());
     }
 
     public function testMap(): void
     {
         $collection = new AuditEntryCollection([
-            $this->createEntry(AuditLog::ACTION_CREATE),
-            $this->createEntry(AuditLog::ACTION_UPDATE),
+            $this->createEntry(AuditLogInterface::ACTION_CREATE),
+            $this->createEntry(AuditLogInterface::ACTION_UPDATE),
         ]);
 
         $actions = $collection->map(fn (AuditEntry $e) => $e->getAction());
 
-        $this->assertSame([AuditLog::ACTION_CREATE, AuditLog::ACTION_UPDATE], $actions);
+        self::assertSame([AuditLogInterface::ACTION_CREATE, AuditLogInterface::ACTION_UPDATE], $actions);
     }
 
     public function testGroupByAction(): void
     {
-        $create1 = $this->createEntry(AuditLog::ACTION_CREATE);
-        $create2 = $this->createEntry(AuditLog::ACTION_CREATE);
-        $update = $this->createEntry(AuditLog::ACTION_UPDATE);
+        $create1 = $this->createEntry(AuditLogInterface::ACTION_CREATE);
+        $create2 = $this->createEntry(AuditLogInterface::ACTION_CREATE);
+        $update = $this->createEntry(AuditLogInterface::ACTION_UPDATE);
 
         $collection = new AuditEntryCollection([$create1, $create2, $update]);
 
         $grouped = $collection->groupByAction();
 
-        $this->assertArrayHasKey(AuditLog::ACTION_CREATE, $grouped);
-        $this->assertArrayHasKey(AuditLog::ACTION_UPDATE, $grouped);
-        $this->assertCount(2, $grouped[AuditLog::ACTION_CREATE]);
-        $this->assertCount(1, $grouped[AuditLog::ACTION_UPDATE]);
+        self::assertArrayHasKey(AuditLogInterface::ACTION_CREATE, $grouped);
+        self::assertArrayHasKey(AuditLogInterface::ACTION_UPDATE, $grouped);
+        self::assertCount(2, $grouped[AuditLogInterface::ACTION_CREATE]);
+        self::assertCount(1, $grouped[AuditLogInterface::ACTION_UPDATE]);
     }
 
     public function testGroupByEntity(): void
     {
-        $user1 = $this->createEntry(AuditLog::ACTION_CREATE, 'App\\Entity\\User');
-        $user2 = $this->createEntry(AuditLog::ACTION_UPDATE, 'App\\Entity\\User');
-        $product = $this->createEntry(AuditLog::ACTION_CREATE, 'App\\Entity\\Product');
+        $user1 = $this->createEntry(AuditLogInterface::ACTION_CREATE, 'App\\Entity\\User');
+        $user2 = $this->createEntry(AuditLogInterface::ACTION_UPDATE, 'App\\Entity\\User');
+        $product = $this->createEntry(AuditLogInterface::ACTION_CREATE, 'App\\Entity\\Product');
 
         $collection = new AuditEntryCollection([$user1, $user2, $product]);
 
         $grouped = $collection->groupByEntity();
 
-        $this->assertArrayHasKey('App\\Entity\\User', $grouped);
-        $this->assertArrayHasKey('App\\Entity\\Product', $grouped);
-        $this->assertCount(2, $grouped['App\\Entity\\User']);
-        $this->assertCount(1, $grouped['App\\Entity\\Product']);
+        self::assertArrayHasKey('App\\Entity\\User', $grouped);
+        self::assertArrayHasKey('App\\Entity\\Product', $grouped);
+        self::assertCount(2, $grouped['App\\Entity\\User']);
+        self::assertCount(1, $grouped['App\\Entity\\Product']);
     }
 
     public function testGetCreatesUpdatesDeletes(): void
     {
-        $create = $this->createEntry(AuditLog::ACTION_CREATE);
-        $update = $this->createEntry(AuditLog::ACTION_UPDATE);
-        $delete = $this->createEntry(AuditLog::ACTION_DELETE);
-        $softDelete = $this->createEntry(AuditLog::ACTION_SOFT_DELETE);
+        $create = $this->createEntry(AuditLogInterface::ACTION_CREATE);
+        $update = $this->createEntry(AuditLogInterface::ACTION_UPDATE);
+        $delete = $this->createEntry(AuditLogInterface::ACTION_DELETE);
+        $softDelete = $this->createEntry(AuditLogInterface::ACTION_SOFT_DELETE);
 
         $collection = new AuditEntryCollection([$create, $update, $delete, $softDelete]);
 
-        $this->assertCount(1, $collection->getCreates());
-        $this->assertCount(1, $collection->getUpdates());
-        $this->assertCount(2, $collection->getDeletes()); // Includes soft delete
+        self::assertCount(1, $collection->getCreates());
+        self::assertCount(1, $collection->getUpdates());
+        self::assertCount(2, $collection->getDeletes()); // Includes soft delete
     }
 
     public function testToArray(): void
     {
-        $entry = $this->createEntry(AuditLog::ACTION_CREATE);
+        $entry = $this->createEntry(AuditLogInterface::ACTION_CREATE);
         $collection = new AuditEntryCollection([$entry]);
 
         $array = $collection->toArray();
 
-        $this->assertCount(1, $array);
-        $this->assertSame($entry, $array[0]);
+        self::assertCount(1, $array);
+        self::assertSame($entry, $array[0]);
     }
 
     public function testIterable(): void
     {
-        $entry1 = $this->createEntry(AuditLog::ACTION_CREATE);
-        $entry2 = $this->createEntry(AuditLog::ACTION_UPDATE);
+        $entry1 = $this->createEntry(AuditLogInterface::ACTION_CREATE);
+        $entry2 = $this->createEntry(AuditLogInterface::ACTION_UPDATE);
 
         $collection = new AuditEntryCollection([$entry1, $entry2]);
 
@@ -152,9 +153,9 @@ class AuditEntryCollectionTest extends TestCase
             $entries[] = $entry;
         }
 
-        $this->assertCount(2, $entries);
-        $this->assertSame($entry1, $entries[0]);
-        $this->assertSame($entry2, $entries[1]);
+        self::assertCount(2, $entries);
+        self::assertSame($entry1, $entries[0]);
+        self::assertSame($entry2, $entries[1]);
     }
 
     private function createEntry(string $action, string $entityClass = 'App\\Entity\\User'): AuditEntry

@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Service\PendingIdResolver;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class HttpAuditTransport implements AuditTransportInterface
@@ -23,7 +24,7 @@ final class HttpAuditTransport implements AuditTransportInterface
     /**
      * @param array<string, mixed> $context
      */
-    public function send(AuditLog $log, array $context = []): void
+    public function send(AuditLogInterface $log, array $context = []): void
     {
         $entityId = $this->resolveEntityId($log, $context) ?? $log->getEntityId();
 
@@ -52,7 +53,7 @@ final class HttpAuditTransport implements AuditTransportInterface
         }
     }
 
-    public function supports(string $phase): bool
+    public function supports(string $phase, array $context = []): bool
     {
         return 'post_flush' === $phase;
     }

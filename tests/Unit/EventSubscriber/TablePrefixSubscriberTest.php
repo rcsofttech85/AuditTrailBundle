@@ -23,7 +23,7 @@ final class TablePrefixSubscriberTest extends TestCase
         $metadata->method('getTableName')->willReturn('audit_log');
         $metadata->expects($this->once())->method('setPrimaryTable')->with(['name' => 'prefix_audit_log_suffix']);
 
-        $args = $this->createStub(LoadClassMetadataEventArgs::class);
+        $args = self::createStub(LoadClassMetadataEventArgs::class);
         $args->method('getClassMetadata')->willReturn($metadata);
 
         $subscriber->loadClassMetadata($args);
@@ -37,7 +37,7 @@ final class TablePrefixSubscriberTest extends TestCase
         $metadata->method('getName')->willReturn(AuditLog::class);
         $metadata->expects($this->never())->method('setPrimaryTable');
 
-        $args = $this->createStub(LoadClassMetadataEventArgs::class);
+        $args = self::createStub(LoadClassMetadataEventArgs::class);
         $args->method('getClassMetadata')->willReturn($metadata);
 
         $subscriber->loadClassMetadata($args);
@@ -51,7 +51,7 @@ final class TablePrefixSubscriberTest extends TestCase
         $metadata->method('getName')->willReturn('OtherEntity');
         $metadata->expects($this->never())->method('setPrimaryTable');
 
-        $args = $this->createStub(LoadClassMetadataEventArgs::class);
+        $args = self::createStub(LoadClassMetadataEventArgs::class);
         $args->method('getClassMetadata')->willReturn($metadata);
 
         $subscriber->loadClassMetadata($args);

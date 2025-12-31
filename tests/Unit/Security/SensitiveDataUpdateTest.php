@@ -4,16 +4,26 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Security;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 use Rcsofttech\AuditTrailBundle\Attribute\Sensitive;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
+use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
+use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
+use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
+use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
+use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
+use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use Symfony\Component\Clock\MockClock;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 #[Auditable]
 class SensitiveUser
@@ -29,89 +39,87 @@ class SensitiveUser
     public string $username = 'user';
 }
 
-
 class SensitiveDataUpdateTest extends TestCase
 {
     public function testUpdateMasksSensitiveData(): void
     {
-        // Setup Service
-        $em = $this->createStub(EntityManagerInterface::class);
-        $userResolver = $this->createStub(\Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $userResolver = self::createStub(UserResolverInterface::class);
         $clock = new MockClock();
-        $transactionIdGenerator = $this->createStub(TransactionIdGenerator::class);
+        $transactionIdGenerator = self::createStub(TransactionIdGenerator::class);
         $transactionIdGenerator->method('getTransactionId')->willReturn('test-transaction-id');
 
+        $metadataCache = new MetadataCache();
+        $serializer = new ValueSerializer(null); // No logger
+        $extractor = new EntityDataExtractor($em, $serializer, $metadataCache);
 
-        // We need a real AuditService to test the attribute reading logic,
-        // but we can mock the dependencies.
-        $auditService = new AuditService($em, $userResolver, $clock, $transactionIdGenerator);
+        $auditService = new AuditService(
+            $em,
+            $userResolver,
+            $clock,
+            $transactionIdGenerator,
+            $extractor,
+            $metadataCache
+        );
 
-        // Setup Subscriber
         $transport = $this->createMock(AuditTransportInterface::class);
         $transport->method('supports')->willReturn(true);
+        $dispatcher = new AuditDispatcher($transport, null); // No logger
+        $auditManager = new ScheduledAuditManager(self::createStub(
+            EventDispatcherInterface::class
+        ));
+        $changeProcessor = new ChangeProcessor($auditService, true, 'deletedAt');
+
+        $entityProcessor = new EntityProcessor(
+            $auditService,
+            $changeProcessor,
+            $dispatcher,
+            $auditManager,
+            false
+        );
 
         $subscriber = new AuditSubscriber(
             $auditService,
-            $transport,
-            deferTransportUntilCommit: false // Send immediately to verify easily
+            $changeProcessor,
+            $dispatcher,
+            $auditManager,
+            $entityProcessor
         );
 
-        // Setup Entity & ChangeSet
         $entity = new SensitiveUser();
         $entity->password = 'new_secret';
 
-        // Setup Doctrine Event
-        $uow = $this->createStub(UnitOfWork::class);
-        $args = new OnFlushEventArgs($em);
-
+        $uow = self::createStub(UnitOfWork::class);
         $em->method('getUnitOfWork')->willReturn($uow);
 
-        // Mock ClassMetadata to avoid warnings and ensure getEntityId works
-        $metadata = $this->createStub(\Doctrine\ORM\Mapping\ClassMetadata::class);
+        $metadata = self::createStub(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $metadata->method('getName')->willReturn(SensitiveUser::class);
         $metadata->method('getFieldNames')->willReturn(['id', 'password', 'username']);
         $metadata->method('getAssociationNames')->willReturn([]);
+        $metadata->method('getReflectionClass')->willReturn(new \ReflectionClass($entity));
+        $metadata->method('getReflectionProperty')->willReturnCallback(fn ($p) => new \ReflectionProperty($entity, $p));
 
         $em->method('getClassMetadata')->willReturn($metadata);
 
-        $uow->method('getScheduledEntityInsertions')->willReturn([]);
         $uow->method('getScheduledEntityUpdates')->willReturn([$entity]);
+        $uow->method('getScheduledEntityInsertions')->willReturn([]);
         $uow->method('getScheduledCollectionUpdates')->willReturn([]);
         $uow->method('getScheduledEntityDeletions')->willReturn([]);
-
-        // The ChangeSet shows the password changing from 'old_secret' to 'new_secret'
         $uow->method('getEntityChangeSet')->willReturn([
             'password' => ['old_secret', 'new_secret'],
-            'username' => ['user', 'user'], // Unchanged
+            'username' => ['user', 'user'],
         ]);
 
-        // Expectation: The transport should receive an audit log where values are MASKED
         $transport->expects($this->once())
             ->method('send')
-            ->with($this->callback(function (AuditLog $log) {
+            ->with(self::callback(function (AuditLog $log) {
                 $old = $log->getOldValues();
                 $new = $log->getNewValues();
 
-                if (!\is_array($old) || !\is_array($new)) {
-                    return false;
-                }
-
-                if (!isset($old['password']) || !isset($new['password'])) {
-                    return false;
-                }
-
-                // Check if password is masked
-                $oldMasked = '**REDACTED**' === $old['password'];
-                $newMasked = '**REDACTED**' === $new['password'];
-
-                if (!$oldMasked || !$newMasked) {
-                    fwrite(STDERR, "\nLeak detected! Old: ".var_export($old['password'], true).', New: '.var_export($new['password'], true)."\n");
-                }
-
-                return $oldMasked && $newMasked;
+                return '**REDACTED**' === ($old['password'] ?? '') && '**REDACTED**' === ($new['password'] ?? '');
             }));
 
-        $subscriber->onFlush($args);
+        $subscriber->onFlush(new OnFlushEventArgs($em));
     }
 }

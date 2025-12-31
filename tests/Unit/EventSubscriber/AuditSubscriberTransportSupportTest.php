@@ -5,13 +5,16 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\EventSubscriber;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
-use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
+use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
+use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
+use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
+use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use PHPUnit\Framework\Attributes\CoversClass;
 
 #[CoversClass(AuditSubscriber::class)]
@@ -19,60 +22,55 @@ class AuditSubscriberTransportSupportTest extends TestCase
 {
     public function testOnFlushDefersWhenTransportDoesNotSupportIt(): void
     {
-        // Stubs for objects without expectations
-        $auditService = $this->createStub(AuditService::class);
+        $auditService = self::createStub(AuditService::class);
+        $changeProcessor = new ChangeProcessor($auditService, true, 'deletedAt');
         $transport = $this->createMock(AuditTransportInterface::class);
-        $em = $this->createStub(EntityManagerInterface::class);
-        $uow = $this->createStub(UnitOfWork::class);
+        $dispatcher = new AuditDispatcher($transport, null);
+        $auditManager = new ScheduledAuditManager(self::createStub(
+            \Symfony\Contracts\EventDispatcher\EventDispatcherInterface::class
+        ));
 
-        // Setup Subscriber with deferTransportUntilCommit = false
-        $subscriber = new AuditSubscriber(
+        $entityProcessor = new EntityProcessor(
             $auditService,
-            $transport,
-            deferTransportUntilCommit: false,
-            enabled: true
+            $changeProcessor,
+            $dispatcher,
+            $auditManager,
+            false // deferTransportUntilCommit = false
         );
 
-        // Setup Transport: Does NOT support on_flush
-        $transport->method('supports')
-            ->willReturnMap([
-                ['on_flush', false],
-                ['post_flush', true],
-            ]);
+        $subscriber = new AuditSubscriber(
+            $auditService,
+            $changeProcessor,
+            $dispatcher,
+            $auditManager,
+            $entityProcessor
+        );
 
-        // Setup Entity
+        $transport->method('supports')->willReturnCallback(fn ($phase) => match ($phase) {
+            'on_flush' => false,
+            'post_flush' => true,
+            default => false,
+        });
+
         $entity = new \stdClass();
         $auditLog = new AuditLog();
         $auditLog->setAction('update');
 
-        // Setup AuditService
         $auditService->method('shouldAudit')->willReturn(true);
         $auditService->method('createAuditLog')->willReturn($auditLog);
         $auditService->method('getEntityId')->willReturn('123');
 
-        // Setup EntityManager & UnitOfWork
+        $em = self::createStub(EntityManagerInterface::class);
+        $uow = self::createStub(UnitOfWork::class);
         $em->method('getUnitOfWork')->willReturn($uow);
-        $em->method('getClassMetadata')->willReturn($this->createStub(ClassMetadata::class));
-        $uow->method('getScheduledEntityInsertions')->willReturn([]);
-        $uow->method('getScheduledEntityUpdates')->willReturn([$entity]); // One update
-        $uow->method('getScheduledCollectionUpdates')->willReturn([]);
-        $uow->method('getScheduledEntityDeletions')->willReturn([]);
+        $uow->method('getScheduledEntityUpdates')->willReturn([$entity]);
         $uow->method('getEntityChangeSet')->willReturn(['field' => ['old', 'new']]);
 
-        // Expectation: send() should be called EXACTLY ONCE, and ONLY with 'post_flush' phase.
-        // If it were called in onFlush, the count would be 2 (or 1 with wrong phase).
         $transport->expects($this->once())
             ->method('send')
-            ->with($auditLog, $this->callback(function ($context) {
-                return ($context['phase'] ?? '') === 'post_flush';
-            }));
+            ->with($auditLog, self::callback(fn ($context) => 'post_flush' === ($context['phase'] ?? '')));
 
-        // 1. Trigger onFlush
-        $args = new OnFlushEventArgs($em);
-        $subscriber->onFlush($args);
-
-        // 2. Trigger postFlush
-        $postFlushArgs = new PostFlushEventArgs($em);
-        $subscriber->postFlush($postFlushArgs);
+        $subscriber->onFlush(new OnFlushEventArgs($em));
+        $subscriber->postFlush(new PostFlushEventArgs($em));
     }
 }

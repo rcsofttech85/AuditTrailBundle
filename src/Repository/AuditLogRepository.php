@@ -7,12 +7,13 @@ namespace Rcsofttech\AuditTrailBundle\Repository;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
 /**
  * @extends ServiceEntityRepository<AuditLog>
  */
-class AuditLogRepository extends ServiceEntityRepository
+class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepositoryInterface
 {
     public function __construct(ManagerRegistry $registry)
     {
@@ -86,17 +87,6 @@ class AuditLogRepository extends ServiceEntityRepository
     /**
      * Find audit logs with optional filters using keyset pagination.
      *
-     * @param array{
-     *     entityClass?: string,
-     *     entityId?: string,
-     *     userId?: int,
-     *     action?: string,
-     *     transactionHash?: string,
-     *     from?: \DateTimeImmutable,
-     *     to?: \DateTimeImmutable,
-     *     afterId?: int,
-     *     beforeId?: int
-     * } $filters
      * @param array<string, mixed> $filters
      *
      * @return array<int, AuditLog>
@@ -141,7 +131,7 @@ class AuditLogRepository extends ServiceEntityRepository
         } else {
             // Partial match for short names
             $qb->andWhere('a.entityClass LIKE :entityClass')
-                ->setParameter('entityClass', '%'.$entityClass.'%');
+                ->setParameter('entityClass', '%' . $entityClass . '%');
         }
     }
 
