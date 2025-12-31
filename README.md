@@ -4,8 +4,15 @@
 [![Latest Stable Version](https://img.shields.io/packagist/v/rcsofttech/audit-trail-bundle.svg)](https://packagist.org/packages/rcsofttech/audit-trail-bundle)
 ![License](https://img.shields.io/github/license/rcsofttech85/AuditTrailBundle)
 [![Total Downloads](https://img.shields.io/packagist/dt/rcsofttech/audit-trail-bundle.svg)](https://packagist.org/packages/rcsofttech/audit-trail-bundle)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/38d81ef3b38d4ea3976f5eb12c98e112)](https://app.codacy.com/gh/rcsofttech85/AuditTrailBundle/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 A lightweight, high-performance Symfony bundle that automatically tracks and stores Doctrine ORM entity changes for audit logging and compliance.
+
+## Architecture
+
+This bundle is built using a **Split-Phase Audit Architecture** to ensure high performance and reliability in Symfony applications.
+For a deep dive into the design decisions and how the split-phase approach works, check out the full article on Medium:
+ [Designing a Split-Phase Audit Architecture for Symfony](https://medium.com/@rcsofttech85/designing-a-split-phase-audit-architecture-for-symfony-f4ff532491dc)
 
 ## Features
 
