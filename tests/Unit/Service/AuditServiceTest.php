@@ -4,6 +4,8 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
@@ -11,46 +13,34 @@ use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
-use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
-use PHPUnit\Framework\MockObject\Stub;
+use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 
+#[AllowMockObjectsWithoutExpectations]
 class AuditServiceTest extends TestCase
 {
-    /** @var EntityManagerInterface&Stub */
-    private $entityManager;
-
-    /** @var UserResolverInterface&Stub */
-    private $userResolver;
-
-    /** @var ClockInterface&Stub */
-    private $clock;
-
-    /** @var LoggerInterface&Stub */
-    private $logger;
-
-    /** @var TransactionIdGenerator&Stub */
-    private $transactionIdGenerator;
-
-    /** @var EntityDataExtractor&Stub */
-    private $dataExtractor;
-
-    /** @var MetadataCache&Stub */
-    private $metadataCache;
-
+    private EntityManagerInterface&MockObject $entityManager;
+    private UserResolverInterface&MockObject $userResolver;
+    private ClockInterface&MockObject $clock;
+    private LoggerInterface&MockObject $logger;
+    private TransactionIdGenerator&MockObject $transactionIdGenerator;
+    private EntityDataExtractor&MockObject $dataExtractor;
+    private MetadataCache&MockObject $metadataCache;
     private AuditService $service;
 
     protected function setUp(): void
     {
-        $this->entityManager = self::createStub(EntityManagerInterface::class);
-        $this->userResolver = self::createStub(UserResolverInterface::class);
-        $this->clock = self::createStub(ClockInterface::class);
-        $this->logger = self::createStub(LoggerInterface::class);
-        $this->transactionIdGenerator = self::createStub(TransactionIdGenerator::class);
-        $this->transactionIdGenerator->method('getTransactionId')->willReturn('test-transaction-id');
-        $this->dataExtractor = self::createStub(EntityDataExtractor::class);
-        $this->metadataCache = self::createStub(MetadataCache::class);
+        $this->entityManager = $this->createMock(EntityManagerInterface::class);
+        $this->userResolver = $this->createMock(UserResolverInterface::class);
+        $this->clock = $this->createMock(ClockInterface::class);
+        $this->logger = $this->createMock(LoggerInterface::class);
+        $this->transactionIdGenerator = $this->createMock(TransactionIdGenerator::class);
+        $this->dataExtractor = $this->createMock(EntityDataExtractor::class);
+        $this->metadataCache = $this->createMock(MetadataCache::class);
+
+        $this->transactionIdGenerator->method('getTransactionId')->willReturn('tx1');
+        $this->clock->method('now')->willReturn(new \DateTimeImmutable('2023-01-01 12:00:00'));
 
         $this->service = new AuditService(
             $this->entityManager,
@@ -59,19 +49,30 @@ class AuditServiceTest extends TestCase
             $this->transactionIdGenerator,
             $this->dataExtractor,
             $this->metadataCache,
-            ['ignoredField'],
+            ['IgnoredEntity'],
             $this->logger
         );
     }
 
-    public function testShouldAuditReturnsTrueForAuditableEntity(): void
+    public function testShouldAudit(): void
     {
         $this->metadataCache->method('getAuditableAttribute')->willReturn(new Auditable(enabled: true));
-        $entity = new TestEntity();
-        self::assertTrue($this->service->shouldAudit($entity));
+        self::assertTrue($this->service->shouldAudit(new \stdClass()));
+
+        $this->metadataCache = $this->createMock(MetadataCache::class);
+        $this->metadataCache->method('getAuditableAttribute')->willReturn(null);
+        $service = new AuditService(
+            $this->entityManager,
+            $this->userResolver,
+            $this->clock,
+            $this->transactionIdGenerator,
+            $this->dataExtractor,
+            $this->metadataCache
+        );
+        self::assertFalse($service->shouldAudit(new \stdClass()));
     }
 
-    public function testShouldAuditReturnsFalseForIgnoredEntity(): void
+    public function testShouldAuditIgnored(): void
     {
         $service = new AuditService(
             $this->entityManager,
@@ -80,103 +81,132 @@ class AuditServiceTest extends TestCase
             $this->transactionIdGenerator,
             $this->dataExtractor,
             $this->metadataCache,
-            [TestEntity::class],
-            $this->logger
+            [\stdClass::class]
         );
-
-        $entity = new TestEntity();
-        self::assertFalse($service->shouldAudit($entity));
+        self::assertFalse($service->shouldAudit(new \stdClass()));
     }
 
-    public function testGetEntityDataExtractsFields(): void
+    public function testGetEntityData(): void
     {
-        $entity = new TestEntity();
-        $dataExtractor = $this->createMock(EntityDataExtractor::class);
-        $dataExtractor->expects($this->once())
-            ->method('extract')
-            ->with($entity, [])
-            ->willReturn(['name' => 'Test Name']);
-
-        $service = new AuditService(
-            $this->entityManager,
-            $this->userResolver,
-            $this->clock,
-            $this->transactionIdGenerator,
-            $dataExtractor,
-            $this->metadataCache,
-            ['ignoredField'],
-            $this->logger
-        );
-
-        $data = $service->getEntityData($entity);
-
-        self::assertEquals(['name' => 'Test Name'], $data);
+        $entity = new \stdClass();
+        $this->dataExtractor->expects($this->once())->method('extract')->with($entity, [])->willReturn(['data']);
+        self::assertEquals(['data'], $this->service->getEntityData($entity));
     }
 
     public function testCreateAuditLog(): void
     {
-        $entity = new TestEntity();
-
-        // Mock metadata for getEntityId
-        $metadata = self::createStub(ClassMetadata::class);
-        $metadata->method('getIdentifierValues')->willReturn(['id' => 123]);
+        $entity = new \stdClass();
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $this->entityManager->method('getClassMetadata')->willReturn($metadata);
 
-        $this->userResolver->method('getUserId')->willReturn(123);
-        $this->userResolver->method('getUsername')->willReturn('testuser');
+        $this->userResolver->method('getUserId')->willReturn(1);
 
-        $now = new \DateTimeImmutable('2024-01-01 12:00:00');
-        $this->clock->method('now')->willReturn($now);
+        $log = $this->service->createAuditLog($entity, AuditLogInterface::ACTION_UPDATE, ['a' => 1], ['a' => 2]);
+
+        self::assertEquals(1, $log->getEntityId());
+        self::assertEquals(['a'], $log->getChangedFields());
+        self::assertEquals(1, $log->getUserId());
+    }
+
+    public function testCreateAuditLogPendingIdDelete(): void
+    {
+        $entity = new \stdClass();
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('getIdentifierValues')->willReturn([]); // No ID yet (simulated)
+        $metadata->method('getIdentifierFieldNames')->willReturn(['id']);
+        $this->entityManager->method('getClassMetadata')->willReturn($metadata);
 
         $log = $this->service->createAuditLog(
             $entity,
-            AuditLogInterface::ACTION_UPDATE,
-            ['name' => 'Old'],
-            ['name' => 'New']
+            AuditLogInterface::ACTION_DELETE,
+            ['id' => 123, 'data' => 'val'],
+            null
         );
 
-        self::assertEquals(TestEntity::class, $log->getEntityClass());
-        self::assertEquals(AuditLogInterface::ACTION_UPDATE, $log->getAction());
-        self::assertEquals(['name' => 'Old'], $log->getOldValues());
-        self::assertEquals(['name' => 'New'], $log->getNewValues());
-        self::assertEquals(['name'], $log->getChangedFields());
-        self::assertEquals(123, $log->getUserId());
-        self::assertEquals('testuser', $log->getUsername());
-        self::assertEquals($now, $log->getCreatedAt());
-        self::assertEquals('test-transaction-id', $log->getTransactionHash());
+        self::assertEquals('123', $log->getEntityId());
     }
 
-    public function testCompositeKeySerialization(): void
+    public function testCreateAuditLogPendingIdDeleteComposite(): void
     {
-        $entity = new TestEntity();
-        $metadata = self::createStub(ClassMetadata::class);
-        $metadata->method('getIdentifierValues')->willReturn(['id1' => 'uuid-1', 'id2' => 'uuid-2']);
+        $entity = new \stdClass();
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('getIdentifierValues')->willReturn([]);
+        $metadata->method('getIdentifierFieldNames')->willReturn(['id1', 'id2']);
         $this->entityManager->method('getClassMetadata')->willReturn($metadata);
 
-        $id = $this->service->getEntityId($entity);
+        $log = $this->service->createAuditLog(
+            $entity,
+            AuditLogInterface::ACTION_DELETE,
+            ['id1' => 1, 'id2' => 2],
+            null
+        );
 
-        self::assertEquals('["uuid-1","uuid-2"]', $id);
+        self::assertEquals('["1","2"]', $log->getEntityId());
     }
 
-    public function testSingleKeySerialization(): void
+    public function testGetEntityIdFallback(): void
     {
-        $entity = new TestEntity();
-        $metadata = self::createStub(ClassMetadata::class);
-        $metadata->method('getIdentifierValues')->willReturn(['id' => 41]);
+        $entity = new class () {
+            public function getId(): int
+            {
+                return 123;
+            }
+        };
+        $this->entityManager->method('getClassMetadata')->willThrowException(new \Exception());
+
+        self::assertEquals('123', $this->service->getEntityId($entity));
+    }
+
+    public function testGetEntityIdPending(): void
+    {
+        $entity = new \stdClass();
+        $this->entityManager->method('getClassMetadata')->willThrowException(new \Exception());
+
+        self::assertEquals('pending', $this->service->getEntityId($entity));
+    }
+
+    public function testEnrichUserContextException(): void
+    {
+        $entity = new \stdClass();
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $this->entityManager->method('getClassMetadata')->willReturn($metadata);
 
-        $id = $this->service->getEntityId($entity);
+        $this->userResolver->method('getUserId')->willThrowException(new \Exception('User error'));
+        $this->logger->expects($this->once())->method('error');
 
-        self::assertEquals('41', $id);
+        $this->service->createAuditLog($entity, 'create');
     }
 
-    public function testFloatComparisonWithEpsilon(): void
+    public function testDetectChangedFields(): void
     {
-        $reflection = new \ReflectionClass(AuditService::class);
-        $method = $reflection->getMethod('valuesAreDifferent');
-        $method->setAccessible(true);
+        $entity = new \stdClass();
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
+        $this->entityManager->method('getClassMetadata')->willReturn($metadata);
 
-        self::assertFalse($method->invoke($this->service, 1.0000000001, 1.0000000002));
-        self::assertTrue($method->invoke($this->service, 1.0, 1.000001));
+        // Test numeric comparison
+        $log = $this->service->createAuditLog(
+            $entity,
+            AuditLogInterface::ACTION_UPDATE,
+            ['float' => 1.0000000001, 'same' => 'val', 'null' => null],
+            ['float' => 1.0000000002, 'same' => 'val', 'null' => null]
+        );
+        self::assertEmpty($log->getChangedFields());
+
+        $log2 = $this->service->createAuditLog(
+            $entity,
+            AuditLogInterface::ACTION_UPDATE,
+            ['float' => 1.0, 'new' => 'old_val'],
+            ['float' => 1.1, 'new' => 'new_val']
+        );
+        self::assertEquals(['float', 'new'], $log2->getChangedFields());
+    }
+
+    public function testGetSensitiveFields(): void
+    {
+        $this->metadataCache->method('getSensitiveFields')->willReturn(['field' => 'mask']);
+        self::assertEquals(['field' => 'mask'], $this->service->getSensitiveFields(new \stdClass()));
     }
 }

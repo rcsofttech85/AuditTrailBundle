@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -13,6 +14,7 @@ use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Symfony\Component\Console\Tester\CommandTester;
 
 #[CoversClass(AuditListCommand::class)]
+#[AllowMockObjectsWithoutExpectations]
 class AuditListCommandTest extends TestCase
 {
     private AuditLogRepository&MockObject $repository;
@@ -36,7 +38,8 @@ class AuditListCommandTest extends TestCase
         $this->commandTester->execute([]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('No audit logs', $this->normalizeOutput());
+        $output = $this->normalizeOutput();
+        self::assertStringContainsString('No audit logs found matching the criteria.', $output);
     }
 
     public function testListWithResults(): void
@@ -53,6 +56,7 @@ class AuditListCommandTest extends TestCase
 
         self::assertSame(0, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
+        self::assertStringContainsString('Audit Logs (1 results)', $output);
         self::assertStringContainsString('TestEntity', $output);
         self::assertStringContainsString('42', $output);
         self::assertStringContainsString('update', $output);
@@ -90,7 +94,8 @@ class AuditListCommandTest extends TestCase
             ->with(
                 self::callback(function (array $filters) {
                     return 'TestEntity' === $filters['entityClass']
-                        && 'update' === $filters['action'];
+                        && 'update' === $filters['action']
+                        && 123 === $filters['userId'];
                 }),
                 50
             )
@@ -99,6 +104,25 @@ class AuditListCommandTest extends TestCase
         $this->commandTester->execute([
             '--entity' => 'TestEntity',
             '--action' => 'update',
+            '--user' => '123',
+        ]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
+    }
+
+    public function testListWithEmptyFilters(): void
+    {
+        // Empty strings should be ignored
+        $this->repository
+            ->expects($this->once())
+            ->method('findWithFilters')
+            ->with([], 50)
+            ->willReturn([]);
+
+        $this->commandTester->execute([
+            '--entity' => '',
+            '--action' => '',
+            '--user' => '',
         ]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
@@ -134,6 +158,22 @@ class AuditListCommandTest extends TestCase
 
         $this->commandTester->execute([
             '--limit' => '100',
+        ]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
+    }
+
+    public function testListWithDefaultLimit(): void
+    {
+        $this->repository
+            ->expects($this->once())
+            ->method('findWithFilters')
+            ->with([], 50)
+            ->willReturn([]);
+
+        // Passing non-numeric limit should fallback to 50
+        $this->commandTester->execute([
+            '--limit' => 'abc',
         ]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
@@ -177,18 +217,17 @@ class AuditListCommandTest extends TestCase
         self::assertStringContainsString('Invalid action', $this->normalizeOutput());
     }
 
-    public function testListWithInvalidLimit(): void
+    public function testListWithLimitBoundaries(): void
     {
-        $this->repository
-            ->expects($this->never())
-            ->method('findWithFilters');
-
-        $this->commandTester->execute([
-            '--limit' => '9999',
-        ]);
-
+        // Test lower boundary
+        $this->commandTester->execute(['--limit' => '0']);
         self::assertSame(1, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Limit must be between', $this->normalizeOutput());
+        self::assertStringContainsString('Limit must be between 1 and 1000', $this->normalizeOutput());
+
+        // Test upper boundary
+        $this->commandTester->execute(['--limit' => '1001']);
+        self::assertSame(1, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Limit must be between 1 and 1000', $this->normalizeOutput());
     }
 
     public function testListWithInvalidFromDate(): void
@@ -225,7 +264,12 @@ class AuditListCommandTest extends TestCase
 
     private function normalizeOutput(): string
     {
-        return preg_replace('/\s+/', ' ', $this->commandTester->getDisplay()) ?? '';
+        $output = $this->commandTester->getDisplay();
+        $regex = '/\x1b[[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/';
+        $output = (string) preg_replace($regex, '', $output);
+        $output = (string) preg_replace('/[!\[\]]+/', ' ', $output);
+
+        return (string) preg_replace('/\s+/', ' ', trim($output));
     }
 
     private function createAuditLog(int $id, string $entityClass, string $entityId, string $action): AuditLog

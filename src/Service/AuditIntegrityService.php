@@ -32,7 +32,7 @@ final readonly class AuditIntegrityService implements AuditIntegrityServiceInter
     {
         $signature = $log->getSignature();
         if (null === $signature) {
-            return false;
+            return AuditLogInterface::ACTION_REVERT === $log->getAction();
         }
 
         $expectedSignature = $this->generateSignature($log);

@@ -5,11 +5,13 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
 
+#[AllowMockObjectsWithoutExpectations]
 class DoctrineAuditTransportTest extends TestCase
 {
     private DoctrineAuditTransport $transport;

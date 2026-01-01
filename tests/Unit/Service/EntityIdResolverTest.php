@@ -1,0 +1,85 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
+
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
+
+#[AllowMockObjectsWithoutExpectations]
+class EntityIdResolverTest extends TestCase
+{
+    public function testResolveNotPendingIsInsert(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityId('123');
+
+        self::assertEquals('123', EntityIdResolver::resolve($log, ['is_insert' => true]));
+    }
+
+    public function testResolveNotPendingNotInsert(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityId('123');
+
+        self::assertNull(EntityIdResolver::resolve($log, ['is_insert' => false]));
+    }
+
+    public function testResolvePendingMissingContext(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityId('pending');
+
+        self::assertNull(EntityIdResolver::resolve($log, []));
+    }
+
+    public function testResolvePendingSingleId(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityId('pending');
+
+        $entity = new \stdClass();
+        $em = $this->createMock(EntityManagerInterface::class);
+        $metadata = $this->createMock(ClassMetadata::class);
+
+        $em->method('getClassMetadata')->with(\stdClass::class)->willReturn($metadata);
+        $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
+
+        self::assertEquals('123', EntityIdResolver::resolve($log, ['entity' => $entity, 'em' => $em]));
+    }
+
+    public function testResolvePendingCompositeId(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityId('pending');
+
+        $entity = new \stdClass();
+        $em = $this->createMock(EntityManagerInterface::class);
+        $metadata = $this->createMock(ClassMetadata::class);
+
+        $em->method('getClassMetadata')->with(\stdClass::class)->willReturn($metadata);
+        $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id1' => 1, 'id2' => 2]);
+
+        self::assertEquals('[1,2]', EntityIdResolver::resolve($log, ['entity' => $entity, 'em' => $em]));
+    }
+
+    public function testResolvePendingNoId(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityId('pending');
+
+        $entity = new \stdClass();
+        $em = $this->createMock(EntityManagerInterface::class);
+        $metadata = $this->createMock(ClassMetadata::class);
+
+        $em->method('getClassMetadata')->with(\stdClass::class)->willReturn($metadata);
+        $metadata->method('getIdentifierValues')->with($entity)->willReturn([]);
+
+        self::assertNull(EntityIdResolver::resolve($log, ['entity' => $entity, 'em' => $em]));
+    }
+}

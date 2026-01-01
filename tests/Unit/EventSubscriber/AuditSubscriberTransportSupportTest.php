@@ -6,6 +6,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\UnitOfWork;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -16,8 +17,10 @@ use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use PHPUnit\Framework\Attributes\CoversClass;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 #[CoversClass(AuditSubscriber::class)]
+#[AllowMockObjectsWithoutExpectations]
 class AuditSubscriberTransportSupportTest extends TestCase
 {
     public function testOnFlushDefersWhenTransportDoesNotSupportIt(): void
@@ -27,7 +30,7 @@ class AuditSubscriberTransportSupportTest extends TestCase
         $transport = $this->createMock(AuditTransportInterface::class);
         $dispatcher = new AuditDispatcher($transport, null);
         $auditManager = new ScheduledAuditManager(self::createStub(
-            \Symfony\Contracts\EventDispatcher\EventDispatcherInterface::class
+            EventDispatcherInterface::class
         ));
 
         $entityProcessor = new EntityProcessor(

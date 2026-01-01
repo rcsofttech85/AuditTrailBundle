@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Service\DiffGenerator;
 
+#[AllowMockObjectsWithoutExpectations]
 class DiffGeneratorTest extends TestCase
 {
     private DiffGenerator $generator;

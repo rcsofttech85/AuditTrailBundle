@@ -2,11 +2,13 @@
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Transport\ChainAuditTransport;
 
+#[AllowMockObjectsWithoutExpectations]
 class ChainAuditTransportTest extends TestCase
 {
     public function testSupportsReturnsTrueIfAnyTransportSupportsPhase(): void

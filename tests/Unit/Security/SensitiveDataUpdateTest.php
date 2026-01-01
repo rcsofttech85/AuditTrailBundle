@@ -6,9 +6,8 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
-use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
-use Rcsofttech\AuditTrailBundle\Attribute\Sensitive;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -24,21 +23,9 @@ use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use Symfony\Component\Clock\MockClock;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
+use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\SensitiveUser;
 
-#[Auditable]
-class SensitiveUser
-{
-    public function getId(): int
-    {
-        return 1;
-    }
-
-    #[Sensitive]
-    public string $password = 'secret';
-
-    public string $username = 'user';
-}
-
+#[AllowMockObjectsWithoutExpectations]
 class SensitiveDataUpdateTest extends TestCase
 {
     public function testUpdateMasksSensitiveData(): void

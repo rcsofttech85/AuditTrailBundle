@@ -4,6 +4,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -11,6 +12,7 @@ use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 
+#[AllowMockObjectsWithoutExpectations]
 class HttpAuditTransportTest extends TestCase
 {
     public function testSendPostFlushSendsRequest(): void

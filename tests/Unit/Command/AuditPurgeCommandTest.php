@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -12,6 +13,7 @@ use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Symfony\Component\Console\Tester\CommandTester;
 
 #[CoversClass(AuditPurgeCommand::class)]
+#[AllowMockObjectsWithoutExpectations]
 class AuditPurgeCommandTest extends TestCase
 {
     private AuditLogRepository&MockObject $repository;
@@ -57,7 +59,9 @@ class AuditPurgeCommandTest extends TestCase
         ]);
 
         self::assertSame(1, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Invalid date format', $this->normalizeOutput());
+        $output = $this->normalizeOutput();
+        self::assertStringContainsString('Invalid date format', $output);
+        self::assertStringContainsString('Valid formats', $output);
     }
 
     public function testPurgeWithNoLogsToDelete(): void
@@ -99,7 +103,9 @@ class AuditPurgeCommandTest extends TestCase
 
         self::assertSame(0, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
-        self::assertStringContainsString('100', $output);
+        self::assertStringContainsString('Purge Summary', $output);
+        self::assertStringContainsString('Setting Value', $output);
+        self::assertStringContainsString('Records to delete 100', $output);
         self::assertStringContainsString('Dry run', $output);
     }
 
@@ -124,6 +130,7 @@ class AuditPurgeCommandTest extends TestCase
 
         self::assertSame(0, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
+        self::assertStringContainsString('Deleting audit logs...', $output);
         self::assertStringContainsString('Successfully deleted', $output);
         self::assertStringContainsString('50', $output);
     }
@@ -141,6 +148,28 @@ class AuditPurgeCommandTest extends TestCase
             ->method('deleteOldLogs');
 
         $this->commandTester->setInputs(['no']);
+
+        $this->commandTester->execute([
+            '--before' => '30 days ago',
+        ]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Operation cancelled', $this->normalizeOutput());
+    }
+
+    public function testPurgeDefaultCancelled(): void
+    {
+        $this->repository
+            ->expects($this->once())
+            ->method('countOlderThan')
+            ->willReturn(50);
+
+        $this->repository
+            ->expects($this->never())
+            ->method('deleteOldLogs');
+
+        // Empty input should use default (false)
+        $this->commandTester->setInputs(["\n"]);
 
         $this->commandTester->execute([
             '--before' => '30 days ago',
@@ -200,8 +229,38 @@ class AuditPurgeCommandTest extends TestCase
         self::assertSame(0, $this->commandTester->getStatusCode());
     }
 
+    public function testPurgeWithLargeCountWarning(): void
+    {
+        // Test boundary 10000
+        $this->repository
+            ->expects($this->exactly(2))
+            ->method('countOlderThan')
+            ->willReturnOnConsecutiveCalls(10000, 10001);
+
+        $this->repository
+            ->expects($this->exactly(2))
+            ->method('deleteOldLogs')
+            ->willReturn(10000);
+
+        $this->commandTester->setInputs(['yes']);
+
+        // 10000 should NOT show warning (it's > 10000)
+        $this->commandTester->execute(['--before' => '30 days ago']);
+        self::assertStringNotContainsString('large operation', $this->normalizeOutput());
+
+        // 10001 SHOULD show warning
+        $this->commandTester->setInputs(['yes']);
+        $this->commandTester->execute(['--before' => '30 days ago']);
+        self::assertStringContainsString('large operation', $this->normalizeOutput());
+    }
+
     private function normalizeOutput(): string
     {
-        return preg_replace('/\s+/', ' ', $this->commandTester->getDisplay()) ?? '';
+        $output = $this->commandTester->getDisplay();
+        $regex = '/\x1b[[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/';
+        $output = (string) preg_replace($regex, '', $output);
+        $output = (string) preg_replace('/[!\[\]]+/', ' ', $output);
+
+        return (string) preg_replace('/\s+/', ' ', trim($output));
     }
 }

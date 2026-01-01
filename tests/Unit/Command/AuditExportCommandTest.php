@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -13,6 +14,7 @@ use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Symfony\Component\Console\Tester\CommandTester;
 
 #[CoversClass(AuditExportCommand::class)]
+#[AllowMockObjectsWithoutExpectations]
 class AuditExportCommandTest extends TestCase
 {
     private AuditLogRepository&MockObject $repository;
@@ -35,7 +37,8 @@ class AuditExportCommandTest extends TestCase
         $this->commandTester->execute([]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('No audit logs', $this->normalizeOutput());
+        $output = $this->normalizeOutput();
+        self::assertStringContainsString('No audit logs found matching the criteria.', $output);
     }
 
     public function testExportToJson(): void
@@ -48,13 +51,40 @@ class AuditExportCommandTest extends TestCase
             ->willReturn([$audit]);
 
         $this->commandTester->execute([
-            '--format' => 'json',
+            '--format' => 'JSON', // Test case-insensitivity
         ]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->commandTester->getDisplay();
+        $output = $this->normalizeOutput();
+        self::assertStringContainsString('Found 1 audit logs', $output);
         self::assertStringContainsString('"entity_class"', $output);
         self::assertStringContainsString('User', $output);
+    }
+
+    public function testExportToFile(): void
+    {
+        $audit = $this->createAuditLog(1, 'App\\Entity\\User', '42', 'create');
+        $tempFile = sys_get_temp_dir() . '/audit_export_test.json';
+        if (file_exists($tempFile)) {
+            unlink($tempFile);
+        }
+
+        $this->repository
+            ->expects($this->once())
+            ->method('findWithFilters')
+            ->willReturn([$audit]);
+
+        $this->commandTester->execute([
+            '--output' => $tempFile,
+        ]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
+        $output = $this->normalizeOutput();
+        self::assertStringContainsString('Exported 1 audit logs to', $output);
+        self::assertFileExists($tempFile);
+        self::assertStringContainsString('"entity_class"', (string) file_get_contents($tempFile));
+
+        unlink($tempFile);
     }
 
     public function testExportToCsv(): void
@@ -90,18 +120,17 @@ class AuditExportCommandTest extends TestCase
         self::assertStringContainsString('Invalid format', $this->normalizeOutput());
     }
 
-    public function testExportWithInvalidLimit(): void
+    public function testExportWithLimitBoundaries(): void
     {
-        $this->repository
-            ->expects($this->never())
-            ->method('findWithFilters');
-
-        $this->commandTester->execute([
-            '--limit' => '999999',
-        ]);
-
+        // Test lower boundary
+        $this->commandTester->execute(['--limit' => '0']);
         self::assertSame(1, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Limit must be between', $this->normalizeOutput());
+        self::assertStringContainsString('Limit must be between 1 and 100000', $this->normalizeOutput());
+
+        // Test upper boundary
+        $this->commandTester->execute(['--limit' => '100001']);
+        self::assertSame(1, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Limit must be between 1 and 100000', $this->normalizeOutput());
     }
 
     public function testExportWithInvalidAction(): void
@@ -126,7 +155,9 @@ class AuditExportCommandTest extends TestCase
             ->with(
                 self::callback(function (array $filters) {
                     return 'User' === $filters['entityClass']
-                        && 'create' === $filters['action'];
+                        && 'create' === $filters['action']
+                        && $filters['from'] instanceof \DateTimeImmutable
+                        && $filters['to'] instanceof \DateTimeImmutable;
                 }),
                 1000
             )
@@ -135,6 +166,27 @@ class AuditExportCommandTest extends TestCase
         $this->commandTester->execute([
             '--entity' => 'User',
             '--action' => 'create',
+            '--from' => '2024-01-01',
+            '--to' => '2024-01-02',
+        ]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
+    }
+
+    public function testExportWithEmptyFilters(): void
+    {
+        // Empty strings should be ignored
+        $this->repository
+            ->expects($this->once())
+            ->method('findWithFilters')
+            ->with([], 1000)
+            ->willReturn([]);
+
+        $this->commandTester->execute([
+            '--entity' => '',
+            '--action' => '',
+            '--from' => '',
+            '--to' => '',
         ]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
@@ -142,7 +194,12 @@ class AuditExportCommandTest extends TestCase
 
     private function normalizeOutput(): string
     {
-        return preg_replace('/\s+/', ' ', $this->commandTester->getDisplay()) ?? '';
+        $output = $this->commandTester->getDisplay();
+        $regex = '/\x1b[[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/';
+        $output = (string) preg_replace($regex, '', $output);
+        $output = (string) preg_replace('/[!\[\]]+/', ' ', $output);
+
+        return (string) preg_replace('/\s+/', ' ', trim($output));
     }
 
     private function createAuditLog(int $id, string $entityClass, string $entityId, string $action): AuditLog

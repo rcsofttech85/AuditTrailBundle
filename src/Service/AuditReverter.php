@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -18,6 +19,7 @@ class AuditReverter implements AuditReverterInterface
         private readonly AuditService $auditService,
         private readonly RevertValueDenormalizer $denormalizer,
         private readonly SoftDeleteHandler $softDeleteHandler,
+        private readonly AuditIntegrityServiceInterface $integrityService,
     ) {
     }
 
@@ -26,6 +28,13 @@ class AuditReverter implements AuditReverterInterface
      */
     public function revert(AuditLogInterface $log, bool $dryRun = false, bool $force = false): array
     {
+        if ($this->integrityService->isEnabled() && !$this->integrityService->verifySignature($log)) {
+            throw new \RuntimeException(sprintf(
+                'Audit log #%s has been tampered with and cannot be reverted.',
+                $log->getId() ?? 'unknown'
+            ));
+        }
+
         $entity = $this->findEntity($log->getEntityClass(), $log->getEntityId());
 
         if (null === $entity) {

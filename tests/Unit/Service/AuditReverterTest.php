@@ -6,44 +6,22 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
-use Doctrine\ORM\Query\Filter\SQLFilter;
 use Doctrine\ORM\Query\FilterCollection;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditReverter;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\RevertValueDenormalizer;
 use Rcsofttech\AuditTrailBundle\Service\SoftDeleteHandler;
+use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\DummySoftDeleteableFilter;
+use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\RevertTestUser;
+use Symfony\Component\Validator\ConstraintViolation;
 use Symfony\Component\Validator\ConstraintViolationList;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
-
-class DummySoftDeleteableFilter extends SQLFilter
-{
-    public function addFilterConstraint(ClassMetadata $targetEntity, string $targetTableAlias): string
-    {
-        return '';
-    }
-}
-
-class TestUser
-{
-    public function getId(): int
-    {
-        return 1;
-    }
-
-    public function getDeletedAt(): ?\DateTimeInterface
-    {
-        return null;
-    }
-
-    public function setDeletedAt(?\DateTimeInterface $d): void
-    {
-    }
-}
 
 // Mock class for testing if not present
 if (!class_exists('Gedmo\SoftDeleteable\Filter\SoftDeleteableFilter')) {
@@ -56,8 +34,10 @@ class AuditReverterTest extends TestCase
     private EntityManagerInterface&MockObject $em;
     private ValidatorInterface&MockObject $validator;
     private AuditService&MockObject $auditService;
-    private AuditReverter $reverter;
     private FilterCollection&MockObject $filterCollection;
+    private SoftDeleteHandler&MockObject $softDeleteHandler;
+    private AuditIntegrityServiceInterface&MockObject $integrityService;
+    private AuditReverter $reverter;
 
     protected function setUp(): void
     {
@@ -65,6 +45,8 @@ class AuditReverterTest extends TestCase
         $this->validator = $this->createMock(ValidatorInterface::class);
         $this->auditService = $this->createMock(AuditService::class);
         $this->filterCollection = $this->createMock(FilterCollection::class);
+        $this->softDeleteHandler = $this->createMock(SoftDeleteHandler::class);
+        $this->integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
 
         $this->em->method('getFilters')->willReturn($this->filterCollection);
 
@@ -73,153 +55,225 @@ class AuditReverterTest extends TestCase
             $this->validator,
             $this->auditService,
             new RevertValueDenormalizer($this->em),
-            new SoftDeleteHandler($this->em)
+            $this->softDeleteHandler,
+            $this->integrityService
         );
     }
 
-    public function testRevertUpdateSuccess(): void
+    public function testRevertEntityNotFound(): void
     {
         $log = new AuditLog();
-        $log->setEntityClass(TestUser::class);
-        $log->setEntityId('1');
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setOldValues(['name' => 'Old Name']);
-
-        $entity = new class () {
-            public string $name = 'New Name';
-
-            public function getId(): int
-            {
-                return 1;
-            }
-        };
-
-        // Mock getEnabledFilters to return empty array
-        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
-
-        $this->em->expects($this->once())->method('find')->with(TestUser::class, '1')->willReturn($entity);
-
-        $metadata = $this->createMock(ClassMetadata::class);
-        $metadata->method('isIdentifier')->willReturn(false);
-        $metadata->method('hasField')->willReturn(true);
-        $metadata->method('getFieldValue')->willReturn('New Name');
-        $metadata->expects($this->once())->method('setFieldValue')->with($entity, 'name', 'Old Name');
-
-        $this->em->method('getClassMetadata')->willReturn($metadata);
-
-        $this->validator->expects($this->once())->method('validate')->willReturn(new ConstraintViolationList());
-
-        $this->em->expects($this->exactly(2))->method('persist')
-            ->with(self::callback(fn ($arg) => $arg === $entity || $arg instanceof AuditLog));
-
-        $this->em->expects($this->exactly(2))->method('flush'); // Once for entity, once for log
-
-        // Mock transaction wrapper
-        $this->em->method('wrapInTransaction')->willReturnCallback(function ($callback) {
-            return $callback();
-        });
-
-        // Mock AuditService to create revert log
-        $revertLog = new AuditLog();
-        $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($revertLog);
-
-        $changes = $this->reverter->revert($log);
-
-        self::assertEquals(['name' => 'Old Name'], $changes);
-    }
-
-    public function testRevertCreateRequiresForce(): void
-    {
-        $log = new AuditLog();
-        $log->setAction(AuditLogInterface::ACTION_CREATE);
-        $log->setEntityClass(TestUser::class);
+        $log->setEntityClass(RevertTestUser::class);
         $log->setEntityId('1');
 
         $this->filterCollection->method('getEnabledFilters')->willReturn([]);
-        $this->em->method('find')->willReturn(new \stdClass());
+        $this->em->method('find')->willReturn(null);
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('requires --force');
+        $this->expectExceptionMessage('not found');
 
         $this->reverter->revert($log);
     }
 
-    public function testRevertCreateWithForce(): void
+    public function testRevertDryRun(): void
     {
         $log = new AuditLog();
-        $log->setAction(AuditLogInterface::ACTION_CREATE);
-        $log->setEntityClass(TestUser::class);
+        $log->setEntityClass(RevertTestUser::class);
         $log->setEntityId('1');
+        $log->setAction(AuditLogInterface::ACTION_UPDATE);
+        $log->setOldValues(['name' => 'Old']);
 
-        $entity = new \stdClass();
+        $entity = new RevertTestUser();
         $this->filterCollection->method('getEnabledFilters')->willReturn([]);
         $this->em->method('find')->willReturn($entity);
 
-        $this->em->method('wrapInTransaction')->willReturnCallback(function ($callback) {
-            return $callback();
-        });
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('isIdentifier')->willReturn(false);
+        $metadata->method('hasField')->willReturn(true);
+        $metadata->method('getFieldValue')->willReturn('New');
+        $this->em->method('getClassMetadata')->willReturn($metadata);
 
-        $this->em->expects($this->once())->method('remove')->with($entity);
-        $this->em->expects($this->once())->method('persist')->with(self::isInstanceOf(AuditLog::class));
+        $this->em->expects($this->never())->method('persist');
+        $this->em->expects($this->never())->method('flush');
 
-        $revertLog = new AuditLog();
-        $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($revertLog);
-
-        $changes = $this->reverter->revert($log, false, true);
-
-        self::assertEquals(['action' => 'delete'], $changes);
+        $changes = $this->reverter->revert($log, true);
+        self::assertEquals(['name' => 'Old'], $changes);
     }
 
-    public function testRevertSoftDeleteRestores(): void
+    public function testRevertUnsupportedAction(): void
     {
         $log = new AuditLog();
-        $log->setAction(AuditLogInterface::ACTION_SOFT_DELETE);
-        $log->setEntityClass(TestUser::class);
+        $log->setEntityClass(RevertTestUser::class);
         $log->setEntityId('1');
+        $log->setAction(AuditLogInterface::ACTION_DELETE);
 
-        $entity = new class () {
-            private ?\DateTimeInterface $deletedAt = null;
+        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
+        $this->em->method('find')->willReturn(new RevertTestUser());
 
-            public function __construct()
-            {
-                $this->deletedAt = new \DateTime();
-            }
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('not supported');
 
-            public function getDeletedAt(): ?\DateTimeInterface
-            {
-                return $this->deletedAt;
-            }
+        $this->reverter->revert($log);
+    }
 
-            public function setDeletedAt(?\DateTimeInterface $d): void
-            {
-                $this->deletedAt = $d;
-            }
-        };
+    public function testRevertUpdateNoOldValues(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass(RevertTestUser::class);
+        $log->setEntityId('1');
+        $log->setAction(AuditLogInterface::ACTION_UPDATE);
+        $log->setOldValues([]);
 
-        // Mock Filter
-        $filter = $this->createMock(DummySoftDeleteableFilter::class);
-        $this->filterCollection->method('getEnabledFilters')->willReturn(['soft_delete' => $filter]);
+        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
+        $this->em->method('find')->willReturn(new RevertTestUser());
 
-        $this->filterCollection->expects($this->once())->method('disable')->with('soft_delete');
-        $this->filterCollection->expects($this->once())->method('enable')->with('soft_delete');
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('No old values');
 
+        $this->reverter->revert($log);
+    }
+
+    public function testRevertSoftDeleteNotDeleted(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass(RevertTestUser::class);
+        $log->setEntityId('1');
+        $log->setAction(AuditLogInterface::ACTION_SOFT_DELETE);
+
+        $entity = new RevertTestUser();
+        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
         $this->em->method('find')->willReturn($entity);
 
-        $this->em->method('wrapInTransaction')->willReturnCallback(function ($callback) {
-            return $callback();
-        });
+        $this->softDeleteHandler->method('isSoftDeleted')->with($entity)->willReturn(false);
+
+        $this->em->method('wrapInTransaction')->willReturnCallback(fn ($c) => $c());
 
         $revertLog = new AuditLog();
         $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($revertLog);
-
         $this->validator->method('validate')->willReturn(new ConstraintViolationList());
 
-        $this->em->expects($this->exactly(2))->method('persist')
-            ->with(self::callback(fn ($arg) => $arg === $entity || $arg instanceof AuditLog));
+        $changes = $this->reverter->revert($log);
+        self::assertEquals(['info' => 'Entity is not soft-deleted.'], $changes);
+    }
+
+    public function testValidationFailure(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass(RevertTestUser::class);
+        $log->setEntityId('1');
+        $log->setAction(AuditLogInterface::ACTION_UPDATE);
+        $log->setOldValues(['name' => 'Old']);
+
+        $entity = new RevertTestUser();
+        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
+        $this->em->method('find')->willReturn($entity);
+
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('hasField')->willReturn(true);
+        $this->em->method('getClassMetadata')->willReturn($metadata);
+
+        $this->em->method('wrapInTransaction')->willReturnCallback(fn ($c) => $c());
+
+        $violations = new ConstraintViolationList();
+        $violations->add(new ConstraintViolation('Error', null, [], null, 'path', 'val'));
+        $this->validator->method('validate')->willReturn($violations);
+
+        $this->expectException(\RuntimeException::class);
+        $this->reverter->revert($log);
+    }
+
+    public function testApplyChangesSkipping(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass(RevertTestUser::class);
+        $log->setEntityId('1');
+        $log->setAction(AuditLogInterface::ACTION_UPDATE);
+        $log->setOldValues(['id' => 1, 'unchanged' => 'val', 'changed' => 'old']);
+
+        $entity = new RevertTestUser();
+        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
+        $this->em->method('find')->willReturn($entity);
+
+        $metadata = $this->createMock(ClassMetadata::class);
+        $this->em->method('getClassMetadata')->willReturn($metadata);
+
+        $metadata->method('isIdentifier')->willReturnMap([
+            ['id', true],
+            ['unchanged', false],
+            ['changed', false],
+        ]);
+
+        $metadata->method('hasField')->willReturn(true);
+
+        $metadata->method('getFieldValue')->willReturnMap([
+            [$entity, 'unchanged', 'val'],
+            [$entity, 'changed', 'new'],
+        ]);
+
+        $metadata->expects($this->once())->method('setFieldValue')->with($entity, 'changed', 'old');
+
+        $this->em->method('wrapInTransaction')->willReturnCallback(fn ($c) => $c());
+        $this->validator->method('validate')->willReturn(new ConstraintViolationList());
+
+        $revertLog = new AuditLog();
+        $this->auditService->method('createAuditLog')->willReturn($revertLog);
+
+        $this->em->expects($this->exactly(2))->method('persist'); // Entity and RevertLog
+        $this->em->expects($this->exactly(2))->method('flush');
 
         $changes = $this->reverter->revert($log);
 
+        self::assertEquals(['changed' => 'old'], $changes);
+        self::assertArrayNotHasKey('id', $changes);
+        self::assertArrayNotHasKey('unchanged', $changes);
+
+        // Verify revert log content
+        self::assertEquals(['changed' => 'old'], $revertLog->getOldValues());
+        self::assertEquals(RevertTestUser::class, $revertLog->getEntityClass());
+        self::assertEquals('1', $revertLog->getEntityId());
+    }
+
+    public function testRevertCreateSuccess(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass(RevertTestUser::class);
+        $log->setEntityId('1');
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
+
+        $entity = new RevertTestUser();
+        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
+        $this->em->method('find')->willReturn($entity);
+
+        $this->em->method('wrapInTransaction')->willReturnCallback(fn ($c) => $c());
+        $this->em->expects($this->once())->method('remove')->with($entity);
+
+        $this->auditService->method('createAuditLog')->willReturn(new AuditLog());
+
+        $changes = $this->reverter->revert($log, false, true);
+        self::assertEquals(['action' => 'delete'], $changes);
+    }
+
+    public function testRevertSoftDeleteSuccess(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass(RevertTestUser::class);
+        $log->setEntityId('1');
+        $log->setAction(AuditLogInterface::ACTION_SOFT_DELETE);
+
+        $entity = new RevertTestUser();
+        $entity->setDeletedAt(new \DateTime());
+
+        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
+        $this->em->method('find')->willReturn($entity);
+
+        $this->softDeleteHandler->method('isSoftDeleted')->with($entity)->willReturn(true);
+        $this->softDeleteHandler->expects($this->once())->method('restoreSoftDeleted')->with($entity);
+
+        $this->em->method('wrapInTransaction')->willReturnCallback(fn ($c) => $c());
+        $this->validator->method('validate')->willReturn(new ConstraintViolationList());
+        $this->auditService->method('createAuditLog')->willReturn(new AuditLog());
+
+        $changes = $this->reverter->revert($log);
         self::assertEquals(['action' => 'restore'], $changes);
-        self::assertNull($entity->getDeletedAt());
     }
 }

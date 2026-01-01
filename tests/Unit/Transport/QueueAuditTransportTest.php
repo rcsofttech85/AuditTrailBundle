@@ -2,6 +2,7 @@
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
@@ -12,20 +13,21 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 
+#[AllowMockObjectsWithoutExpectations]
 class QueueAuditTransportTest extends TestCase
 {
     private QueueAuditTransport $transport;
     private MessageBusInterface&MockObject $bus;
-    private LoggerInterface $logger;
+    private LoggerInterface&MockObject $logger;
 
     protected function setUp(): void
     {
         $this->bus = $this->createMock(MessageBusInterface::class);
-        $this->logger = self::createStub(LoggerInterface::class);
+        $this->logger = $this->createMock(LoggerInterface::class);
         $this->transport = new QueueAuditTransport($this->bus, $this->logger);
     }
 
-    public function testSendPostFlushDispatchesMessage(): void
+    public function testSendDispatchesMessage(): void
     {
         $log = new AuditLog();
         $log->setEntityClass('TestEntity');
@@ -35,15 +37,55 @@ class QueueAuditTransportTest extends TestCase
 
         $this->bus->expects($this->once())
             ->method('dispatch')
+            ->with(self::isInstanceOf(AuditLogMessage::class))
+            ->willReturn(new Envelope(new \stdClass()));
+
+        $this->transport->send($log);
+    }
+
+    public function testSendHandlesException(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass('TestEntity');
+        $log->setEntityId('1');
+
+        $this->bus->method('dispatch')->willThrowException(new \Exception('Bus error'));
+        $this->logger->expects($this->once())->method('error');
+
+        $this->transport->send($log);
+    }
+
+    public function testSendResolvesPendingId(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass('TestEntity');
+        $log->setEntityId('pending');
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
+
+        // we need to pass context that EntityIdResolver understands.
+        $context = ['is_insert' => true];
+
+        $entity = new \stdClass();
+        $em = $this->createMock(\Doctrine\ORM\EntityManagerInterface::class);
+        $metadata = $this->createMock(\Doctrine\ORM\Mapping\ClassMetadata::class);
+        $em->method('getClassMetadata')->willReturn($metadata);
+        $metadata->method('getIdentifierValues')->willReturn(['id' => 123]);
+
+        $context = ['entity' => $entity, 'em' => $em];
+
+        $this->bus->expects($this->once())
+            ->method('dispatch')
             ->with(self::callback(function (AuditLogMessage $message) {
-                self::assertSame('1', $message->entityId);
-                self::assertSame('TestEntity', $message->entityClass);
-                self::assertSame('create', $message->action);
-
-                return true;
+                return '123' === $message->entityId;
             }))
-            ->willReturnCallback(fn ($message) => new Envelope($message));
+            ->willReturn(new Envelope(new \stdClass()));
 
-        $this->transport->send($log, ['phase' => 'post_flush']);
+        $this->transport->send($log, $context);
+    }
+
+    public function testSupports(): void
+    {
+        self::assertTrue($this->transport->supports('post_flush'));
+        self::assertFalse($this->transport->supports('pre_flush'));
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditRevertCommand;
@@ -15,6 +16,7 @@ use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 
 #[AllowMockObjectsWithoutExpectations()]
+#[CoversClass(AuditRevertCommand::class)]
 class AuditRevertCommandTest extends TestCase
 {
     private AuditLogRepository&MockObject $repository;
@@ -48,14 +50,18 @@ class AuditRevertCommandTest extends TestCase
         $this->reverter->expects($this->once())
             ->method('revert')
             ->with($log, false, false)
-            ->willReturn(['name' => 'Old Name']);
+            ->willReturn(['name' => 'Old Name', 'age' => 30]);
 
         $this->commandTester->execute(['auditId' => 123]);
 
         $output = $this->commandTester->getDisplay();
         $normalizedOutput = (string) preg_replace('/\s+/', ' ', $output);
+        self::assertStringContainsString('Reverting Audit Log #123 (update)', $normalizedOutput);
+        self::assertStringContainsString('Entity: App\Entity\User:1', $normalizedOutput);
         self::assertStringContainsString('Revert successful', $normalizedOutput);
+        self::assertStringContainsString('Changes Applied:', $normalizedOutput);
         self::assertStringContainsString('name: Old Name', $normalizedOutput);
+        self::assertStringContainsString('age: 30', $normalizedOutput);
         self::assertEquals(0, $this->commandTester->getStatusCode());
     }
 
@@ -83,6 +89,7 @@ class AuditRevertCommandTest extends TestCase
 
         $output = $this->commandTester->getDisplay();
         $normalizedOutput = (string) preg_replace('/\s+/', ' ', $output);
+        self::assertStringContainsString('Reverting Audit Log #123 (update)', $normalizedOutput);
         self::assertStringContainsString('DRY-RUN', $normalizedOutput);
         self::assertEquals(0, $this->commandTester->getStatusCode());
     }
@@ -148,5 +155,60 @@ class AuditRevertCommandTest extends TestCase
         $output = $this->commandTester->getDisplay();
         self::assertStringContainsString('Revert failed', $output);
         self::assertEquals(1, $this->commandTester->getStatusCode());
+    }
+
+    public function testExecuteRawOption(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass('App\Entity\User');
+        $log->setEntityId('1');
+        $log->setAction('update');
+
+        $this->repository->method('find')->willReturn($log);
+        $this->reverter->method('revert')->willReturn(['name' => 'Old Name']);
+
+        $this->commandTester->execute([
+            'auditId' => 123,
+            '--raw' => true,
+        ]);
+
+        $output = $this->commandTester->getDisplay();
+        // Raw output includes title/text, so it's not pure JSON. Just check for the JSON string.
+        $expectedJson = json_encode(['name' => 'Old Name'], JSON_PRETTY_PRINT);
+        self::assertIsString($expectedJson);
+        self::assertStringContainsString($expectedJson, $output);
+    }
+
+    public function testExecuteNoChanges(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass('App\Entity\User');
+        $log->setEntityId('1');
+        $log->setAction('update');
+
+        $this->repository->method('find')->willReturn($log);
+        $this->reverter->method('revert')->willReturn([]);
+
+        $this->commandTester->execute(['auditId' => 123]);
+
+        $output = $this->commandTester->getDisplay();
+        $normalizedOutput = (string) preg_replace('/\s+/', ' ', $output);
+        self::assertStringContainsString('No changes were applied', $normalizedOutput);
+    }
+
+    public function testExecuteNonScalarChange(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass('App\Entity\User');
+        $log->setEntityId('1');
+        $log->setAction('update');
+
+        $this->repository->method('find')->willReturn($log);
+        $this->reverter->method('revert')->willReturn(['roles' => ['ROLE_USER']]);
+
+        $this->commandTester->execute(['auditId' => 123]);
+
+        $output = $this->commandTester->getDisplay();
+        self::assertStringContainsString('roles: ["ROLE_USER"]', $output);
     }
 }

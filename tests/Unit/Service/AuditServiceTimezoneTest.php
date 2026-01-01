@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
@@ -16,6 +17,7 @@ use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
 
+#[AllowMockObjectsWithoutExpectations]
 #[CoversClass(AuditService::class)]
 final class AuditServiceTimezoneTest extends TestCase
 {
