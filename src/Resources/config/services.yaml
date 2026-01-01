@@ -14,8 +14,18 @@ services:
       $tableSuffix: '%audit_trail.table_suffix%'
       $timezone: '%audit_trail.timezone%'
 
+  Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService:
+    bind:
+      $enabled: '%audit_trail.integrity.enabled%'
+      $secret: '%audit_trail.integrity.secret%'
+      $algorithm: '%audit_trail.integrity.algorithm%'
+
+  Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService
+
   Rcsofttech\AuditTrailBundle\:
     resource: '../../*'
     exclude:
       - '../../DependencyInjection/'
+      - '../../Service/AuditIntegrityService.php'
 

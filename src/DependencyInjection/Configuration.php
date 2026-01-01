@@ -59,6 +59,23 @@ final class Configuration implements ConfigurationInterface
             ->end()
             ->end()
             ->end()
+            ->arrayNode('integrity')
+            ->canBeEnabled()
+            ->children()
+            ->scalarNode('secret')
+            ->info('Secret key used for HMAC signature. Required if integrity is enabled.')
+            ->defaultNull()
+            ->end()
+            ->enumNode('algorithm')
+            ->values(['sha256', 'sha384', 'sha512'])
+            ->defaultValue('sha256')
+            ->end()
+            ->end()
+            ->validate()
+            ->ifTrue(fn ($v) => $v['enabled'] && (null === $v['secret'] || '' === $v['secret']))
+            ->thenInvalid('The "secret" must be configured when integrity is enabled.')
+            ->end()
+            ->end()
             ->end();
 
         return $treeBuilder;

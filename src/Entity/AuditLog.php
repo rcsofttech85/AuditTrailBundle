@@ -287,4 +287,19 @@ class AuditLog implements AuditLogInterface
 
         return $this;
     }
+
+    #[ORM\Column(length: 128, nullable: true)]
+    public private(set) ?string $signature = null;
+
+    public function getSignature(): ?string
+    {
+        return $this->signature;
+    }
+
+    public function setSignature(?string $signature): self
+    {
+        $this->signature = $signature;
+
+        return $this;
+    }
 }
