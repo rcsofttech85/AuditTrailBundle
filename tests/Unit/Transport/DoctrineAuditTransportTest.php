@@ -7,15 +7,18 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
 
 class DoctrineAuditTransportTest extends TestCase
 {
     private DoctrineAuditTransport $transport;
+    private AuditIntegrityService $integrityService;
 
     protected function setUp(): void
     {
-        $this->transport = new DoctrineAuditTransport();
+        $this->integrityService = new AuditIntegrityService('secret', 'sha256', false);
+        $this->transport = new DoctrineAuditTransport($this->integrityService);
     }
 
     public function testSendOnFlushPersistsLog(): void

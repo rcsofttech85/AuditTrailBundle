@@ -40,6 +40,10 @@ final class AuditTrailExtension extends Extension
         $container->setParameter('audit_trail.fail_on_transport_error', $config['fail_on_transport_error']);
         $container->setParameter('audit_trail.fallback_to_database', $config['fallback_to_database']);
 
+        $container->setParameter('audit_trail.integrity.enabled', $config['integrity']['enabled'] ?? false);
+        $container->setParameter('audit_trail.integrity.secret', $config['integrity']['secret'] ?? '');
+        $container->setParameter('audit_trail.integrity.algorithm', $config['integrity']['algorithm'] ?? 'sha256');
+
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
         $loader->load('services.yaml');
 

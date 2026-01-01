@@ -29,12 +29,14 @@ AuditTrailBundle is a modern, lightweight bundle that automatically tracks and s
 ## Why AuditTrailBundle?
 
 Most Symfony audit solutions either:
+
 - Slow down Doctrine flush operations
 - Log incomplete transactional data
 - Cannot safely revert changes
 - Are hard to extend beyond database storage
 
 AuditTrailBundle is designed for **production-grade auditing** with:
+
 - **Minimal write overhead**: Split-phase architecture ensures your app stays fast.
 - **Transaction-aware logging**: Group related changes under a single transaction hash.
 - **Safe revert support**: Easily roll back entities to any point in history, including associations.
@@ -46,9 +48,8 @@ AuditTrailBundle is designed for **production-grade auditing** with:
 
 This bundle is built using a **Split-Phase Audit Architecture** to ensure high performance and reliability in Symfony applications.
 
-
-1.  **Phase 1 (Capture)**: Listens to Doctrine `onFlush` to capture changes without slowing down the transaction.
-2.  **Phase 2 (Dispatch)**: Dispatches audits in `postFlush` via your chosen transport.
+1. **Phase 1 (Capture)**: Listens to Doctrine `onFlush` to capture changes without slowing down the transaction.
+2. **Phase 2 (Dispatch)**: Dispatches audits in `postFlush` via your chosen transport.
 
 For a deep dive into the design decisions and how the split-phase approach works, check out the full article on Medium:
 [Designing a Split-Phase Audit Architecture for Symfony](https://medium.com/@rcsofttech85/designing-a-split-phase-audit-architecture-for-symfony-f4ff532491dc)
@@ -204,29 +205,31 @@ Read and query audit logs programmatically using a dedicated, read-only API.
 
 The bundle provides several commands for managing audit logs.
 
+### List Audit Logs
 
-
-#### List Audit Logs
 ```bash
 php bin/console audit:list --entity=User --action=update --limit=50
 ```
 
-#### Purge Old Logs
+### Purge Old Logs
+
 ```bash
 php bin/console audit:purge --before="30 days ago" --force
 ```
 
-#### Export Logs
+### Export Logs
+
 ```bash
 php bin/console audit:export --format=json --output=audits.json
 ```
 
-#### View Diff
+### View Diff
+
 ```bash
 php bin/console audit:diff User 42
 ```
 
-#### Revert Entity Changes
+### Revert Entity Changes
 
 AuditTrailBundle provides a powerful **Point-in-Time Restore** capability, allowing you to undo accidental changes or recover data from any point in your audit history.
 
@@ -236,6 +239,7 @@ php bin/console audit:revert 123
 ```
 
 **Why it's "Safe":**
+
 - **Association Awareness**: Automatically handles entity relations and collections.
 - **Soft-Delete Support**: Temporarily restores soft-deleted entities to apply the revert.
 - **Dry Run Mode**: Preview exactly what will change before applying (`--dry-run`).
@@ -243,6 +247,27 @@ php bin/console audit:revert 123
 
 > [!TIP]
 > Use the revert feature for **emergency data recovery**, **undoing unauthorized changes**, or **restoring accidental deletions** with full confidence.
+
+### Verify Audit Log Integrity
+
+Ensure the integrity of your audit logs by detecting any unauthorized tampering or modifications. This command validates cryptographic hashes to identify compromised records.
+
+```bash
+php bin/console audit:verify-integrity
+```
+
+**Use Cases:**
+
+- **Compliance Audits**: Verify that audit logs haven't been altered for regulatory compliance (SOX, HIPAA, GDPR).
+- **Security Monitoring**: Detect unauthorized tampering after security incidents.
+- **Historical Data Verification**: Confirm past records are accurate and trustworthy.
+
+**Example Output:**
+
+![Audit Integrity Verification](.github/assets/audit_integrity_check.png)
+
+> [!WARNING]
+> Any tampered logs indicate a serious security breach. Investigate immediately and review access controls to your database.
 
 ---
 

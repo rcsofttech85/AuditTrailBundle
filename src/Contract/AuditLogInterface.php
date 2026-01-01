@@ -80,4 +80,8 @@ interface AuditLogInterface
     public function getCreatedAt(): \DateTimeImmutable;
 
     public function setCreatedAt(\DateTimeImmutable $createdAt): self;
+
+    public function getSignature(): ?string;
+
+    public function setSignature(?string $signature): self;
 }

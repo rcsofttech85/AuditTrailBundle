@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -29,6 +30,11 @@ final class DoctrineAuditTransport implements AuditTransportInterface
         }
     }
 
+    public function __construct(
+        private readonly AuditIntegrityServiceInterface $integrityService,
+    ) {
+    }
+
     /**
      * @param array<string, mixed> $context
      */
@@ -38,6 +44,8 @@ final class DoctrineAuditTransport implements AuditTransportInterface
         $em = $context['em'];
         /** @var UnitOfWork $uow */
         $uow = $context['uow']; // This is now guaranteed to exist by the Subscriber fix
+
+        $this->signLog($log);
 
         $em->persist($log);
         $uow->computeChangeSet($em->getClassMetadata(AuditLog::class), $log);
@@ -61,6 +69,15 @@ final class DoctrineAuditTransport implements AuditTransportInterface
 
         if (null !== $entityId) {
             $log->setEntityId($entityId);
+        }
+
+        $this->signLog($log);
+    }
+
+    private function signLog(AuditLogInterface $log): void
+    {
+        if ($this->integrityService->isEnabled()) {
+            $log->setSignature($this->integrityService->generateSignature($log));
         }
     }
 
