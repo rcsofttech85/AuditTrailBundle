@@ -24,7 +24,8 @@ readonly class EntityProcessor
     public function processInsertions(EntityManagerInterface $em, UnitOfWork $uow): void
     {
         foreach ($uow->getScheduledEntityInsertions() as $entity) {
-            if (!$this->shouldProcessEntity($entity)) {
+            $data = $this->auditService->getEntityData($entity);
+            if (!$this->auditService->shouldAudit($entity, AuditLogInterface::ACTION_CREATE, $data)) {
                 continue;
             }
 
@@ -32,7 +33,7 @@ readonly class EntityProcessor
                 $entity,
                 AuditLogInterface::ACTION_CREATE,
                 null,
-                $this->auditService->getEntityData($entity)
+                $data
             );
             $this->dispatchOrSchedule($audit, $entity, $em, $uow, true);
         }
@@ -41,10 +42,6 @@ readonly class EntityProcessor
     public function processUpdates(EntityManagerInterface $em, UnitOfWork $uow): void
     {
         foreach ($uow->getScheduledEntityUpdates() as $entity) {
-            if (!$this->shouldProcessEntity($entity)) {
-                continue;
-            }
-
             $changeSet = $uow->getEntityChangeSet($entity);
             /* @var array<string, array{mixed, mixed}> $changeSet */
             [$old, $new] = $this->changeProcessor->extractChanges($entity, $changeSet);
@@ -55,6 +52,11 @@ readonly class EntityProcessor
 
             /** @var array<string, array{mixed, mixed}> $changeSet */
             $action = $this->changeProcessor->determineUpdateAction($changeSet);
+
+            if (!$this->auditService->shouldAudit($entity, $action, $new)) {
+                continue;
+            }
+
             $audit = $this->auditService->createAuditLog($entity, $action, $old, $new);
             $this->dispatchOrSchedule($audit, $entity, $em, $uow, false);
         }
@@ -70,7 +72,7 @@ readonly class EntityProcessor
     ): void {
         foreach ($collectionUpdates as $collection) {
             $owner = $collection->getOwner();
-            if (null === $owner || !$this->shouldProcessEntity($owner)) {
+            if (null === $owner) {
                 continue;
             }
 
@@ -87,11 +89,18 @@ readonly class EntityProcessor
             $oldIds = $this->extractIdsFromCollection($snapshot);
             $newIds = $this->computeNewIds($oldIds, array_values($insertDiff), array_values($deleteDiff));
 
+            $oldValues = [$fieldName => $oldIds];
+            $newValues = [$fieldName => $newIds];
+
+            if (!$this->auditService->shouldAudit($owner, AuditLogInterface::ACTION_UPDATE, $newValues)) {
+                continue;
+            }
+
             $audit = $this->auditService->createAuditLog(
                 $owner,
                 AuditLogInterface::ACTION_UPDATE,
-                [$fieldName => $oldIds],
-                [$fieldName => $newIds]
+                $oldValues,
+                $newValues
             );
             $this->dispatchOrSchedule($audit, $owner, $em, $uow, false);
         }

@@ -6,15 +6,18 @@ use Doctrine\ORM\EntityManagerInterface;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 
 class AuditService
 {
     private const string PENDING_ID = 'pending';
 
     /**
-     * @param array<string> $ignoredEntities
+     * @param array<string>                 $ignoredEntities
+     * @param iterable<AuditVoterInterface> $voters
      */
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -26,14 +29,20 @@ class AuditService
         private readonly array $ignoredEntities = [],
         private readonly ?LoggerInterface $logger = null,
         private readonly string $timezone = 'UTC',
+        #[AutowireIterator('audit_trail.voter')] private readonly iterable $voters = [],
     ) {
     }
 
     /**
      * Check if the entity should be audited.
+     *
+     * @param array<string, mixed> $changeSet
      */
-    public function shouldAudit(object $entity): bool
-    {
+    public function shouldAudit(
+        object $entity,
+        string $action = AuditLogInterface::ACTION_CREATE,
+        array $changeSet = [],
+    ): bool {
         $class = $entity::class;
 
         if (\in_array($class, $this->ignoredEntities, true)) {
@@ -42,7 +51,17 @@ class AuditService
 
         $auditable = $this->metadataCache->getAuditableAttribute($class);
 
-        return null !== $auditable && $auditable->enabled;
+        if (null === $auditable || !$auditable->enabled) {
+            return false;
+        }
+
+        foreach ($this->voters as $voter) {
+            if (!$voter->vote($entity, $action, $changeSet)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

@@ -24,6 +24,7 @@ AuditTrailBundle is a modern, lightweight bundle that automatically tracks and s
 - **Deep Collection Tracking**: Tracks Many-to-Many and One-to-Many changes with precision (logs exact IDs).
 - **Sensitive Data Masking**: Native support for `#[SensitiveParameter]` and custom `#[Sensitive]` attributes for **GDPR compliance**.
 - **Safe Revert Support**: Easily roll back entities to any point in history, including associations.
+- **Conditional Auditing**: Skip logs based on runtime conditions using **Symfony ExpressionLanguage** or custom voters.
 - **Modern Stack**: Built for **PHP 8.4+**, **Symfony 7.4+**, and **Doctrine ORM 3.0+**.
 
 ---
@@ -195,7 +196,51 @@ use Rcsofttech\AuditTrailBundle\Attribute\Sensitive;
 private string $ssn;
 ```
 
-### 3. Programmatic Audit Retrieval (Reader / Query API)
+### 3. Conditional Auditing
+
+Skip auditing based on runtime conditions using the `#[AuditCondition]` attribute or custom voters.
+
+#### Option 1: Using ExpressionLanguage
+
+Add the `#[AuditCondition]` attribute to your entity. You have access to `object`, `action`, `changeSet`, and `user`.
+
+```php
+use Rcsofttech\AuditTrailBundle\Attribute\AuditCondition;
+use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
+
+#[Auditable]
+#[AuditCondition("action == 'update' and object.getPrice() > 100")]
+class Product
+{
+    public function getPrice(): int { ... }
+}
+```
+
+**Available Context Variables:**
+
+- `object`: The entity being audited.
+- `action`: The action being performed (`create`, `update`, `delete`, etc.).
+- `changeSet`: The array of changes.
+- `user`: An object containing `id`, `username`, and `ip`.
+
+#### Option 2: Custom Voters
+
+For complex logic, implement the `AuditVoterInterface`. Your voter will be automatically discovered if it's registered as a service.
+
+```php
+use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
+
+class MyCustomVoter implements AuditVoterInterface
+{
+    public function vote(object $entity, string $action, array $changeSet): bool
+    {
+        // Return false to skip auditing
+        return $action !== 'delete' || $this->isAdmin();
+    }
+}
+```
+
+### 4. Programmatic Audit Retrieval (Reader / Query API)
 
 Read and query audit logs programmatically using a dedicated, read-only API.
 

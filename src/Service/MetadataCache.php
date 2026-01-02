@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use Rcsofttech\AuditTrailBundle\Attribute\AuditCondition;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 use Rcsofttech\AuditTrailBundle\Attribute\Sensitive;
 
@@ -13,6 +14,9 @@ class MetadataCache
 
     /** @var array<string, Auditable|null> */
     private array $auditableCache = [];
+
+    /** @var array<string, AuditCondition|null> */
+    private array $conditionCache = [];
 
     /** @var array<string, array<string, string>> */
     private array $sensitiveFieldsCache = [];
@@ -24,8 +28,21 @@ class MetadataCache
         }
 
         $this->ensureCacheSize($this->auditableCache);
-        $attribute = $this->resolveAuditableAttribute($class);
+        $attribute = $this->resolveAttribute($class, Auditable::class);
         $this->auditableCache[$class] = $attribute;
+
+        return $attribute;
+    }
+
+    public function getAuditCondition(string $class): ?AuditCondition
+    {
+        if (\array_key_exists($class, $this->conditionCache)) {
+            return $this->conditionCache[$class];
+        }
+
+        $this->ensureCacheSize($this->conditionCache);
+        $attribute = $this->resolveAttribute($class, AuditCondition::class);
+        $this->conditionCache[$class] = $attribute;
 
         return $attribute;
     }
@@ -62,7 +79,14 @@ class MetadataCache
         }
     }
 
-    private function resolveAuditableAttribute(string $class): ?Auditable
+    /**
+     * @template T of object
+     *
+     * @param class-string<T> $attributeClass
+     *
+     * @return T|null
+     */
+    private function resolveAttribute(string $class, string $attributeClass): ?object
     {
         $currentClass = $class;
         while ($currentClass) {
@@ -71,8 +95,7 @@ class MetadataCache
                     break;
                 }
                 $reflection = new \ReflectionClass($currentClass);
-                /** @var list<\ReflectionAttribute<Auditable>> $attributes */
-                $attributes = $reflection->getAttributes(Auditable::class);
+                $attributes = $reflection->getAttributes($attributeClass);
                 if ([] !== $attributes) {
                     return $attributes[0]->newInstance();
                 }

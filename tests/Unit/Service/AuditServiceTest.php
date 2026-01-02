@@ -11,6 +11,7 @@ use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
@@ -50,7 +51,9 @@ class AuditServiceTest extends TestCase
             $this->dataExtractor,
             $this->metadataCache,
             ['IgnoredEntity'],
-            $this->logger
+            $this->logger,
+            'UTC',
+            []
         );
     }
 
@@ -67,8 +70,38 @@ class AuditServiceTest extends TestCase
             $this->clock,
             $this->transactionIdGenerator,
             $this->dataExtractor,
-            $this->metadataCache
+            $this->metadataCache,
+            [],
+            null,
+            'UTC',
+            []
         );
+        self::assertFalse($service->shouldAudit(new \stdClass()));
+    }
+
+    public function testShouldAuditWithVoters(): void
+    {
+        $this->metadataCache->method('getAuditableAttribute')->willReturn(new Auditable(enabled: true));
+
+        $voter1 = $this->createMock(AuditVoterInterface::class);
+        $voter1->method('vote')->willReturn(true);
+
+        $voter2 = $this->createMock(AuditVoterInterface::class);
+        $voter2->method('vote')->willReturn(false);
+
+        $service = new AuditService(
+            $this->entityManager,
+            $this->userResolver,
+            $this->clock,
+            $this->transactionIdGenerator,
+            $this->dataExtractor,
+            $this->metadataCache,
+            [],
+            null,
+            'UTC',
+            [$voter1, $voter2]
+        );
+
         self::assertFalse($service->shouldAudit(new \stdClass()));
     }
 
