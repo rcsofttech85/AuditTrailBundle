@@ -25,6 +25,7 @@ AuditTrailBundle is a modern, lightweight bundle that automatically tracks and s
 - **Sensitive Data Masking**: Native support for `#[SensitiveParameter]` and custom `#[Sensitive]` attributes for **GDPR compliance**.
 - **Safe Revert Support**: Easily roll back entities to any point in history, including associations.
 - **Conditional Auditing**: Skip logs based on runtime conditions using **Symfony ExpressionLanguage** or custom voters.
+- **Rich Context Tracking**: Automatically track **Impersonation** and store arbitrary metadata in a JSON `context` column.
 - **Modern Stack**: Built for **PHP 8.4+**, **Symfony 7.4+**, and **Doctrine ORM 3.0+**.
 
 ---
@@ -240,7 +241,86 @@ class MyCustomVoter implements AuditVoterInterface
 }
 ```
 
-### 4. Programmatic Audit Retrieval (Reader / Query API)
+### 4. Rich Context & Impersonation Tracking
+
+The bundle automatically tracks rich context for every audit log, stored in a flexible JSON `context` column.
+
+#### Impersonation Tracking
+
+If an admin is impersonating a user (using Symfony's `_switch_user`), the bundle automatically records the impersonator's ID and username in the audit log context.
+
+```php
+$entry = $auditReader->forEntity(Product::class, '123')->getFirstResult();
+$context = $entry->getContext();
+
+if (isset($context['impersonation'])) {
+    echo "Action performed by " . $context['impersonation']['impersonator_username'];
+}
+```
+
+#### Custom Context
+
+You can manually add custom metadata to your audit logs by implementing the `AuditContextContributorInterface`. This is the recommended way to add application-specific information like correlation IDs, app versions, or feature flags.
+
+```php
+namespace App\Audit;
+
+use Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface;
+
+class SystemInfoContributor implements AuditContextContributorInterface
+{
+    public function contribute(object $entity, string $action, array $changeSet): array
+    {
+        return [
+            'app_version' => 'v2.4.1',
+            'server_node' => gethostname(),
+        ];
+    }
+}
+```
+
+The bundle automatically discovers and executes all tagged contributors, merging their results into the `context` JSON column.
+
+### 5. Events & Customization
+
+The bundle dispatches Symfony events that allow you to hook into the audit process.
+
+#### `AuditLogCreatedEvent`
+
+Dispatched immediately after an `AuditLog` object is created but before it is persisted or sent to a transport. Use this to:
+
+- Add custom metadata to the `context`.
+- Modify the audit log data.
+- Trigger external notifications.
+
+```php
+namespace App\EventSubscriber;
+
+use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
+use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+
+class AuditSubscriber implements EventSubscriberInterface
+{
+    public static function getSubscribedEvents(): array
+    {
+        return [
+            AuditLogCreatedEvent::NAME => 'onAuditLogCreated',
+        ];
+    }
+
+    public function onAuditLogCreated(AuditLogCreatedEvent $event): void
+    {
+        $log = $event->getAuditLog();
+        
+        // Add custom metadata
+        $context = $log->getContext();
+        $context['server_id'] = 'node-01';
+        $log->setContext($context);
+    }
+}
+```
+
+### 6. Programmatic Audit Retrieval (Reader / Query API)
 
 Read and query audit logs programmatically using a dedicated, read-only API.
 
@@ -283,7 +363,23 @@ AuditTrailBundle provides a powerful **Point-in-Time Restore** capability, allow
 ```bash
 # Revert an entity to its state in a specific audit log
 php bin/console audit:revert 123
+
+# Revert with custom context (JSON)
+php bin/console audit:revert 123 --context='{"reason": "Accidental deletion", "ticket": "T-101"}'
 ```
+
+#### Custom Context on Revert
+
+You can pass custom context when programmatically reverting an entity. This is useful for tracking why a revert was performed.
+
+```php
+$auditReverter->revert($log, false, false, [
+    'reason' => 'Accidental deletion',
+    'ticket_id' => 'TICKET-456'
+]);
+```
+
+The bundle also **automatically** adds `reverted_log_id` to the context of the new audit log, linking it back to the original entry.
 
 **Why it's "Safe":**
 

@@ -276,4 +276,39 @@ class AuditReverterTest extends TestCase
         $changes = $this->reverter->revert($log);
         self::assertEquals(['action' => 'restore'], $changes);
     }
+
+    public function testRevertWithCustomContext(): void
+    {
+        $log = $this->createMock(AuditLogInterface::class);
+        $log->method('getEntityClass')->willReturn(RevertTestUser::class);
+        $log->method('getEntityId')->willReturn('1');
+        $log->method('getAction')->willReturn(AuditLogInterface::ACTION_UPDATE);
+        $log->method('getOldValues')->willReturn(['name' => 'Old']);
+        $log->method('getId')->willReturn(123);
+
+        $entity = new RevertTestUser();
+        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
+        $this->em->method('find')->willReturn($entity);
+
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('hasField')->willReturn(true);
+        $this->em->method('getClassMetadata')->willReturn($metadata);
+
+        $this->em->method('wrapInTransaction')->willReturnCallback(fn ($c) => $c());
+        $this->validator->method('validate')->willReturn(new ConstraintViolationList());
+
+        $revertLog = new AuditLog();
+        $this->auditService->expects($this->once())
+            ->method('createAuditLog')
+            ->with(
+                $entity,
+                AuditLogInterface::ACTION_REVERT,
+                ['name' => 'Old'],
+                null,
+                ['custom_key' => 'custom_val', 'reverted_log_id' => 123]
+            )
+            ->willReturn($revertLog);
+
+        $this->reverter->revert($log, false, false, ['custom_key' => 'custom_val']);
+    }
 }

@@ -5,6 +5,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\Security\Core\Authentication\Token\SwitchUserToken;
 
 final readonly class UserResolver implements UserResolverInterface
 {
@@ -54,5 +55,31 @@ final readonly class UserResolver implements UserResolverInterface
 
         // Return full UA for better security forensics, truncated to 500 chars
         return mb_substr($ua, 0, 500);
+    }
+
+    public function getImpersonatorId(): ?int
+    {
+        $token = $this->security->getToken();
+        if (!$token instanceof SwitchUserToken) {
+            return null;
+        }
+
+        $originalUser = $token->getOriginalToken()->getUser();
+
+        return match (true) {
+            null === $originalUser => null,
+            method_exists($originalUser, 'getId') => $originalUser->getId(),
+            default => null,
+        };
+    }
+
+    public function getImpersonatorUsername(): ?string
+    {
+        $token = $this->security->getToken();
+        if (!$token instanceof SwitchUserToken) {
+            return null;
+        }
+
+        return $token->getOriginalToken()->getUser()?->getUserIdentifier();
     }
 }

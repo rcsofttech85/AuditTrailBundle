@@ -9,16 +9,23 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
 class AuditLogTest extends TestCase
 {
-    public function testTransactionHash(): void
+    public function testContext(): void
     {
         $log = new AuditLog();
-        self::assertNull($log->getTransactionHash());
+        self::assertEquals([], $log->getContext());
 
-        $hash = 'test-hash';
-        $log->setTransactionHash($hash);
-        self::assertEquals($hash, $log->getTransactionHash());
+        $context = ['foo' => 'bar', 'nested' => ['a' => 1]];
+        $log->setContext($context);
+        self::assertEquals($context, $log->getContext());
+    }
 
-        $log->setTransactionHash(null);
-        self::assertNull($log->getTransactionHash());
+    public function testActionValidation(): void
+    {
+        $log = new AuditLog();
+        $log->setAction('create');
+        self::assertEquals('create', $log->getAction());
+
+        $this->expectException(\InvalidArgumentException::class);
+        $log->setAction('invalid_action');
     }
 }

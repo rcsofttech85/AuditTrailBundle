@@ -84,4 +84,14 @@ interface AuditLogInterface
     public function getSignature(): ?string;
 
     public function setSignature(?string $signature): self;
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getContext(): array;
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    public function setContext(array $context): self;
 }

@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
+use Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
@@ -140,6 +141,79 @@ class AuditServiceTest extends TestCase
         self::assertEquals(1, $log->getEntityId());
         self::assertEquals(['a'], $log->getChangedFields());
         self::assertEquals(1, $log->getUserId());
+    }
+
+    public function testCreateAuditLogWithContext(): void
+    {
+        $entity = new \stdClass();
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
+        $this->entityManager->method('getClassMetadata')->willReturn($metadata);
+
+        $this->userResolver->method('getUserId')->willReturn(1);
+        $this->userResolver->method('getImpersonatorId')->willReturn(99);
+        $this->userResolver->method('getImpersonatorUsername')->willReturn('admin');
+
+        $log = $this->service->createAuditLog($entity, AuditLogInterface::ACTION_UPDATE, ['a' => 1], ['a' => 2]);
+
+        $context = $log->getContext();
+        self::assertArrayHasKey('impersonation', $context);
+        self::assertEquals(99, $context['impersonation']['impersonator_id']);
+        self::assertEquals('admin', $context['impersonation']['impersonator_username']);
+    }
+
+    public function testCreateAuditLogWithContributors(): void
+    {
+        $entity = new \stdClass();
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
+        $this->entityManager->method('getClassMetadata')->willReturn($metadata);
+
+        $contributor = $this->createMock(AuditContextContributorInterface::class);
+        $contributor->expects($this->once())
+            ->method('contribute')
+            ->with($entity, AuditLogInterface::ACTION_UPDATE, ['a' => 2])
+            ->willReturn(['custom_key' => 'custom_value']);
+
+        $service = new AuditService(
+            $this->entityManager,
+            $this->userResolver,
+            $this->clock,
+            $this->transactionIdGenerator,
+            $this->dataExtractor,
+            $this->metadataCache,
+            [],
+            null,
+            'UTC',
+            [],
+            [$contributor]
+        );
+
+        $log = $service->createAuditLog($entity, AuditLogInterface::ACTION_UPDATE, ['a' => 1], ['a' => 2]);
+
+        $context = $log->getContext();
+        self::assertArrayHasKey('custom_key', $context);
+        self::assertEquals('custom_value', $context['custom_key']);
+    }
+
+    public function testCreateAuditLogWithCustomContext(): void
+    {
+        $entity = new \stdClass();
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
+        $this->entityManager->method('getClassMetadata')->willReturn($metadata);
+
+        $log = $this->service->createAuditLog(
+            $entity,
+            AuditLogInterface::ACTION_UPDATE,
+            ['a' => 1],
+            ['a' => 2],
+            ['manual_key' => 'manual_value']
+        );
+
+        $context = $log->getContext();
+        self::assertArrayHasKey('manual_key', $context);
+        self::assertEquals('manual_value', $context['manual_key']);
     }
 
     public function testCreateAuditLogPendingIdDelete(): void

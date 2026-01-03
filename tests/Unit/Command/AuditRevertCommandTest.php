@@ -211,4 +211,48 @@ class AuditRevertCommandTest extends TestCase
         $output = $this->commandTester->getDisplay();
         self::assertStringContainsString('roles: ["ROLE_USER"]', $output);
     }
+
+    public function testExecuteWithContext(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass('App\Entity\User');
+        $log->setEntityId('1');
+        $log->setAction('update');
+
+        $this->repository->method('find')->willReturn($log);
+
+        $context = ['reason' => 'test', 'ticket' => 'T-123'];
+        $this->reverter->expects($this->once())
+            ->method('revert')
+            ->with($log, false, false, $context)
+            ->willReturn(['name' => 'Old Name']);
+
+        $this->commandTester->execute([
+            'auditId' => 123,
+            '--context' => json_encode($context),
+        ]);
+
+        $output = (string) preg_replace('/\s+/', ' ', $this->commandTester->getDisplay());
+        self::assertEquals(0, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Revert successful', $output);
+    }
+
+    public function testExecuteWithInvalidContext(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass('App\Entity\User');
+        $log->setEntityId('1');
+        $log->setAction('update');
+
+        $this->repository->method('find')->willReturn($log);
+
+        $this->commandTester->execute([
+            'auditId' => 123,
+            '--context' => '{invalid json}',
+        ]);
+
+        $output = (string) preg_replace('/\s+/', ' ', $this->commandTester->getDisplay());
+        self::assertEquals(1, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('Invalid JSON context', $output);
+    }
 }

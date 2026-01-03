@@ -24,9 +24,11 @@ class AuditReverter implements AuditReverterInterface
     }
 
     /**
+     * @param array<string, mixed> $context
+     *
      * @return array<string, mixed>
      */
-    public function revert(AuditLogInterface $log, bool $dryRun = false, bool $force = false): array
+    public function revert(AuditLogInterface $log, bool $dryRun = false, bool $force = false, array $context = []): array
     {
         if ($this->integrityService->isEnabled() && !$this->integrityService->verifySignature($log)) {
             throw new \RuntimeException(sprintf(
@@ -51,7 +53,7 @@ class AuditReverter implements AuditReverterInterface
             return $changes;
         }
 
-        $this->applyAndPersist($entity, $log, $changes);
+        $this->applyAndPersist($entity, $log, $changes, $context);
 
         return $changes;
     }
@@ -74,12 +76,13 @@ class AuditReverter implements AuditReverterInterface
 
     /**
      * @param array<string, mixed> $changes
+     * @param array<string, mixed> $context
      */
-    private function applyAndPersist(object $entity, AuditLogInterface $log, array $changes): void
+    private function applyAndPersist(object $entity, AuditLogInterface $log, array $changes, array $context): void
     {
         $isDelete = isset($changes['action']) && 'delete' === $changes['action'];
 
-        $this->em->wrapInTransaction(function () use ($entity, $isDelete, $log, $changes) {
+        $this->em->wrapInTransaction(function () use ($entity, $isDelete, $log, $changes, $context) {
             if ($isDelete) {
                 $this->em->remove($entity);
             } else {
@@ -88,7 +91,7 @@ class AuditReverter implements AuditReverterInterface
             }
 
             $this->em->flush();
-            $this->createRevertAuditLog($entity, $log, $changes, $isDelete);
+            $this->createRevertAuditLog($entity, $log, $changes, $isDelete, $context);
         });
     }
 
@@ -102,14 +105,26 @@ class AuditReverter implements AuditReverterInterface
 
     /**
      * @param array<string, mixed> $changes
+     * @param array<string, mixed> $context
      */
-    private function createRevertAuditLog(object $entity, AuditLogInterface $log, array $changes, bool $isDelete): void
-    {
+    private function createRevertAuditLog(
+        object $entity,
+        AuditLogInterface $log,
+        array $changes,
+        bool $isDelete,
+        array $context,
+    ): void {
+        $revertContext = [
+            ...$context,
+            'reverted_log_id' => $log->getId(),
+        ];
+
         $revertLog = $this->auditService->createAuditLog(
             $entity,
             AuditLogInterface::ACTION_REVERT,
             $isDelete ? null : $changes,
-            null
+            null,
+            $revertContext
         );
 
         $revertLog->setOldValues($isDelete ? null : $changes);
