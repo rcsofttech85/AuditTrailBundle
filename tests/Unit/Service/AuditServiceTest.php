@@ -52,6 +52,7 @@ class AuditServiceTest extends TestCase
             $this->dataExtractor,
             $this->metadataCache,
             ['IgnoredEntity'],
+            [], // ignoredProperties
             $this->logger,
             'UTC',
             []
@@ -73,6 +74,7 @@ class AuditServiceTest extends TestCase
             $this->dataExtractor,
             $this->metadataCache,
             [],
+            [], // ignoredProperties
             null,
             'UTC',
             []
@@ -98,6 +100,7 @@ class AuditServiceTest extends TestCase
             $this->dataExtractor,
             $this->metadataCache,
             [],
+            [], // ignoredProperties
             null,
             'UTC',
             [$voter1, $voter2]
@@ -115,7 +118,8 @@ class AuditServiceTest extends TestCase
             $this->transactionIdGenerator,
             $this->dataExtractor,
             $this->metadataCache,
-            [\stdClass::class]
+            [\stdClass::class],
+            [] // ignoredProperties
         );
         self::assertFalse($service->shouldAudit(new \stdClass()));
     }
@@ -183,6 +187,7 @@ class AuditServiceTest extends TestCase
             $this->dataExtractor,
             $this->metadataCache,
             [],
+            [], // ignoredProperties
             null,
             'UTC',
             [],

@@ -18,6 +18,7 @@ class AuditService
 
     /**
      * @param array<string>                              $ignoredEntities
+     * @param array<string>                              $ignoredProperties
      * @param iterable<AuditVoterInterface>              $voters
      * @param iterable<AuditContextContributorInterface> $contributors
      */
@@ -29,6 +30,7 @@ class AuditService
         private readonly EntityDataExtractor $dataExtractor,
         private readonly MetadataCache $metadataCache,
         private readonly array $ignoredEntities = [],
+        private readonly array $ignoredProperties = [],
         private readonly ?LoggerInterface $logger = null,
         private readonly string $timezone = 'UTC',
         #[AutowireIterator('audit_trail.voter')] private readonly iterable $voters = [],
@@ -76,7 +78,26 @@ class AuditService
      */
     public function getEntityData(object $entity, array $additionalIgnored = []): array
     {
-        return $this->dataExtractor->extract($entity, $additionalIgnored);
+        $ignored = $this->getIgnoredProperties($entity, $additionalIgnored);
+
+        return $this->dataExtractor->extract($entity, $ignored);
+    }
+
+    /**
+     * @param array<string> $additionalIgnored
+     *
+     * @return array<string>
+     */
+    public function getIgnoredProperties(object $entity, array $additionalIgnored = []): array
+    {
+        $ignored = [...$this->ignoredProperties, ...$additionalIgnored];
+
+        $auditable = $this->metadataCache->getAuditableAttribute($entity::class);
+        if (null !== $auditable) {
+            $ignored = [...$ignored, ...$auditable->ignoredProperties];
+        }
+
+        return array_unique($ignored);
     }
 
     /**

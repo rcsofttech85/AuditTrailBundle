@@ -35,8 +35,7 @@ class EntityDataExtractorTest extends TestCase
             $this->em,
             $this->serializer,
             $this->metadataCache,
-            $this->logger,
-            ['global_ignored']
+            $this->logger
         );
     }
 
@@ -64,7 +63,7 @@ class EntityDataExtractorTest extends TestCase
         ]);
         $this->serializer->method('serializeAssociation')->willReturn(['id' => 1]);
 
-        $data = $this->extractor->extract($entity);
+        $data = $this->extractor->extract($entity, ['global_ignored']);
 
         self::assertEquals([
             'name' => 'John',
@@ -91,7 +90,7 @@ class EntityDataExtractorTest extends TestCase
         $meta->method('getFieldValue')->willReturn('value');
         $this->serializer->method('serialize')->willReturn('value');
 
-        $data = $this->extractor->extract($entity, ['param_ignored']);
+        $data = $this->extractor->extract($entity, ['attr_ignored', 'param_ignored']);
 
         self::assertEquals(['field1' => 'value'], $data);
         self::assertArrayNotHasKey('attr_ignored', $data);

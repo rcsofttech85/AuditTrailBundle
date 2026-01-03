@@ -17,6 +17,7 @@ use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
+use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 
 #[AllowMockObjectsWithoutExpectations]
 class AuditSubscriberTest extends TestCase
@@ -26,6 +27,7 @@ class AuditSubscriberTest extends TestCase
     private AuditDispatcher&MockObject $dispatcher;
     private ScheduledAuditManager&MockObject $auditManager;
     private EntityProcessor&MockObject $entityProcessor;
+    private TransactionIdGenerator&MockObject $transactionIdGenerator;
     private LoggerInterface&MockObject $logger;
     private AuditSubscriber $subscriber;
 
@@ -36,6 +38,7 @@ class AuditSubscriberTest extends TestCase
         $this->dispatcher = $this->createMock(AuditDispatcher::class);
         $this->auditManager = $this->createMock(ScheduledAuditManager::class);
         $this->entityProcessor = $this->createMock(EntityProcessor::class);
+        $this->transactionIdGenerator = $this->createMock(TransactionIdGenerator::class);
         $this->logger = $this->createMock(LoggerInterface::class);
 
         $this->subscriber = new AuditSubscriber(
@@ -44,6 +47,7 @@ class AuditSubscriberTest extends TestCase
             $this->dispatcher,
             $this->auditManager,
             $this->entityProcessor,
+            $this->transactionIdGenerator,
             true,
             $this->logger,
             true
@@ -63,6 +67,7 @@ class AuditSubscriberTest extends TestCase
             $this->dispatcher,
             $this->auditManager,
             $this->entityProcessor,
+            $this->transactionIdGenerator,
             true,
             null,
             false // Disabled
@@ -76,13 +81,7 @@ class AuditSubscriberTest extends TestCase
 
     public function testOnFlushRecursion(): void
     {
-        // Simulate recursion by calling onFlush inside a callback if possible,
-        // or just rely on the fact that if we were recursing, we'd see side effects.
-        // But since recursionDepth is private, we can't easily set it.
-        // However, we can verify that if we trigger a flush inside onFlush (which shouldn't happen normally but...)
-        // Actually, the recursion guard prevents re-entry.
 
-        // Let's test the normal flow which increments/decrements depth.
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
         $args = $this->createMock(OnFlushEventArgs::class);

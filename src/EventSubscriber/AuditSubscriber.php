@@ -16,6 +16,7 @@ use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
+use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Symfony\Contracts\Service\ResetInterface;
 
 #[AsDoctrineListener(event: Events::onFlush, priority: 1000)]
@@ -34,6 +35,7 @@ final class AuditSubscriber implements ResetInterface
         private readonly AuditDispatcher $dispatcher,
         private readonly ScheduledAuditManager $auditManager,
         private readonly EntityProcessor $entityProcessor,
+        private readonly TransactionIdGenerator $transactionIdGenerator,
         private readonly bool $enableHardDelete = true,
         private readonly ?LoggerInterface $logger = null,
         private readonly bool $enabled = true,
@@ -82,6 +84,7 @@ final class AuditSubscriber implements ResetInterface
             $hasNewAudits = $this->processScheduledAudits($em) || $hasNewAudits;
 
             $this->auditManager->clear();
+            $this->transactionIdGenerator->reset();
             $this->flushNewAuditsIfNeeded($em, $hasNewAudits);
         } finally {
             --$this->recursionDepth;
@@ -137,6 +140,7 @@ final class AuditSubscriber implements ResetInterface
     public function reset(): void
     {
         $this->auditManager->clear();
+        $this->transactionIdGenerator->reset();
         $this->isFlushing = false;
         $this->recursionDepth = 0;
     }

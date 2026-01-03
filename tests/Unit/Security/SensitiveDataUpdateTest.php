@@ -46,7 +46,9 @@ class SensitiveDataUpdateTest extends TestCase
             $clock,
             $transactionIdGenerator,
             $extractor,
-            $metadataCache
+            $metadataCache,
+            [], // ignoredEntities
+            []  // ignoredProperties
         );
 
         $transport = $this->createMock(AuditTransportInterface::class);
@@ -70,7 +72,8 @@ class SensitiveDataUpdateTest extends TestCase
             $changeProcessor,
             $dispatcher,
             $auditManager,
-            $entityProcessor
+            $entityProcessor,
+            $transactionIdGenerator
         );
 
         $entity = new SensitiveUser();

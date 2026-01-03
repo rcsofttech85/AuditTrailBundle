@@ -16,6 +16,7 @@ use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
+use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use PHPUnit\Framework\Attributes\CoversClass;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
@@ -46,7 +47,8 @@ class AuditSubscriberTransportSupportTest extends TestCase
             $changeProcessor,
             $dispatcher,
             $auditManager,
-            $entityProcessor
+            $entityProcessor,
+            $this->createMock(TransactionIdGenerator::class)
         );
 
         $transport->method('supports')->willReturnCallback(fn ($phase) => match ($phase) {

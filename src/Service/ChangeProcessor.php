@@ -26,8 +26,13 @@ class ChangeProcessor
         $old = [];
         $new = [];
         $sensitiveFields = $this->auditService->getSensitiveFields($entity);
+        $ignored = $this->auditService->getIgnoredProperties($entity);
 
         foreach ($changeSet as $field => $change) {
+            if (\in_array($field, $ignored, true)) {
+                continue;
+            }
+
             if (!is_array($change) || !array_key_exists(0, $change) || !array_key_exists(1, $change)) {
                 continue;
             }

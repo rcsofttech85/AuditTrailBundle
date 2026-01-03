@@ -10,29 +10,24 @@ use Psr\Log\LoggerInterface;
 
 class EntityDataExtractor
 {
-    /**
-     * @param array<string> $ignoredProperties
-     */
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly ValueSerializer $serializer,
         private readonly MetadataCache $metadataCache,
         private readonly ?LoggerInterface $logger = null,
-        private readonly array $ignoredProperties = [],
     ) {
     }
 
     /**
-     * @param array<string> $additionalIgnored
+     * @param array<string> $ignored
      *
      * @return array<string, mixed>
      */
-    public function extract(object $entity, array $additionalIgnored = []): array
+    public function extract(object $entity, array $ignored = []): array
     {
         $class = $entity::class;
         try {
             $meta = $this->entityManager->getClassMetadata($class);
-            $ignored = $this->buildIgnoredPropertyList($entity, $additionalIgnored);
             $data = [];
 
             $this->processFields($meta, $entity, $ignored, $data);
@@ -101,23 +96,6 @@ class EntityDataExtractor
                 $data[$field] = $mask;
             }
         }
-    }
-
-    /**
-     * @param array<string> $additionalIgnored
-     *
-     * @return array<string>
-     */
-    private function buildIgnoredPropertyList(object $entity, array $additionalIgnored): array
-    {
-        $ignored = [...$this->ignoredProperties, ...$additionalIgnored];
-
-        $auditable = $this->metadataCache->getAuditableAttribute($entity::class);
-        if (null !== $auditable) {
-            $ignored = [...$ignored, ...$auditable->ignoredProperties];
-        }
-
-        return array_unique($ignored);
     }
 
     /**

@@ -40,6 +40,7 @@ final class AuditServiceTimezoneTest extends TestCase
             self::createStub(EntityDataExtractor::class),
             self::createStub(MetadataCache::class),
             [],
+            [], // ignoredProperties
             null,
             'Asia/Kolkata'
         );
@@ -78,7 +79,9 @@ final class AuditServiceTimezoneTest extends TestCase
             $clock,
             self::createStub(TransactionIdGenerator::class),
             self::createStub(EntityDataExtractor::class),
-            self::createStub(MetadataCache::class)
+            self::createStub(MetadataCache::class),
+            [],
+            [] // ignoredProperties
         );
 
         $entity = new class () {
