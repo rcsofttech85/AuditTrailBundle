@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Controller\Admin;
 
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
