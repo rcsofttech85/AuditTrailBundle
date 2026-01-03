@@ -13,6 +13,8 @@ services:
       $tablePrefix: '%audit_trail.table_prefix%'
       $tableSuffix: '%audit_trail.table_suffix%'
       $timezone: '%audit_trail.timezone%'
+      $ignoredEntities: '%audit_trail.ignored_entities%'
+      $ignoredProperties: '%audit_trail.ignored_properties%'
 
   Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService:
     bind:

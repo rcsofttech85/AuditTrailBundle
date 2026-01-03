@@ -37,6 +37,7 @@ class ChangeProcessorTest extends TestCase
         ];
 
         $this->auditService->method('getSensitiveFields')->with($entity)->willReturn(['password' => '***']);
+        $this->auditService->method('getIgnoredProperties')->with($entity)->willReturn([]);
 
         $changes = $this->processor->extractChanges($entity, $changeSet);
 
@@ -66,11 +67,6 @@ class ChangeProcessorTest extends TestCase
             AuditLogInterface::ACTION_RESTORE,
             $this->processor->determineUpdateAction(['deletedAt' => [new \DateTime(), null]])
         );
-
-        // Soft delete (deletedAt: null -> not null) - handled as UPDATE by this method,
-        // usually handled by deletion logic?
-        // Wait, determineUpdateAction only checks for restore.
-        // If deletedAt changes from null to date, it returns UPDATE.
         self::assertEquals(
             AuditLogInterface::ACTION_UPDATE,
             $this->processor->determineUpdateAction(['deletedAt' => [null, new \DateTime()]])

@@ -28,6 +28,7 @@ class IntegrityTest extends KernelTestCase
     {
         $kernel = parent::createKernel($options);
         if ($kernel instanceof TestKernel && isset($options['audit_config'])) {
+            assert(is_array($options['audit_config']));
             $kernel->setAuditConfig($options['audit_config']);
         }
 
@@ -100,7 +101,7 @@ class IntegrityTest extends KernelTestCase
         $em->flush();
 
         $kernel = self::$kernel;
-        self::assertNotNull($kernel);
+        assert($kernel instanceof KernelInterface);
         $application = new Application($kernel);
         $command = $application->find('audit:verify-integrity');
         $commandTester = new CommandTester($command);
