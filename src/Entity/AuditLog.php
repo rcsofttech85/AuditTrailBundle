@@ -109,6 +109,10 @@ class AuditLog implements AuditLogInterface
     #[ORM\Column(length: 40, nullable: true)]
     public private(set) ?string $transactionHash = null;
 
+    /** @var array<string, mixed> */
+    #[ORM\Column(type: Types::JSON)]
+    public private(set) array $context = [];
+
     #[ORM\Column]
     public private(set) \DateTimeImmutable $createdAt;
 
@@ -299,6 +303,24 @@ class AuditLog implements AuditLogInterface
     public function setSignature(?string $signature): self
     {
         $this->signature = $signature;
+
+        return $this;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getContext(): array
+    {
+        return $this->context;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    public function setContext(array $context): self
+    {
+        $this->context = $context;
 
         return $this;
     }

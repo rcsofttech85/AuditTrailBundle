@@ -6,4 +6,5 @@ Audit/
 phpstan_errors.txt
 phpstan_final.txt
 var
+coverage.xml
 

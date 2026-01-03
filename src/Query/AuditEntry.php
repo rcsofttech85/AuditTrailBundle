@@ -136,6 +136,23 @@ class AuditEntry
     }
 
     /**
+     * @var array<string, mixed>
+     */
+    public array $context {
+        get {
+            return $this->log->getContext();
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getContext(): array
+    {
+        return $this->context;
+    }
+
+    /**
      * Get the underlying AuditLog entity.
      */
     public function getAuditLog(): AuditLogInterface

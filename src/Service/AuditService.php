@@ -5,6 +5,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
@@ -16,8 +17,9 @@ class AuditService
     private const string PENDING_ID = 'pending';
 
     /**
-     * @param array<string>                 $ignoredEntities
-     * @param iterable<AuditVoterInterface> $voters
+     * @param array<string>                              $ignoredEntities
+     * @param iterable<AuditVoterInterface>              $voters
+     * @param iterable<AuditContextContributorInterface> $contributors
      */
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -30,6 +32,7 @@ class AuditService
         private readonly ?LoggerInterface $logger = null,
         private readonly string $timezone = 'UTC',
         #[AutowireIterator('audit_trail.voter')] private readonly iterable $voters = [],
+        #[AutowireIterator('audit_trail.context_contributor')] private readonly iterable $contributors = [],
     ) {
     }
 
@@ -81,12 +84,14 @@ class AuditService
      *
      * @param array<string, mixed>|null $oldValues
      * @param array<string, mixed>|null $newValues
+     * @param array<string, mixed>      $context
      */
     public function createAuditLog(
         object $entity,
         string $action,
         ?array $oldValues = null,
         ?array $newValues = null,
+        array $context = [],
     ): AuditLogInterface {
         $auditLog = new AuditLog();
         $auditLog->setEntityClass($entity::class);
@@ -105,7 +110,7 @@ class AuditService
             $auditLog->setChangedFields($this->detectChangedFields($oldValues, $newValues));
         }
 
-        $this->enrichWithUserContext($auditLog);
+        $this->enrichWithUserContext($auditLog, $entity, $context);
         $auditLog->setTransactionHash($this->transactionIdGenerator->getTransactionId());
         $auditLog->setCreatedAt($this->clock->now()->setTimezone(new \DateTimeZone($this->timezone)));
 
@@ -159,13 +164,35 @@ class AuditService
         return $oldValue !== $newValue;
     }
 
-    private function enrichWithUserContext(AuditLog $auditLog): void
+    /**
+     * @param array<string, mixed> $extraContext
+     */
+    private function enrichWithUserContext(AuditLog $auditLog, object $entity, array $extraContext = []): void
     {
         try {
             $auditLog->setUserId($this->userResolver->getUserId());
             $auditLog->setUsername($this->userResolver->getUsername());
             $auditLog->setIpAddress($this->userResolver->getIpAddress());
             $auditLog->setUserAgent($this->userResolver->getUserAgent());
+
+            $context = [...$auditLog->getContext(), ...$extraContext];
+            $impersonatorId = $this->userResolver->getImpersonatorId();
+            if (null !== $impersonatorId) {
+                $context['impersonation'] = [
+                    'impersonator_id' => $impersonatorId,
+                    'impersonator_username' => $this->userResolver->getImpersonatorUsername(),
+                ];
+            }
+
+            // Add custom context from contributors
+            foreach ($this->contributors as $contributor) {
+                $context = [
+                    ...$context,
+                    ...$contributor->contribute($entity, $auditLog->getAction(), $auditLog->getNewValues() ?? []),
+                ];
+            }
+
+            $auditLog->setContext($context);
         } catch (\Throwable $e) {
             $this->logger?->error('Failed to set user context', ['exception' => $e->getMessage()]);
         }
@@ -181,13 +208,18 @@ class AuditService
                 if (method_exists($entity, 'getId')) {
                     $id = $entity->getId();
 
-                    return null !== $id ? (string) $id : self::PENDING_ID;
+                    $isStringable = is_scalar($id) || $id instanceof \Stringable;
+
+                    return (null !== $id && $isStringable) ? (string) $id : self::PENDING_ID;
                 }
 
                 return self::PENDING_ID;
             }
 
-            $idValues = array_filter(array_map('strval', $ids), fn ($id) => '' !== $id);
+            $idValues = array_filter(
+                array_map(fn ($v) => is_scalar($v) || $v instanceof \Stringable ? (string) $v : '', $ids),
+                fn ($id) => '' !== $id
+            );
 
             if ([] === $idValues) {
                 return self::PENDING_ID;
@@ -201,7 +233,9 @@ class AuditService
                 try {
                     $id = $entity->getId();
 
-                    return null !== $id ? (string) $id : self::PENDING_ID;
+                    $isStringable = is_scalar($id) || $id instanceof \Stringable;
+
+                    return (null !== $id && $isStringable) ? (string) $id : self::PENDING_ID;
                 } catch (\Throwable) {
                 }
             }
@@ -229,7 +263,8 @@ class AuditService
                 if (!isset($values[$idField])) {
                     return null;
                 }
-                $ids[] = (string) $values[$idField];
+                $val = $values[$idField];
+                $ids[] = (is_scalar($val) || $val instanceof \Stringable) ? (string) $val : '';
             }
 
             return count($ids) > 1

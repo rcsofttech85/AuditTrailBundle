@@ -40,16 +40,46 @@ class AuditRevertCommand extends Command
                 'Allow destructive operations (e.g. reverting a creation)'
             )
             ->addOption('raw', null, InputOption::VALUE_NONE, 'Output raw result data (skip formatting)')
+            ->addOption(
+                'context',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Custom context for the revert audit log (JSON string)',
+                '{}'
+            )
         ;
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $auditId = (int) $input->getArgument('auditId');
+        $auditIdInput = $input->getArgument('auditId');
+        $auditId = filter_var($auditIdInput, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+
+        if (false === $auditId) {
+            throw new \InvalidArgumentException('auditId must be a valid audit log ID');
+        }
+
         $dryRun = (bool) $input->getOption('dry-run');
         $force = (bool) $input->getOption('force');
         $raw = (bool) $input->getOption('raw');
+        $contextString = (string) $input->getOption('context');
+
+
+
+        $context = [];
+        if ('{}' !== $contextString && '' !== $contextString) {
+            try {
+                $context = json_decode($contextString, true, 512, JSON_THROW_ON_ERROR);
+                if (!is_array($context)) {
+                    throw new \InvalidArgumentException('Context must be a valid JSON object (array).');
+                }
+            } catch (\JsonException $e) {
+                $io->error(sprintf('Invalid JSON context: %s', $e->getMessage()));
+
+                return Command::FAILURE;
+            }
+        }
 
         $log = $this->auditLogRepository->find($auditId);
 
@@ -67,7 +97,7 @@ class AuditRevertCommand extends Command
         }
 
         try {
-            $changes = $this->auditReverter->revert($log, $dryRun, $force);
+            $changes = $this->auditReverter->revert($log, $dryRun, $force, $context);
 
             if ($raw) {
                 $io->writeln((string) json_encode($changes, JSON_PRETTY_PRINT));
