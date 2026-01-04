@@ -28,6 +28,11 @@ final readonly class AuditIntegrityService implements AuditIntegrityServiceInter
         return hash_hmac($this->algorithm, $data, $this->secret);
     }
 
+    public function signPayload(string $payload): string
+    {
+        return hash_hmac($this->algorithm, $payload, $this->secret);
+    }
+
     public function verifySignature(AuditLogInterface $log): bool
     {
         $signature = $log->getSignature();

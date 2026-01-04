@@ -98,6 +98,8 @@ final class AuditTrailExtension extends Extension
         $container->register($id, HttpAuditTransport::class)
             ->setAutowired(true)
             ->setArgument('$endpoint', $config['endpoint'])
+            ->setArgument('$headers', $config['headers'])
+            ->setArgument('$timeout', $config['timeout'])
             ->addTag('audit_trail.transport');
 
         return $id;

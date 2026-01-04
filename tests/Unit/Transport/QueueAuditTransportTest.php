@@ -5,13 +5,16 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
+use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
 use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 #[AllowMockObjectsWithoutExpectations]
 class QueueAuditTransportTest extends TestCase
@@ -19,12 +22,22 @@ class QueueAuditTransportTest extends TestCase
     private QueueAuditTransport $transport;
     private MessageBusInterface&MockObject $bus;
     private LoggerInterface&MockObject $logger;
+    private EventDispatcherInterface&MockObject $eventDispatcher;
+    private AuditIntegrityServiceInterface&MockObject $integrityService;
 
     protected function setUp(): void
     {
         $this->bus = $this->createMock(MessageBusInterface::class);
         $this->logger = $this->createMock(LoggerInterface::class);
-        $this->transport = new QueueAuditTransport($this->bus, $this->logger);
+        $this->eventDispatcher = $this->createMock(EventDispatcherInterface::class);
+        $this->integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
+
+        $this->transport = new QueueAuditTransport(
+            $this->bus,
+            $this->logger,
+            $this->eventDispatcher,
+            $this->integrityService
+        );
     }
 
     public function testSendDispatchesMessage(): void
@@ -35,9 +48,39 @@ class QueueAuditTransportTest extends TestCase
         $log->setAction(AuditLogInterface::ACTION_CREATE);
         $log->setCreatedAt(new \DateTimeImmutable());
 
+        $this->integrityService->method('isEnabled')->willReturn(false);
+
         $this->bus->expects($this->once())
             ->method('dispatch')
-            ->with(self::isInstanceOf(AuditLogMessage::class))
+            ->with(self::isInstanceOf(AuditLogMessage::class), [])
+            ->willReturn(new Envelope(new \stdClass()));
+
+        $this->transport->send($log);
+    }
+
+    public function testSendSignsPayloadWhenIntegrityEnabled(): void
+    {
+        $log = new AuditLog();
+        $log->setEntityClass('TestEntity');
+        $log->setEntityId('1');
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
+        $log->setCreatedAt(new \DateTimeImmutable());
+
+        $this->integrityService->method('isEnabled')->willReturn(true);
+        $this->integrityService->expects($this->once())
+            ->method('signPayload')
+            ->willReturn('test_signature');
+
+        $this->bus->expects($this->once())
+            ->method('dispatch')
+            ->with(
+                self::isInstanceOf(AuditLogMessage::class),
+                self::callback(function ($stamps) {
+                    return 1 === count($stamps)
+                        && $stamps[0] instanceof SignatureStamp
+                        && 'test_signature' === $stamps[0]->signature;
+                })
+            )
             ->willReturn(new Envelope(new \stdClass()));
 
         $this->transport->send($log);
@@ -48,6 +91,8 @@ class QueueAuditTransportTest extends TestCase
         $log = new AuditLog();
         $log->setEntityClass('TestEntity');
         $log->setEntityId('1');
+        $log->setAction(AuditLogInterface::ACTION_CREATE);
+        $log->setCreatedAt(new \DateTimeImmutable());
 
         $this->bus->method('dispatch')->willThrowException(new \Exception('Bus error'));
         $this->logger->expects($this->once())->method('error');

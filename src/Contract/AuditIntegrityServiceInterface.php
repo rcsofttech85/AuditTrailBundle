@@ -11,4 +11,6 @@ interface AuditIntegrityServiceInterface
     public function generateSignature(AuditLogInterface $log): string;
 
     public function verifySignature(AuditLogInterface $log): bool;
+
+    public function signPayload(string $payload): string;
 }

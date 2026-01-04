@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
@@ -18,6 +19,7 @@ use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 class AuditDispatcherTest extends TestCase
 {
     private AuditTransportInterface&MockObject $transport;
+    private AuditIntegrityServiceInterface&MockObject $integrityService;
     private LoggerInterface&MockObject $logger;
     private EntityManagerInterface&MockObject $em;
     private AuditLogInterface&MockObject $audit;
@@ -25,6 +27,7 @@ class AuditDispatcherTest extends TestCase
     protected function setUp(): void
     {
         $this->transport = $this->createMock(AuditTransportInterface::class);
+        $this->integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
         $this->logger = $this->createMock(LoggerInterface::class);
         $this->em = $this->createMock(EntityManagerInterface::class);
         $this->audit = $this->createMock(AuditLogInterface::class);
@@ -32,15 +35,34 @@ class AuditDispatcherTest extends TestCase
 
     public function testDispatchSuccess(): void
     {
-        $dispatcher = new AuditDispatcher($this->transport);
+        $dispatcher = new AuditDispatcher($this->transport, $this->integrityService);
         $this->transport->expects($this->once())->method('send');
 
         self::assertTrue($dispatcher->dispatch($this->audit, $this->em, 'post_flush'));
     }
 
+    public function testDispatchSignsLogWhenIntegrityEnabled(): void
+    {
+        $dispatcher = new AuditDispatcher($this->transport, $this->integrityService);
+
+        $this->integrityService->method('isEnabled')->willReturn(true);
+        $this->integrityService->expects($this->once())
+            ->method('generateSignature')
+            ->with($this->audit)
+            ->willReturn('test_signature');
+
+        $this->audit->expects($this->once())
+            ->method('setSignature')
+            ->with('test_signature');
+
+        $this->transport->expects($this->once())->method('send');
+
+        $dispatcher->dispatch($this->audit, $this->em, 'post_flush');
+    }
+
     public function testDispatchTransportFailureWithFallback(): void
     {
-        $dispatcher = new AuditDispatcher($this->transport, $this->logger, false, true);
+        $dispatcher = new AuditDispatcher($this->transport, $this->integrityService, $this->logger, false, true);
         $this->transport->method('send')->willThrowException(new \Exception('Transport error'));
 
         $this->logger->expects($this->once())->method('error');
@@ -53,7 +75,7 @@ class AuditDispatcherTest extends TestCase
 
     public function testDispatchTransportFailureWithException(): void
     {
-        $dispatcher = new AuditDispatcher($this->transport, null, true, true);
+        $dispatcher = new AuditDispatcher($this->transport, $this->integrityService, null, true, true);
         $this->transport->method('send')->willThrowException(new \Exception('Transport error'));
 
         $this->expectException(\Exception::class);
@@ -64,7 +86,7 @@ class AuditDispatcherTest extends TestCase
 
     public function testDispatchTransportFailureNoFallback(): void
     {
-        $dispatcher = new AuditDispatcher($this->transport, null, false, false);
+        $dispatcher = new AuditDispatcher($this->transport, $this->integrityService, null, false, false);
         $this->transport->method('send')->willThrowException(new \Exception('Transport error'));
 
         $this->em->expects($this->never())->method('persist');
@@ -74,7 +96,7 @@ class AuditDispatcherTest extends TestCase
 
     public function testPersistFallbackOnFlushComputesChangeSet(): void
     {
-        $dispatcher = new AuditDispatcher($this->transport, null, false, true);
+        $dispatcher = new AuditDispatcher($this->transport, $this->integrityService, null, false, true);
         $this->transport->method('send')->willThrowException(new \Exception('Transport error'));
 
         $uow = $this->createMock(UnitOfWork::class);
@@ -90,7 +112,7 @@ class AuditDispatcherTest extends TestCase
 
     public function testPersistFallbackEmClosed(): void
     {
-        $dispatcher = new AuditDispatcher($this->transport, null, false, true);
+        $dispatcher = new AuditDispatcher($this->transport, $this->integrityService, null, false, true);
         $this->transport->method('send')->willThrowException(new \Exception('Transport error'));
 
         $this->em->method('isOpen')->willReturn(false);
@@ -101,7 +123,7 @@ class AuditDispatcherTest extends TestCase
 
     public function testPersistFallbackAlreadyContainsAudit(): void
     {
-        $dispatcher = new AuditDispatcher($this->transport, null, false, true);
+        $dispatcher = new AuditDispatcher($this->transport, $this->integrityService, null, false, true);
         $this->transport->method('send')->willThrowException(new \Exception('Transport error'));
 
         $this->em->method('isOpen')->willReturn(true);
@@ -113,7 +135,7 @@ class AuditDispatcherTest extends TestCase
 
     public function testSupports(): void
     {
-        $dispatcher = new AuditDispatcher($this->transport);
+        $dispatcher = new AuditDispatcher($this->transport, $this->integrityService);
         $this->transport->method('supports')->willReturn(true);
 
         self::assertTrue($dispatcher->supports('post_flush'));

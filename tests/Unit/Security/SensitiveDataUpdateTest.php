@@ -8,6 +8,7 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -53,7 +54,11 @@ class SensitiveDataUpdateTest extends TestCase
 
         $transport = $this->createMock(AuditTransportInterface::class);
         $transport->method('supports')->willReturn(true);
-        $dispatcher = new AuditDispatcher($transport, null); // No logger
+        $dispatcher = new AuditDispatcher(
+            $transport,
+            self::createStub(AuditIntegrityServiceInterface::class),
+            null
+        ); // No logger
         $auditManager = new ScheduledAuditManager(self::createStub(
             EventDispatcherInterface::class
         ));

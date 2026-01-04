@@ -8,19 +8,16 @@ use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
 
 #[AllowMockObjectsWithoutExpectations]
 class DoctrineAuditTransportTest extends TestCase
 {
     private DoctrineAuditTransport $transport;
-    private AuditIntegrityService $integrityService;
 
     protected function setUp(): void
     {
-        $this->integrityService = new AuditIntegrityService('secret', 'sha256', false);
-        $this->transport = new DoctrineAuditTransport($this->integrityService);
+        $this->transport = new DoctrineAuditTransport();
     }
 
     public function testSendOnFlushPersistsLog(): void

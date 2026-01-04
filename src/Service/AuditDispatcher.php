@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -15,6 +16,7 @@ readonly class AuditDispatcher
 {
     public function __construct(
         private readonly AuditTransportInterface $transport,
+        private readonly AuditIntegrityServiceInterface $integrityService,
         private readonly ?LoggerInterface $logger = null,
         private readonly bool $failOnTransportError = false,
         private readonly bool $fallbackToDatabase = true,
@@ -42,6 +44,10 @@ readonly class AuditDispatcher
 
         if ($uow instanceof UnitOfWork) {
             $context['uow'] = $uow;
+        }
+
+        if ($this->integrityService->isEnabled()) {
+            $audit->setSignature($this->integrityService->generateSignature($audit));
         }
 
         if ($this->safeSend($audit, $context)) {

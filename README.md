@@ -103,7 +103,10 @@ class Product
 
 ## Configuration
 
-Create a configuration file at `config/packages/audit_trail.yaml`:
+Create a configuration file at `config/packages/audit_trail.yaml`.
+
+For detailed transport configuration and usage, see  
+[audit-transports](/docs/symfony-audit-transports.md).
 
 ```yaml
 audit_trail:
@@ -141,6 +144,14 @@ audit_trail:
         queue:
             enabled: false
             bus: 'messenger.bus.default' # Optional: specify a custom bus
+            
+    # Integrity & Signing
+    # -------------------
+    # Enable cryptographic signing of audit logs to prevent tampering.
+    integrity:
+        enabled: true
+        secret: '%env(AUDIT_INTEGRITY_SECRET)%'
+        algorithm: 'sha256'
 
     # Transaction Safety & Performance
     # --------------------------------
@@ -315,7 +326,34 @@ class AuditSubscriber implements EventSubscriberInterface
         // Add custom metadata
         $context = $log->getContext();
         $context['server_id'] = 'node-01';
-        $log->setContext($context);
+    }
+}
+```
+
+#### `AuditMessageStampEvent`
+
+Dispatched when an audit message is about to be sent via the Messenger transport. Use this to add custom stamps (e.g., `DelayStamp`, `AmqpStamp`) to the message.
+
+```php
+namespace App\EventSubscriber;
+
+use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;
+use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\Messenger\Stamp\DelayStamp;
+
+class AuditStampSubscriber implements EventSubscriberInterface
+{
+    public static function getSubscribedEvents(): array
+    {
+        return [
+            AuditMessageStampEvent::class => 'onAuditMessageStamp',
+        ];
+    }
+
+    public function onAuditMessageStamp(AuditMessageStampEvent $event): void
+    {
+        // Add a 5-second delay to all audit messages
+        $event->addStamp(new DelayStamp(5000));
     }
 }
 ```
@@ -411,6 +449,35 @@ php bin/console audit:verify-integrity
 
 > [!WARNING]
 > Any tampered logs indicate a serious security breach. Investigate immediately and review access controls to your database.
+>
+> Any tampered logs indicate a serious security breach. Investigate immediately and review access controls to your database.
+
+### Transport Payload Signing
+
+When using **HTTP** or **Queue** transports with integrity enabled, the bundle automatically signs the payload to ensure data authenticity during transit.
+
+#### HTTP Transport
+
+The bundle adds an `X-Signature` header to the HTTP request containing the HMAC signature of the JSON body.
+
+```http
+POST /api/logs HTTP/1.1
+X-Signature: a1b2c3d4...
+Content-Type: application/json
+
+{ ... }
+```
+
+#### Queue Transport
+
+The bundle adds a `SignatureStamp` to the Messenger envelope containing the signature of the serialized `AuditLogMessage`.
+
+```php
+use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
+
+// In your message handler
+$signature = $envelope->last(SignatureStamp::class)?->signature;
+```
 
 ---
 

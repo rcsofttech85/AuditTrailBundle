@@ -8,6 +8,7 @@ use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
@@ -29,7 +30,7 @@ class AuditSubscriberTransportSupportTest extends TestCase
         $auditService = self::createStub(AuditService::class);
         $changeProcessor = new ChangeProcessor($auditService, true, 'deletedAt');
         $transport = $this->createMock(AuditTransportInterface::class);
-        $dispatcher = new AuditDispatcher($transport, null);
+        $dispatcher = new AuditDispatcher($transport, self::createStub(AuditIntegrityServiceInterface::class), null);
         $auditManager = new ScheduledAuditManager(self::createStub(
             EventDispatcherInterface::class
         ));

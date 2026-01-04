@@ -6,7 +6,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -18,7 +18,14 @@ class HttpAuditTransportTest extends TestCase
     public function testSendPostFlushSendsRequest(): void
     {
         $client = $this->createMock(HttpClientInterface::class);
-        $transport = new HttpAuditTransport($client, 'http://example.com', self::createStub(LoggerInterface::class));
+        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
+        $transport = new HttpAuditTransport(
+            $client,
+            'http://example.com',
+            $integrityService,
+            ['X-Test' => 'value'],
+            10
+        );
 
         $log = new AuditLog();
         $log->setEntityClass('TestEntity');
@@ -27,7 +34,11 @@ class HttpAuditTransportTest extends TestCase
 
         $client->expects($this->once())
             ->method('request')
-            ->withAnyParameters()
+            ->with('POST', 'http://example.com', self::callback(function ($options) {
+                return 'value' === $options['headers']['X-Test']
+                    && 10 === $options['timeout']
+                    && isset($options['body']);
+            }))
             ->willReturnCallback(function () {
                 return self::createStub(ResponseInterface::class);
             });
@@ -38,7 +49,8 @@ class HttpAuditTransportTest extends TestCase
     public function testSendResolvesPendingId(): void
     {
         $client = $this->createMock(HttpClientInterface::class);
-        $transport = new HttpAuditTransport($client, 'http://example.com', self::createStub(LoggerInterface::class));
+        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
+        $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService);
 
         $log = new AuditLog();
         $log->setEntityClass('TestEntity');
@@ -55,7 +67,11 @@ class HttpAuditTransportTest extends TestCase
         $client->expects($this->once())
             ->method('request')
             ->with('POST', 'http://example.com', self::callback(function ($options) {
-                return isset($options['json']) && '100' === $options['json']['entity_id'];
+                $body = json_decode($options['body'], true);
+
+                return isset($body['entity_id'])
+                    && '100' === $body['entity_id']
+                    && array_key_exists('changed_fields', $body);
             }))
             ->willReturn(self::createStub(ResponseInterface::class));
 
