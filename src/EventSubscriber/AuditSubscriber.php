@@ -14,6 +14,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
+use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
@@ -118,8 +119,8 @@ final class AuditSubscriber implements ResetInterface
         $hasNewAudits = false;
         foreach ($this->auditManager->getScheduledAudits() as $scheduled) {
             if ($scheduled['is_insert']) {
-                $id = $this->auditService->getEntityId($scheduled['entity']);
-                if ('pending' !== $id) {
+                $id = EntityIdResolver::resolveFromEntity($scheduled['entity'], $em);
+                if (EntityIdResolver::PENDING_ID !== $id) {
                     $scheduled['audit']->setEntityId($id);
                 }
             }

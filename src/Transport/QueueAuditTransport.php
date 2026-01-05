@@ -11,14 +11,12 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
-use Rcsofttech\AuditTrailBundle\Service\PendingIdResolver;
+use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 final class QueueAuditTransport implements AuditTransportInterface
 {
-    use PendingIdResolver;
-
     public function __construct(
         private readonly MessageBusInterface $bus,
         private readonly LoggerInterface $logger,
@@ -33,7 +31,7 @@ final class QueueAuditTransport implements AuditTransportInterface
     public function send(AuditLogInterface $log, array $context = []): void
     {
 
-        $entityId = $this->resolveEntityId($log, $context) ?? $log->getEntityId();
+        $entityId = EntityIdResolver::resolve($log, $context) ?? $log->getEntityId();
 
         $message = new AuditLogMessage(
             $log->getEntityClass(),

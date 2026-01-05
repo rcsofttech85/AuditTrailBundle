@@ -9,12 +9,10 @@ use Doctrine\ORM\UnitOfWork;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Service\PendingIdResolver;
+use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
 
 final class DoctrineAuditTransport implements AuditTransportInterface
 {
-    use PendingIdResolver;
-
     /**
      * @param array<string, mixed> $context
      */
@@ -63,7 +61,7 @@ final class DoctrineAuditTransport implements AuditTransportInterface
         }
 
         // Doctrine will pick this change up when the subscriber does the final flush.
-        $entityId = $this->resolveEntityId($log, $context);
+        $entityId = EntityIdResolver::resolve($log, $context);
 
         if (null !== $entityId) {
             $log->setEntityId($entityId);

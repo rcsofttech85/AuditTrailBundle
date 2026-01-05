@@ -7,13 +7,11 @@ namespace Rcsofttech\AuditTrailBundle\Transport;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
-use Rcsofttech\AuditTrailBundle\Service\PendingIdResolver;
+use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class HttpAuditTransport implements AuditTransportInterface
 {
-    use PendingIdResolver;
-
     /**
      * @param array<string, string> $headers
      */
@@ -31,7 +29,7 @@ final class HttpAuditTransport implements AuditTransportInterface
      */
     public function send(AuditLogInterface $log, array $context = []): void
     {
-        $entityId = $this->resolveEntityId($log, $context) ?? $log->getEntityId();
+        $entityId = EntityIdResolver::resolve($log, $context) ?? $log->getEntityId();
 
         $payload = [
             'entity_class' => $log->getEntityClass(),

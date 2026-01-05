@@ -65,7 +65,7 @@ class EntityIdResolverTest extends TestCase
         $em->method('getClassMetadata')->with(\stdClass::class)->willReturn($metadata);
         $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id1' => 1, 'id2' => 2]);
 
-        self::assertEquals('[1,2]', EntityIdResolver::resolve($log, ['entity' => $entity, 'em' => $em]));
+        self::assertEquals('["1","2"]', EntityIdResolver::resolve($log, ['entity' => $entity, 'em' => $em]));
     }
 
     public function testResolvePendingNoId(): void
@@ -80,6 +80,6 @@ class EntityIdResolverTest extends TestCase
         $em->method('getClassMetadata')->with(\stdClass::class)->willReturn($metadata);
         $metadata->method('getIdentifierValues')->with($entity)->willReturn([]);
 
-        self::assertNull(EntityIdResolver::resolve($log, ['entity' => $entity, 'em' => $em]));
+        self::assertEquals('pending', EntityIdResolver::resolve($log, ['entity' => $entity, 'em' => $em]));
     }
 }

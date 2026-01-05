@@ -257,27 +257,6 @@ class AuditServiceTest extends TestCase
         self::assertEquals('["1","2"]', $log->getEntityId());
     }
 
-    public function testGetEntityIdFallback(): void
-    {
-        $entity = new class () {
-            public function getId(): int
-            {
-                return 123;
-            }
-        };
-        $this->entityManager->method('getClassMetadata')->willThrowException(new \Exception());
-
-        self::assertEquals('123', $this->service->getEntityId($entity));
-    }
-
-    public function testGetEntityIdPending(): void
-    {
-        $entity = new \stdClass();
-        $this->entityManager->method('getClassMetadata')->willThrowException(new \Exception());
-
-        self::assertEquals('pending', $this->service->getEntityId($entity));
-    }
-
     public function testEnrichUserContextException(): void
     {
         $entity = new \stdClass();
@@ -289,31 +268,6 @@ class AuditServiceTest extends TestCase
         $this->logger->expects($this->once())->method('error');
 
         $this->service->createAuditLog($entity, 'create');
-    }
-
-    public function testDetectChangedFields(): void
-    {
-        $entity = new \stdClass();
-        $metadata = $this->createMock(ClassMetadata::class);
-        $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
-        $this->entityManager->method('getClassMetadata')->willReturn($metadata);
-
-        // Test numeric comparison
-        $log = $this->service->createAuditLog(
-            $entity,
-            AuditLogInterface::ACTION_UPDATE,
-            ['float' => 1.0000000001, 'same' => 'val', 'null' => null],
-            ['float' => 1.0000000002, 'same' => 'val', 'null' => null]
-        );
-        self::assertEmpty($log->getChangedFields());
-
-        $log2 = $this->service->createAuditLog(
-            $entity,
-            AuditLogInterface::ACTION_UPDATE,
-            ['float' => 1.0, 'new' => 'old_val'],
-            ['float' => 1.1, 'new' => 'new_val']
-        );
-        self::assertEquals(['float', 'new'], $log2->getChangedFields());
     }
 
     public function testGetSensitiveFields(): void

@@ -5,6 +5,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\EventSubscriber;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
@@ -156,7 +157,9 @@ class AuditSubscriberTest extends TestCase
             ['entity' => $entity, 'audit' => $audit, 'is_insert' => true],
         ]);
 
-        $this->auditService->method('getEntityId')->willReturn('123');
+        $metadata = $this->createMock(ClassMetadata::class);
+        $em->method('getClassMetadata')->with(\stdClass::class)->willReturn($metadata);
+        $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
 
         $this->dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
         $em->expects($this->once())->method('flush');

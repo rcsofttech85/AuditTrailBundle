@@ -64,9 +64,12 @@ class AuditSubscriberTransportSupportTest extends TestCase
 
         $auditService->method('shouldAudit')->willReturn(true);
         $auditService->method('createAuditLog')->willReturn($auditLog);
-        $auditService->method('getEntityId')->willReturn('123');
 
         $em = self::createStub(EntityManagerInterface::class);
+        $metadata = self::createStub(\Doctrine\ORM\Mapping\ClassMetadata::class);
+        $metadata->method('getIdentifierValues')->willReturn(['id' => 123]);
+        $em->method('getClassMetadata')->willReturn($metadata);
+
         $uow = self::createStub(UnitOfWork::class);
         $em->method('getUnitOfWork')->willReturn($uow);
         $uow->method('getScheduledEntityUpdates')->willReturn([$entity]);

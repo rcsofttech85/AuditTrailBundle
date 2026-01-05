@@ -86,8 +86,8 @@ readonly class EntityProcessor
             $fieldName = (string) $mapping['fieldName'];
             $snapshot = $collection->getSnapshot();
             /** @var array<int, object> $snapshot */
-            $oldIds = $this->extractIdsFromCollection($snapshot);
-            $newIds = $this->computeNewIds($oldIds, array_values($insertDiff), array_values($deleteDiff));
+            $oldIds = $this->extractIdsFromCollection($snapshot, $em);
+            $newIds = $this->computeNewIds($oldIds, array_values($insertDiff), array_values($deleteDiff), $em);
 
             $oldValues = [$fieldName => $oldIds];
             $newValues = [$fieldName => $newIds];
@@ -150,15 +150,13 @@ readonly class EntityProcessor
      *
      * @return array<int, int|string>
      */
-    private function extractIdsFromCollection(array $items): array
+    private function extractIdsFromCollection(array $items, EntityManagerInterface $em): array
     {
         $ids = [];
         foreach ($items as $item) {
-            if (\method_exists($item, 'getId')) {
-                $id = $item->getId();
-                if (\is_int($id) || \is_string($id)) {
-                    $ids[] = $id;
-                }
+            $id = EntityIdResolver::resolveFromEntity($item, $em);
+            if (EntityIdResolver::PENDING_ID !== $id) {
+                $ids[] = $id;
             }
         }
 
@@ -172,18 +170,22 @@ readonly class EntityProcessor
      *
      * @return array<int, int|string>
      */
-    private function computeNewIds(array $oldIds, array $insertDiff, array $deleteDiff): array
-    {
+    private function computeNewIds(
+        array $oldIds,
+        array $insertDiff,
+        array $deleteDiff,
+        EntityManagerInterface $em,
+    ): array {
         $newIds = $oldIds;
 
-        $insertedIds = $this->extractIdsFromCollection($insertDiff);
+        $insertedIds = $this->extractIdsFromCollection($insertDiff, $em);
         foreach ($insertedIds as $id) {
             if (!\in_array($id, $newIds, true)) {
                 $newIds[] = $id;
             }
         }
 
-        $deletedIds = $this->extractIdsFromCollection($deleteDiff);
+        $deletedIds = $this->extractIdsFromCollection($deleteDiff, $em);
         $newIds = array_filter($newIds, fn ($id) => !in_array($id, $deletedIds, true));
 
         return \array_values($newIds);

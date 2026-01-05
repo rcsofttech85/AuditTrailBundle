@@ -54,6 +54,30 @@ class ChangeProcessorTest extends TestCase
         ], $changes[1]);
     }
 
+    public function testExtractChangesFloatPrecision(): void
+    {
+        $entity = new \stdClass();
+        $changeSet = [
+            'float_diff' => [1.0, 1.1],
+            'float_same' => [1.0000000001, 1.0000000002],
+            'null_same' => [null, null],
+        ];
+
+        $this->auditService->method('getSensitiveFields')->willReturn([]);
+        $this->auditService->method('getIgnoredProperties')->willReturn([]);
+
+        $changes = $this->processor->extractChanges($entity, $changeSet);
+
+        // float_diff should be present
+        self::assertArrayHasKey('float_diff', $changes[0]);
+        self::assertEquals(1.0, $changes[0]['float_diff']);
+        self::assertEquals(1.1, $changes[1]['float_diff']);
+
+        // float_same should be absent (difference < 1e-9)
+        self::assertArrayNotHasKey('float_same', $changes[0]);
+        self::assertArrayNotHasKey('float_same', $changes[1]);
+    }
+
     public function testDetermineUpdateAction(): void
     {
         // Normal update

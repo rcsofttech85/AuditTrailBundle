@@ -39,7 +39,7 @@ class ChangeProcessor
 
             [$oldValue, $newValue] = $change;
 
-            if ($oldValue === $newValue) {
+            if (!$this->valuesAreDifferent($oldValue, $newValue)) {
                 continue;
             }
 
@@ -53,6 +53,19 @@ class ChangeProcessor
         }
 
         return [$old, $new];
+    }
+
+    private function valuesAreDifferent(mixed $oldValue, mixed $newValue): bool
+    {
+        if (null === $oldValue || null === $newValue) {
+            return $oldValue !== $newValue;
+        }
+
+        if (is_numeric($oldValue) && is_numeric($newValue)) {
+            return abs((float) $oldValue - (float) $newValue) > 1e-9;
+        }
+
+        return $oldValue !== $newValue;
     }
 
     /**
