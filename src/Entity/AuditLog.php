@@ -10,17 +10,13 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 
 #[ORM\Entity(repositoryClass: AuditLogRepository::class)]
-#[ORM\Table(
-    indexes: [
-        new ORM\Index(name: 'entity_idx', columns: ['entity_class', 'entity_id']),
-        new ORM\Index(name: 'user_idx', columns: ['user_id']),
-        new ORM\Index(name: 'action_idx', columns: ['action']),
-        new ORM\Index(name: 'created_idx', columns: ['created_at']),
-        new ORM\Index(name: 'user_action_date_idx', columns: ['user_id', 'action', 'created_at']),
-        new ORM\Index(name: 'entity_date_idx', columns: ['entity_class', 'entity_id', 'created_at']),
-        new ORM\Index(name: 'transaction_idx', columns: ['transaction_hash']),
-    ]
-)]
+#[ORM\Index(name: 'entity_idx', columns: ['entity_class', 'entity_id'])]
+#[ORM\Index(name: 'user_idx', columns: ['user_id'])]
+#[ORM\Index(name: 'action_idx', columns: ['action'])]
+#[ORM\Index(name: 'created_idx', columns: ['created_at'])]
+#[ORM\Index(name: 'user_action_date_idx', columns: ['user_id', 'action', 'created_at'])]
+#[ORM\Index(name: 'entity_date_idx', columns: ['entity_class', 'entity_id', 'created_at'])]
+#[ORM\Index(name: 'transaction_idx', columns: ['transaction_hash'])]
 class AuditLog implements AuditLogInterface
 {
     private const array VALID_ACTIONS = [
