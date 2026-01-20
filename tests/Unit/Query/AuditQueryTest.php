@@ -55,7 +55,7 @@ class AuditQueryTest extends TestCase
             ->with(
                 self::callback(function (array $filters) {
                     return 'update' === ($filters['action'] ?? null)
-                        && 1 === ($filters['userId'] ?? null);
+                        && '1' === ($filters['userId'] ?? null);
                 }),
                 30
             )
@@ -63,7 +63,7 @@ class AuditQueryTest extends TestCase
 
         $this->query
             ->action('update')
-            ->user(1)
+            ->user('1')
             ->getResults();
     }
 

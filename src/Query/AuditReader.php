@@ -46,7 +46,7 @@ readonly class AuditReader implements AuditReaderInterface
     /**
      * Create a query pre-filtered for a specific user.
      */
-    public function byUser(int $userId): AuditQuery
+    public function byUser(string $userId): AuditQuery
     {
         return $this->createQuery()->user($userId);
     }

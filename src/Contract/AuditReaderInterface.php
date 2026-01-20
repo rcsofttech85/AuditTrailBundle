@@ -28,7 +28,7 @@ interface AuditReaderInterface
     /**
      * Create a query pre-filtered for a specific user.
      */
-    public function byUser(int $userId): AuditQuery;
+    public function byUser(string $userId): AuditQuery;
 
     /**
      * Create a query pre-filtered for a specific transaction.

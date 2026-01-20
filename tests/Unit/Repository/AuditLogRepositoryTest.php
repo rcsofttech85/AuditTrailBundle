@@ -92,7 +92,7 @@ class AuditLogRepositoryTest extends TestCase
         $this->qb->expects($this->once())->method('setParameter')->with('userId', 1)->willReturnSelf();
         $this->qb->expects($this->once())->method('setMaxResults')->with(10)->willReturnSelf();
 
-        $this->repository->findByUser(1, 10);
+        $this->repository->findByUser('1', 10);
     }
 
     public function testDeleteOldLogs(): void
@@ -217,7 +217,7 @@ class AuditLogRepositoryTest extends TestCase
         $log2 = new AuditLog();
         $this->query->method('getResult')->willReturn([$log1, $log2]);
 
-        $result = $this->repository->findByUser(1);
+        $result = $this->repository->findByUser('1');
         self::assertCount(2, $result);
         self::assertSame($log1, $result[0]);
         self::assertSame($log2, $result[1]);

@@ -76,7 +76,7 @@ class AuditMessageStampEventTest extends TestCase
             [],
             ['name' => 'Test'],
             ['name'],
-            1,
+            '1',
             'admin',
             '127.0.0.1',
             'PHPUnit',

@@ -19,13 +19,13 @@ final readonly class UserResolver implements UserResolverInterface
     ) {
     }
 
-    public function getUserId(): ?int
+    public function getUserId(): ?string
     {
         $user = $this->security->getUser();
 
         return match (true) {
             null === $user => null,
-            method_exists($user, 'getId') => $user->getId(),
+            method_exists($user, 'getId') => (string) $user->getId(),
             default => null,
         };
     }
@@ -59,7 +59,7 @@ final readonly class UserResolver implements UserResolverInterface
         return mb_substr($ua, 0, 500);
     }
 
-    public function getImpersonatorId(): ?int
+    public function getImpersonatorId(): ?string
     {
         $token = $this->security->getToken();
         if (!$token instanceof SwitchUserToken) {
@@ -70,7 +70,7 @@ final readonly class UserResolver implements UserResolverInterface
 
         return match (true) {
             null === $originalUser => null,
-            method_exists($originalUser, 'getId') => $originalUser->getId(),
+            method_exists($originalUser, 'getId') => (string) $originalUser->getId(),
             default => null,
         };
     }

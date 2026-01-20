@@ -57,9 +57,9 @@ interface AuditLogInterface
      */
     public function setChangedFields(?array $changedFields): self;
 
-    public function getUserId(): ?int;
+    public function getUserId(): ?string;
 
-    public function setUserId(?int $userId): self;
+    public function setUserId(?string $userId): self;
 
     public function getUsername(): ?string;
 

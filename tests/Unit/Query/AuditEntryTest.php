@@ -25,7 +25,7 @@ class AuditEntryTest extends TestCase
         self::assertSame('User', $entry->getEntityShortName());
         self::assertSame('123', $entry->getEntityId());
         self::assertSame(AuditLogInterface::ACTION_UPDATE, $entry->getAction());
-        self::assertSame(42, $entry->getUserId());
+        self::assertSame('42', $entry->getUserId());
         self::assertSame('admin', $entry->getUsername());
         self::assertSame('127.0.0.1', $entry->getIpAddress());
         self::assertSame('abc123', $entry->getTransactionHash());
@@ -124,7 +124,7 @@ class AuditEntryTest extends TestCase
         $log->setEntityClass('App\\Entity\\User');
         $log->setEntityId('123');
         $log->setAction($action);
-        $log->setUserId(42);
+        $log->setUserId('42');
         $log->setUsername('admin');
         $log->setIpAddress('127.0.0.1');
         $log->setTransactionHash('abc123');

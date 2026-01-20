@@ -152,7 +152,7 @@ class AuditRevertCommandTest extends TestCase
 
         $this->commandTester->execute(['auditId' => 123]);
 
-        $output = $this->commandTester->getDisplay();
+        $output = (string) preg_replace('/\s+/', ' ', $this->commandTester->getDisplay());
         self::assertStringContainsString('Revert failed', $output);
         self::assertEquals(1, $this->commandTester->getStatusCode());
     }

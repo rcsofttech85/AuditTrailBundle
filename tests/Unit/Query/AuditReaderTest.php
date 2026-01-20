@@ -40,7 +40,7 @@ class AuditReaderTest extends TestCase
 
     public function testByUser(): void
     {
-        $this->reader->byUser(1);
+        $this->reader->byUser('1');
         $this->expectNotToPerformAssertions();
     }
 

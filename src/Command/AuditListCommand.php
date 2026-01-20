@@ -100,7 +100,7 @@ final class AuditListCommand extends Command
         $filters = array_filter([
             'entityClass' => $input->getOption('entity'),
             'entityId' => $input->getOption('entity-id'),
-            'userId' => (is_string($user = $input->getOption('user')) && '' !== $user) ? (int) $user : null,
+            'userId' => (is_string($user = $input->getOption('user')) && '' !== $user) ? $user : null,
             'transactionHash' => $input->getOption('transaction'),
             'action' => $input->getOption('action'),
         ], fn ($v) => null !== $v && '' !== $v);

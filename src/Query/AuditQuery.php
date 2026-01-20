@@ -28,7 +28,7 @@ readonly class AuditQuery
         private ?string $entityClass = null,
         private ?string $entityId = null,
         private array $actions = [],
-        private ?int $userId = null,
+        private ?string $userId = null,
         private ?string $transactionHash = null,
         private ?\DateTimeInterface $since = null,
         private ?\DateTimeInterface $until = null,
@@ -90,7 +90,7 @@ readonly class AuditQuery
     /**
      * Filter by user ID.
      */
-    public function user(int $userId): self
+    public function user(string $userId): self
     {
         return $this->with(['userId' => $userId]);
     }

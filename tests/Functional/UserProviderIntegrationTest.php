@@ -87,7 +87,7 @@ class UserProviderIntegrationTest extends KernelTestCase
         ]);
 
         self::assertNotNull($auditLog);
-        self::assertSame($user->getId(), $auditLog->getUserId());
+        self::assertEquals($user->getId(), $auditLog->getUserId());
         self::assertSame('test_user', $auditLog->getUsername());
         self::assertSame('127.0.0.1', $auditLog->getIpAddress());
         self::assertSame('TestAgent', $auditLog->getUserAgent());

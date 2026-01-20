@@ -14,7 +14,6 @@ use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 #[ORM\Index(name: 'user_action_date_idx', columns: ['user_id', 'action', 'created_at'])]
 #[ORM\Index(name: 'entity_date_idx', columns: ['entity_class', 'entity_id', 'created_at'])]
 #[ORM\Index(name: 'transaction_idx', columns: ['transaction_hash'])]
-
 class AuditLog implements AuditLogInterface
 {
     private const array VALID_ACTIONS = [
@@ -80,8 +79,8 @@ class AuditLog implements AuditLogInterface
     #[ORM\Column(type: Types::JSON, nullable: true)]
     public private(set) ?array $changedFields = null;
 
-    #[ORM\Column(nullable: true)]
-    public private(set) ?int $userId = null;
+    #[ORM\Column(length: 255, nullable: true)]
+    public private(set) ?string $userId = null;
 
     #[ORM\Column(length: 255, nullable: true)]
     public private(set) ?string $username = null;
@@ -161,7 +160,7 @@ class AuditLog implements AuditLogInterface
         return $this->changedFields;
     }
 
-    public function getUserId(): ?int
+    public function getUserId(): ?string
     {
         return $this->userId;
     }
@@ -244,7 +243,7 @@ class AuditLog implements AuditLogInterface
         return $this;
     }
 
-    public function setUserId(?int $userId): self
+    public function setUserId(?string $userId): self
     {
         $this->userId = $userId;
 

@@ -22,7 +22,7 @@ final readonly class AuditLogMessage
         public ?array $oldValues,
         public ?array $newValues,
         public ?array $changedFields,
-        public ?int $userId,
+        public ?string $userId,
         public ?string $username,
         public ?string $ipAddress,
         public ?string $userAgent,

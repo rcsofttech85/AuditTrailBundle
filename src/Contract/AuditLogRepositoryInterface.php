@@ -21,7 +21,7 @@ interface AuditLogRepositoryInterface
     /**
      * @return array<AuditLog>
      */
-    public function findByUser(int $userId, int $limit = 30): array;
+    public function findByUser(string $userId, int $limit = 30): array;
 
     public function deleteOldLogs(\DateTimeImmutable $before): int;
 

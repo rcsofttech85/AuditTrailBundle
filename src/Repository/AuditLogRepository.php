@@ -57,7 +57,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
     /**
      * @return array<AuditLog>
      */
-    public function findByUser(int $userId, int $limit = 30): array
+    public function findByUser(string $userId, int $limit = 30): array
     {
         /** @var array<AuditLog> $result */
         $result = $this->createQueryBuilder('a')

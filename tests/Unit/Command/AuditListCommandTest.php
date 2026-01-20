@@ -95,7 +95,7 @@ class AuditListCommandTest extends TestCase
                 self::callback(function (array $filters) {
                     return 'TestEntity' === $filters['entityClass']
                         && 'update' === $filters['action']
-                        && 123 === $filters['userId'];
+                        && '123' === $filters['userId'];
                 }),
                 50
             )
