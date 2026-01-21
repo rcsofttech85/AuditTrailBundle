@@ -9,6 +9,7 @@ use Rcsofttech\AuditTrailBundle\Transport\ChainAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
+use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessageSerializer;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
@@ -48,11 +49,16 @@ final class AuditTrailExtension extends Extension
         $loader->load('services.yaml');
 
         $this->configureTransports($config, $container);
+        $this->registerSerializer($container);
     }
 
-    /**
-     * @param array<string, mixed> $config
-     */
+    private function registerSerializer(ContainerBuilder $container): void
+    {
+        $container->register(AuditLogMessageSerializer::class)
+            ->setAutowired(true)
+            ->setAutoconfigured(true);
+    }
+
     /**
      * @param array<string, mixed> $config
      */
@@ -117,6 +123,7 @@ final class AuditTrailExtension extends Extension
         $id = 'rcsofttech_audit_trail.transport.queue';
         $definition = $container->register($id, QueueAuditTransport::class)
             ->setAutowired(true)
+            ->setArgument('$apiKey', $config['api_key'])
             ->addTag('audit_trail.transport');
 
         if (isset($config['bus']) && '' !== $config['bus']) {
