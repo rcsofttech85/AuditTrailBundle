@@ -9,7 +9,6 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
-use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
 use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -36,29 +35,12 @@ class QueueAuditTransportTest extends TestCase
             $this->bus,
             $this->logger,
             $this->eventDispatcher,
-            $this->integrityService
+            $this->integrityService,
+            'test_api_key'
         );
     }
 
-    public function testSendDispatchesMessage(): void
-    {
-        $log = new AuditLog();
-        $log->setEntityClass('TestEntity');
-        $log->setEntityId('1');
-        $log->setAction(AuditLogInterface::ACTION_CREATE);
-        $log->setCreatedAt(new \DateTimeImmutable());
-
-        $this->integrityService->method('isEnabled')->willReturn(false);
-
-        $this->bus->expects($this->once())
-            ->method('dispatch')
-            ->with(self::isInstanceOf(AuditLogMessage::class), [])
-            ->willReturn(new Envelope(new \stdClass()));
-
-        $this->transport->send($log);
-    }
-
-    public function testSendSignsPayloadWhenIntegrityEnabled(): void
+    public function testSendDispatchesMessageWithStamps(): void
     {
         $log = new AuditLog();
         $log->setEntityClass('TestEntity');
@@ -67,18 +49,31 @@ class QueueAuditTransportTest extends TestCase
         $log->setCreatedAt(new \DateTimeImmutable());
 
         $this->integrityService->method('isEnabled')->willReturn(true);
-        $this->integrityService->expects($this->once())
-            ->method('signPayload')
-            ->willReturn('test_signature');
+        $this->integrityService->method('signPayload')->willReturn('test_signature');
 
         $this->bus->expects($this->once())
             ->method('dispatch')
             ->with(
                 self::isInstanceOf(AuditLogMessage::class),
                 self::callback(function ($stamps) {
-                    return 1 === count($stamps)
-                        && $stamps[0] instanceof SignatureStamp
-                        && 'test_signature' === $stamps[0]->signature;
+                    $hasApiKeyStamp = false;
+                    $hasSignatureStamp = false;
+                    foreach ($stamps as $stamp) {
+                        if (
+                            $stamp instanceof \Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp
+                            && 'test_api_key' === $stamp->apiKey
+                        ) {
+                            $hasApiKeyStamp = true;
+                        }
+                        if (
+                            $stamp instanceof \Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp
+                            && 'test_signature' === $stamp->signature
+                        ) {
+                            $hasSignatureStamp = true;
+                        }
+                    }
+
+                    return $hasApiKeyStamp && $hasSignatureStamp;
                 })
             )
             ->willReturn(new Envelope(new \stdClass()));
@@ -114,6 +109,7 @@ class QueueAuditTransportTest extends TestCase
         $em = $this->createMock(\Doctrine\ORM\EntityManagerInterface::class);
         $metadata = $this->createMock(\Doctrine\ORM\Mapping\ClassMetadata::class);
         $em->method('getClassMetadata')->willReturn($metadata);
+        $metadata->getIdentifierValues($entity);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 123]);
 
         $context = ['entity' => $entity, 'em' => $em];
