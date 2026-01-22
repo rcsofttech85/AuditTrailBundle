@@ -12,6 +12,7 @@ use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
+use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 
 #[AllowMockObjectsWithoutExpectations]
 class ChangeProcessorTest extends TestCase
@@ -22,7 +23,12 @@ class ChangeProcessorTest extends TestCase
     protected function setUp(): void
     {
         $this->auditService = $this->createMock(AuditService::class);
-        $this->processor = new ChangeProcessor($this->auditService, true, 'deletedAt');
+        $this->processor = new ChangeProcessor(
+            $this->auditService,
+            new ValueSerializer(),
+            true,
+            'deletedAt'
+        );
     }
 
     public function testExtractChanges(): void
@@ -99,7 +105,12 @@ class ChangeProcessorTest extends TestCase
 
     public function testDetermineUpdateActionSoftDeleteDisabled(): void
     {
-        $processor = new ChangeProcessor($this->auditService, false, 'deletedAt');
+        $processor = new ChangeProcessor(
+            $this->auditService,
+            new ValueSerializer(),
+            false,
+            'deletedAt'
+        );
 
         self::assertEquals(
             AuditLogInterface::ACTION_UPDATE,

@@ -219,9 +219,6 @@ class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithNumericIdentifierAndEntityId(): void
     {
-        // If identifier is numeric but entityId is provided, it should treat identifier as class name
-        // (which is weird but that's the logic: is_numeric && null === entityId)
-        // So if entityId is NOT null, it skips the first block and goes to the second.
 
         $log = new AuditLog();
         $log->setEntityClass('123'); // Weird class name
@@ -287,8 +284,6 @@ class AuditDiffCommandTest extends TestCase
         // identifier is NOT numeric (so it's a class), but entityId is null
         $this->commandTester->execute(['identifier' => 'App\Entity\Post']);
 
-        // Should return null (which means success? No, fetchAuditLog returns null, execute returns FAILURE)
-        // Wait, fetchAuditLog returns null, execute checks if null === log and returns FAILURE.
 
         self::assertEquals(Command::FAILURE, $this->commandTester->getStatusCode());
         $display = (string) preg_replace('/\s+/', ' ', trim($this->commandTester->getDisplay()));
@@ -336,5 +331,59 @@ class AuditDiffCommandTest extends TestCase
 
         // Check null formatting
         self::assertStringContainsString('NULL', $output);
+    }
+
+    public function testFormatValueBooleanTernaryOrder(): void
+    {
+        $log = new AuditLog();
+        $this->setLogId($log, 1);
+        $log->setEntityClass('App\\Entity\\Post');
+        $log->setEntityId('1');
+        $log->setAction(AuditLogInterface::ACTION_UPDATE);
+        $log->setCreatedAt(new \DateTimeImmutable());
+
+        $this->repository->method('find')->willReturn($log);
+
+        // old=true, new=false - the table should show TRUE in old column, FALSE in new column
+        $this->diffGenerator->method('generate')->willReturn([
+            'active' => ['old' => true, 'new' => false],
+        ]);
+
+        $this->commandTester->execute(['identifier' => '1']);
+
+        $this->commandTester->assertCommandIsSuccessful();
+        $display = $this->commandTester->getDisplay();
+
+        $truePos = strpos($display, 'TRUE');
+        $falsePos = strpos($display, 'FALSE');
+
+        self::assertNotFalse($truePos, 'TRUE should be in output');
+        self::assertNotFalse($falsePos, 'FALSE should be in output');
+        self::assertLessThan($falsePos, $truePos, 'TRUE (old value) should appear before FALSE (new value)');
+    }
+
+    public function testNoSemanticChangesEarlyReturn(): void
+    {
+        $log = new AuditLog();
+        $this->setLogId($log, 1);
+        $log->setEntityClass('App\\Entity\\Post');
+        $log->setEntityId('123');
+        $log->setAction(AuditLogInterface::ACTION_UPDATE);
+        $log->setCreatedAt(new \DateTimeImmutable());
+
+        $this->repository->method('find')->willReturn($log);
+        $this->diffGenerator->method('generate')->willReturn([]);
+
+        $this->commandTester->execute(['identifier' => '1']);
+
+        $this->commandTester->assertCommandIsSuccessful();
+        $output = $this->normalizeOutput();
+
+        // Verify the info message is shown
+        self::assertStringContainsString('No semantic changes found', $output);
+
+        // Verify the table is NOT rendered (no headers)
+        self::assertStringNotContainsString('Old Value', $output);
+        self::assertStringNotContainsString('New Value', $output);
     }
 }

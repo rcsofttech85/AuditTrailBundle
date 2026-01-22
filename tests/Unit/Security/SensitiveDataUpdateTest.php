@@ -62,7 +62,7 @@ class SensitiveDataUpdateTest extends TestCase
         $auditManager = new ScheduledAuditManager(self::createStub(
             EventDispatcherInterface::class
         ));
-        $changeProcessor = new ChangeProcessor($auditService, true, 'deletedAt');
+        $changeProcessor = new ChangeProcessor($auditService, $serializer, true, 'deletedAt');
 
         $entityProcessor = new EntityProcessor(
             $auditService,

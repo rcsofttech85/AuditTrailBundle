@@ -263,4 +263,59 @@ class AuditPurgeCommandTest extends TestCase
 
         return (string) preg_replace('/\s+/', ' ', trim($output));
     }
+
+    public function testPurgeNoLogsEarlyReturn(): void
+    {
+        $this->repository
+            ->expects($this->once())
+            ->method('countOlderThan')
+            ->willReturn(0);
+
+        $this->repository
+            ->expects($this->never())
+            ->method('deleteOldLogs');
+
+        $this->commandTester->execute([
+            '--before' => '30 days ago',
+        ]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
+        $output = $this->normalizeOutput();
+
+        // Verify info message is shown
+        self::assertStringContainsString('No audit logs found before', $output);
+
+        // Verify no purge summary or confirmation is shown (early return)
+        self::assertStringNotContainsString('Purge Summary', $output);
+        self::assertStringNotContainsString('Are you sure', $output);
+        self::assertStringNotContainsString('Successfully', $output);
+    }
+
+    public function testPurgeDryRunEarlyReturn(): void
+    {
+        $this->repository
+            ->expects($this->once())
+            ->method('countOlderThan')
+            ->willReturn(100);
+
+        $this->repository
+            ->expects($this->never())
+            ->method('deleteOldLogs');
+
+        $this->commandTester->execute([
+            '--before' => '30 days ago',
+            '--dry-run' => true,
+        ]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
+        $output = $this->normalizeOutput();
+
+        // Verify summary and warning are shown
+        self::assertStringContainsString('Purge Summary', $output);
+        self::assertStringContainsString('Dry run mode', $output);
+
+        // Verify no actual deletion occurred (no success message)
+        self::assertStringNotContainsString('Successfully deleted', $output);
+        self::assertStringNotContainsString('Deleting audit logs', $output);
+    }
 }

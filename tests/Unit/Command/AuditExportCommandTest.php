@@ -214,4 +214,61 @@ class AuditExportCommandTest extends TestCase
 
         return $audit;
     }
+
+    public function testExportNoResultsEarlyReturn(): void
+    {
+        $this->repository
+            ->expects($this->once())
+            ->method('findWithFilters')
+            ->willReturn([]);
+
+        $this->commandTester->execute([]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
+        $output = $this->normalizeOutput();
+
+        // Verify warning is shown
+        self::assertStringContainsString('No audit logs found matching the criteria.', $output);
+
+        // Verify no export data is shown (the early return prevents further processing)
+        self::assertStringNotContainsString('Found', $output);
+        self::assertStringNotContainsString('Exported', $output);
+        self::assertStringNotContainsString('entity_class', $output);
+    }
+
+    /**
+     * Test that invalid from date fails with proper error.
+     */
+    public function testExportWithInvalidFromDate(): void
+    {
+        $this->repository
+            ->expects($this->never())
+            ->method('findWithFilters');
+
+        $this->commandTester->execute([
+            '--from' => 'not-a-valid-date',
+        ]);
+
+        self::assertSame(1, $this->commandTester->getStatusCode());
+        $output = $this->normalizeOutput();
+        self::assertStringContainsString('Invalid "from" date', $output);
+    }
+
+    /**
+     * Test that invalid to date fails with proper error.
+     */
+    public function testExportWithInvalidToDate(): void
+    {
+        $this->repository
+            ->expects($this->never())
+            ->method('findWithFilters');
+
+        $this->commandTester->execute([
+            '--to' => 'invalid-date-format',
+        ]);
+
+        self::assertSame(1, $this->commandTester->getStatusCode());
+        $output = $this->normalizeOutput();
+        self::assertStringContainsString('Invalid "to" date', $output);
+    }
 }

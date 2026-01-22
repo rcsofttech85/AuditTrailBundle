@@ -11,6 +11,7 @@ class ChangeProcessor
 {
     public function __construct(
         private readonly AuditService $auditService,
+        private readonly ValueSerializer $serializer,
         private readonly bool $enableSoftDelete = true,
         private readonly string $softDeleteField = 'deletedAt',
     ) {
@@ -47,8 +48,8 @@ class ChangeProcessor
                 $old[$field] = $sensitiveFields[$field];
                 $new[$field] = $sensitiveFields[$field];
             } else {
-                $old[$field] = $oldValue;
-                $new[$field] = $newValue;
+                $old[$field] = $this->serializer->serialize($oldValue);
+                $new[$field] = $this->serializer->serialize($newValue);
             }
         }
 
