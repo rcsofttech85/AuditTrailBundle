@@ -78,6 +78,14 @@ final class VerifyIntegrityCommand extends Command
 
         $io->error('Signature verification failed. Log has been tampered with!');
 
+        if ($io->isVeryVerbose()) {
+            $io->section('Debug Information');
+            $io->writeln('<info>Expected Signature:</info> ' . $this->integrityService->generateSignature($log));
+            $io->writeln('<info>Actual Signature:  </info> ' . $log->getSignature());
+            $io->writeln('<info>Normalized Old Values:</info> ' . json_encode($log->getOldValues()));
+            $io->writeln('<info>Normalized New Values:</info> ' . json_encode($log->getNewValues()));
+        }
+
         return Command::FAILURE;
     }
 

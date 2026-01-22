@@ -135,8 +135,8 @@ class AuditSubscriberTest extends TestCase
         $this->changeProcessor->method('determineDeletionAction')->willReturn('delete');
         $this->auditService->method('createAuditLog')->willReturn($audit);
 
-        $em->expects($this->once())->method('persist')->with($audit);
         $this->dispatcher->expects($this->once())->method('dispatch');
+        $em->method('contains')->with($audit)->willReturn(true);
 
         // Expect flush because hasNewAudits will be true
         $em->expects($this->once())->method('flush');
@@ -161,7 +161,8 @@ class AuditSubscriberTest extends TestCase
         $em->method('getClassMetadata')->with(\stdClass::class)->willReturn($metadata);
         $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
 
-        $this->dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
+        $this->dispatcher->expects($this->once())->method('dispatch');
+        $em->method('contains')->with($audit)->willReturn(true);
         $em->expects($this->once())->method('flush');
 
         $this->subscriber->postFlush($args);
@@ -175,14 +176,16 @@ class AuditSubscriberTest extends TestCase
         $args = $this->createMock(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
+        $audit = new AuditLog();
         $this->auditManager->method('getScheduledAudits')->willReturn([
             [
                 'entity' => new \stdClass(),
-                'audit' => new AuditLog(),
+                'audit' => $audit,
                 'is_insert' => false,
             ],
         ]);
-        $this->dispatcher->method('dispatch')->willReturn(true);
+        $this->dispatcher->method('dispatch');
+        $em->method('contains')->with($audit)->willReturn(true);
 
         $em->method('flush')->willThrowException(new \Exception('Flush failed'));
 

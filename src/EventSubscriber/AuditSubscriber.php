@@ -106,9 +106,11 @@ final class AuditSubscriber implements ResetInterface
                 : null;
             $audit = $this->auditService->createAuditLog($pending['entity'], $action, $pending['data'], $newData);
 
-            $em->persist($audit);
-            $hasNewAudits = true;
             $this->dispatcher->dispatch($audit, $em, 'post_flush');
+
+            if ($em->contains($audit)) {
+                $hasNewAudits = true;
+            }
         }
 
         return $hasNewAudits;
@@ -125,7 +127,9 @@ final class AuditSubscriber implements ResetInterface
                 }
             }
 
-            if ($this->dispatcher->dispatch($scheduled['audit'], $em, 'post_flush')) {
+            $this->dispatcher->dispatch($scheduled['audit'], $em, 'post_flush');
+
+            if ($em->contains($scheduled['audit'])) {
                 $hasNewAudits = true;
             }
         }

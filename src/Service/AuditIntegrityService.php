@@ -49,18 +49,71 @@ final readonly class AuditIntegrityService implements AuditIntegrityServiceInter
     {
         $data = [
             $log->getEntityClass(),
-            $log->getEntityId(),
+            (string) $this->normalize($log->getEntityId()),
             $log->getAction(),
-            json_encode($log->getOldValues(), JSON_THROW_ON_ERROR),
-            json_encode($log->getNewValues(), JSON_THROW_ON_ERROR),
-            $log->getUserId(),
-            $log->getUsername(),
-            $log->getIpAddress(),
-            $log->getUserAgent(),
-            $log->getTransactionHash(),
-            $log->getCreatedAt()->format(\DateTimeInterface::ATOM),
+            $this->toJson($log->getOldValues()),
+            $this->toJson($log->getNewValues()),
+            (string) $this->normalize($log->getUserId()),
+            (string) $log->getUsername(),
+            (string) $log->getIpAddress(),
+            (string) $log->getUserAgent(),
+            (string) $log->getTransactionHash(),
+            $log->getCreatedAt()->setTimezone(new \DateTimeZone('UTC'))->format(\DateTimeInterface::ATOM),
         ];
 
         return implode('|', $data);
+    }
+
+    /**
+     * Normalizes data for hashing to ensure stability across type changes (e.g., int to string IDs).
+     */
+    private function normalize(mixed $data): mixed
+    {
+        if (is_array($data)) {
+            // Check if this is a serialized DateTime array
+            if (isset($data['date'], $data['timezone'], $data['timezone_type'])) {
+                try {
+                    $dt = new \DateTimeImmutable($data['date'], new \DateTimeZone($data['timezone']));
+
+                    return $dt->setTimezone(new \DateTimeZone('UTC'))->format(\DateTimeInterface::ATOM);
+                } catch (\Throwable) {
+                    // Fallback to standard array normalization if it's not a valid date
+                }
+            }
+
+            $normalized = [];
+            foreach ($data as $key => $value) {
+                $normalized[$key] = $this->normalize($value);
+            }
+            ksort($normalized);
+
+            return $normalized;
+        }
+
+        if (is_int($data) || is_float($data)) {
+            return (string) $data;
+        }
+
+        if ($data instanceof \DateTimeInterface) {
+            $dt = $data instanceof \DateTimeImmutable
+                ? $data
+                : \DateTimeImmutable::createFromInterface($data);
+
+            return $dt->setTimezone(new \DateTimeZone('UTC'))->format(\DateTimeInterface::ATOM);
+        }
+
+        return $data;
+    }
+
+    private function toJson(mixed $data): string
+    {
+        if (null === $data) {
+            return 'null';
+        }
+
+        return json_encode(
+            $this->normalize($data),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
+        );
     }
 }

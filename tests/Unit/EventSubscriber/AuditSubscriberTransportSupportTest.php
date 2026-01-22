@@ -18,6 +18,7 @@ use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use PHPUnit\Framework\Attributes\CoversClass;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
@@ -28,7 +29,12 @@ class AuditSubscriberTransportSupportTest extends TestCase
     public function testOnFlushDefersWhenTransportDoesNotSupportIt(): void
     {
         $auditService = self::createStub(AuditService::class);
-        $changeProcessor = new ChangeProcessor($auditService, true, 'deletedAt');
+        $changeProcessor = new ChangeProcessor(
+            $auditService,
+            new ValueSerializer(),
+            true,
+            'deletedAt'
+        );
         $transport = $this->createMock(AuditTransportInterface::class);
         $dispatcher = new AuditDispatcher($transport, self::createStub(AuditIntegrityServiceInterface::class), null);
         $auditManager = new ScheduledAuditManager(self::createStub(
