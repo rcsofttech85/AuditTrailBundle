@@ -289,4 +289,26 @@ class AuditListCommandTest extends TestCase
 
         return $audit;
     }
+
+    public function testListNoResultsEarlyReturn(): void
+    {
+        $this->repository
+            ->expects($this->once())
+            ->method('findWithFilters')
+            ->willReturn([]);
+
+        $this->commandTester->execute([]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
+        $output = $this->normalizeOutput();
+
+        // Verify info message is shown
+        self::assertStringContainsString('No audit logs found matching the criteria.', $output);
+
+        // Verify no table headers are shown (early return prevents table rendering)
+        self::assertStringNotContainsString('Audit Logs', $output);
+        self::assertStringNotContainsString('Entity', $output);
+        self::assertStringNotContainsString('Action', $output);
+        self::assertStringNotContainsString('--details', $output);
+    }
 }

@@ -70,24 +70,7 @@ final readonly class AuditIntegrityService implements AuditIntegrityServiceInter
     private function normalize(mixed $data): mixed
     {
         if (is_array($data)) {
-            // Check if this is a serialized DateTime array
-            if (isset($data['date'], $data['timezone'], $data['timezone_type'])) {
-                try {
-                    $dt = new \DateTimeImmutable($data['date'], new \DateTimeZone($data['timezone']));
-
-                    return $dt->setTimezone(new \DateTimeZone('UTC'))->format(\DateTimeInterface::ATOM);
-                } catch (\Throwable) {
-                    // Fallback to standard array normalization if it's not a valid date
-                }
-            }
-
-            $normalized = [];
-            foreach ($data as $key => $value) {
-                $normalized[$key] = $this->normalize($value);
-            }
-            ksort($normalized);
-
-            return $normalized;
+            return $this->normalizeArray($data);
         }
 
         if (is_int($data) || is_float($data)) {
@@ -95,14 +78,44 @@ final readonly class AuditIntegrityService implements AuditIntegrityServiceInter
         }
 
         if ($data instanceof \DateTimeInterface) {
-            $dt = $data instanceof \DateTimeImmutable
-                ? $data
-                : \DateTimeImmutable::createFromInterface($data);
-
-            return $dt->setTimezone(new \DateTimeZone('UTC'))->format(\DateTimeInterface::ATOM);
+            return $this->normalizeDateTime($data);
         }
 
         return $data;
+    }
+
+    /**
+     * @param array<mixed> $data
+     */
+    private function normalizeArray(array $data): mixed
+    {
+        // Check if this is a serialized DateTime array
+        if (isset($data['date'], $data['timezone'], $data['timezone_type'])) {
+            try {
+                $dt = new \DateTimeImmutable($data['date'], new \DateTimeZone($data['timezone']));
+
+                return $this->normalizeDateTime($dt);
+            } catch (\Throwable) {
+                // Fallback to standard array normalization if it's not a valid date
+            }
+        }
+
+        $normalized = [];
+        foreach ($data as $key => $value) {
+            $normalized[$key] = $this->normalize($value);
+        }
+        ksort($normalized);
+
+        return $normalized;
+    }
+
+    private function normalizeDateTime(\DateTimeInterface $dt): string
+    {
+        $immutable = $dt instanceof \DateTimeImmutable
+            ? $dt
+            : \DateTimeImmutable::createFromInterface($dt);
+
+        return $immutable->setTimezone(new \DateTimeZone('UTC'))->format(\DateTimeInterface::ATOM);
     }
 
     private function toJson(mixed $data): string

@@ -76,6 +76,12 @@ class AuditDiffCommand extends Command
         $identifier = $input->getArgument('identifier');
         $entityId = $input->getArgument('entityId');
 
+        if (!is_string($identifier)) {
+            return null;
+        }
+
+        $entityId = is_string($entityId) ? $entityId : null;
+
         if (is_numeric($identifier) && null === $entityId) {
             $log = $this->auditLogRepository->find((int) $identifier);
 
@@ -145,6 +151,20 @@ class AuditDiffCommand extends Command
             return $value ? '<fg=green>TRUE</>' : '<fg=red>FALSE</>';
         }
 
-        return (string) $value;
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        if (is_array($value)) {
+            $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            return false !== $json ? $json : '[]';
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d H:i:s');
+        }
+
+        return get_debug_type($value);
     }
 }

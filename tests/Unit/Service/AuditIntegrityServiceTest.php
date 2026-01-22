@@ -198,7 +198,9 @@ final class AuditIntegrityServiceTest extends TestCase
         $logUtc->method('getOldValues')->willReturn(['name' => 'Old']);
         $logUtc->method('getNewValues')->willReturn(['name' => 'New']);
         $logUtc->method('getUserId')->willReturn('42');
-        $logUtc->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2023-01-01 12:00:00', new \DateTimeZone('UTC')));
+        $logUtc->method('getCreatedAt')->willReturn(
+            new \DateTimeImmutable('2023-01-01 12:00:00', new \DateTimeZone('UTC'))
+        );
 
         $signature = $this->service->generateSignature($logUtc);
 
@@ -211,7 +213,9 @@ final class AuditIntegrityServiceTest extends TestCase
         $logIst->method('getNewValues')->willReturn(['name' => 'New']);
         $logIst->method('getUserId')->willReturn('42');
         // 2023-01-01 12:00:00 UTC is 2023-01-01 17:30:00 IST
-        $logIst->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2023-01-01 17:30:00', new \DateTimeZone('Asia/Kolkata')));
+        $logIst->method('getCreatedAt')->willReturn(
+            new \DateTimeImmutable('2023-01-01 17:30:00', new \DateTimeZone('Asia/Kolkata'))
+        );
         $logIst->method('getSignature')->willReturn($signature);
 
         // Should pass because we normalize to UTC before hashing
