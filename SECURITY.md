@@ -6,7 +6,7 @@ The following versions of AuditTrailBundle are currently being supported with se
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.x     | :white_check_mark: |
+| 1.9     | :white_check_mark: |
 | < 1.0   | :x:                |
 
 ## Reporting a Vulnerability
@@ -17,7 +17,7 @@ We take the security of AuditTrailBundle seriously. If you believe you have foun
 
 ### How to report
 
-Please report security vulnerabilities privately by emailing **rcsoftech85@gmail.com**.
+Please report security vulnerabilities privately by emailing **<rcsofttech85@gmail.com>**
 
 When reporting, please include:
 
