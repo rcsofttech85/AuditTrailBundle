@@ -22,6 +22,10 @@ class TestKernel extends Kernel implements CompilerPassInterface
     /** @var array<string, mixed> */
     private array $auditConfig = [];
 
+    /** @var array<string, mixed> */
+    private array $doctrineConfig = [];
+
+
     public static bool $useThrowingTransport = false;
 
     public function build(ContainerBuilder $container): void
@@ -46,6 +50,14 @@ class TestKernel extends Kernel implements CompilerPassInterface
     public function setAuditConfig(array $config): void
     {
         $this->auditConfig = $config;
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    public function setDoctrineConfig(array $config): void
+    {
+        $this->doctrineConfig = $config;
     }
 
     public function getCacheDir(): string
@@ -86,7 +98,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
             ],
         ]);
 
-        $c->loadFromExtension('doctrine', [
+        $defaultDoctrineConfig = [
             'dbal' => [
                 'driver' => 'pdo_sqlite',
                 'url' => 'sqlite:///%kernel.cache_dir%/test.db',
@@ -104,7 +116,11 @@ class TestKernel extends Kernel implements CompilerPassInterface
                     ],
                 ],
             ],
-        ]);
+        ];
+
+        $doctrineConfig = array_replace_recursive($defaultDoctrineConfig, $this->doctrineConfig);
+
+        $c->loadFromExtension('doctrine', $doctrineConfig);
 
         // Default config, can be overridden
         $auditConfig = array_merge([
