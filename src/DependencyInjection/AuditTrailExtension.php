@@ -12,13 +12,14 @@ use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
 use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessageSerializer;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
+use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
 use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
-final class AuditTrailExtension extends Extension
+final class AuditTrailExtension extends Extension implements PrependExtensionInterface
 {
     public function load(array $configs, ContainerBuilder $container): void
     {
@@ -50,6 +51,27 @@ final class AuditTrailExtension extends Extension
 
         $this->configureTransports($config, $container);
         $this->registerSerializer($container);
+    }
+
+    public function prepend(ContainerBuilder $container): void
+    {
+        if (!$container->hasExtension('doctrine')) {
+            return;
+        }
+
+        $container->prependExtensionConfig('doctrine', [
+            'orm' => [
+                'mappings' => [
+                    'RcsofttechAuditTrailBundle' => [
+                        'is_bundle' => false,
+                        'type' => 'attribute',
+                        'dir' => __DIR__ . '/../Entity',
+                        'prefix' => 'Rcsofttech\AuditTrailBundle\Entity',
+                        'alias' => 'AuditTrail',
+                    ],
+                ],
+            ],
+        ]);
     }
 
     private function registerSerializer(ContainerBuilder $container): void
