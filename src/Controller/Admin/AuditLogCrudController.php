@@ -61,9 +61,22 @@ class AuditLogCrudController extends AbstractCrudController
 
         // Use CodeEditor with JavaScript for JSON syntax highlighting
         yield CodeEditorField::new('changedFields', 'Changes')
-            ->setLanguage('javascript')  // Changed from 'json' to 'javascript'
+            ->setLanguage('javascript')
             ->setNumOfRows(15)
+            ->formatValue(fn ($value) => $this->formatJson($value))
             ->hideOnIndex();
+
+        yield CodeEditorField::new('oldValues', 'Old Values')
+            ->setLanguage('javascript')
+            ->setNumOfRows(15)
+            ->formatValue(fn ($value) => $this->formatJson($value))
+            ->onlyOnDetail();
+
+        yield CodeEditorField::new('newValues', 'New Values')
+            ->setLanguage('javascript')
+            ->setNumOfRows(15)
+            ->formatValue(fn ($value) => $this->formatJson($value))
+            ->onlyOnDetail();
 
         yield TextField::new('ipAddress', 'IP Address')->hideOnIndex();
         yield TextField::new('transactionHash', 'Transaction')->hideOnIndex();
@@ -77,5 +90,18 @@ class AuditLogCrudController extends AbstractCrudController
             ->add(TextFilter::new('username'))
             ->add(TextFilter::new('transactionHash'))
             ->add(DateTimeFilter::new('createdAt'));
+    }
+
+    private function formatJson(mixed $value): string
+    {
+        if (null === $value) {
+            return '';
+        }
+
+        if (is_array($value)) {
+            return (string) json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        }
+
+        return (string) $value;
     }
 }
