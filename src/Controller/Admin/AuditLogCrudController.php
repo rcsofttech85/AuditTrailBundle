@@ -9,12 +9,15 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\CodeEditorField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
+use EasyCorp\Bundle\EasyAdminBundle\Field\FormField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use EasyCorp\Bundle\EasyAdminBundle\Filter\DateTimeFilter;
 use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
 /**
@@ -50,36 +53,97 @@ class AuditLogCrudController extends AbstractCrudController
 
     public function configureFields(string $pageName): iterable
     {
-        yield IdField::new('id')->hideOnForm();
-        yield TextField::new('entityClass', 'Entity');
-        yield TextField::new('entityId', 'Entity ID');
+        // Index View: Clean, information-dense, and visual
+        yield IdField::new('id')->onlyOnIndex();
 
-        yield TextField::new('action', 'Action');
+        yield ChoiceField::new('action', 'Action')
+            ->setChoices([
+                'Create' => AuditLogInterface::ACTION_CREATE,
+                'Update' => AuditLogInterface::ACTION_UPDATE,
+                'Delete' => AuditLogInterface::ACTION_DELETE,
+                'Soft Delete' => AuditLogInterface::ACTION_SOFT_DELETE,
+                'Restore' => AuditLogInterface::ACTION_RESTORE,
+                'Revert' => AuditLogInterface::ACTION_REVERT,
+            ])
+            ->renderAsBadges([
+                AuditLogInterface::ACTION_CREATE => 'success',
+                AuditLogInterface::ACTION_UPDATE => 'warning',
+                AuditLogInterface::ACTION_DELETE => 'danger',
+                AuditLogInterface::ACTION_SOFT_DELETE => 'danger',
+                AuditLogInterface::ACTION_RESTORE => 'info',
+                AuditLogInterface::ACTION_REVERT => 'primary',
+            ])
+            ->onlyOnIndex();
 
-        yield TextField::new('username', 'User');
-        yield DateTimeField::new('createdAt', 'Date');
+        yield TextField::new('entityClass', 'Entity')
+            ->formatValue(fn ($value) => $this->getShortClassName((string) $value))
+            ->setHelp('The PHP class of the modified entity')
+            ->onlyOnIndex();
 
-        // Use CodeEditor with JavaScript for JSON syntax highlighting
-        yield CodeEditorField::new('changedFields', 'Changes')
-            ->setLanguage('javascript')
-            ->setNumOfRows(15)
-            ->formatValue(fn ($value) => $this->formatJson($value))
-            ->hideOnIndex();
+        yield TextField::new('entityId', 'ID')->onlyOnIndex();
 
-        yield CodeEditorField::new('oldValues', 'Old Values')
-            ->setLanguage('javascript')
-            ->setNumOfRows(15)
-            ->formatValue(fn ($value) => $this->formatJson($value))
-            ->onlyOnDetail();
+        yield TextField::new('username', 'User')->onlyOnIndex();
 
-        yield CodeEditorField::new('newValues', 'New Values')
-            ->setLanguage('javascript')
-            ->setNumOfRows(15)
-            ->formatValue(fn ($value) => $this->formatJson($value))
-            ->onlyOnDetail();
+        yield DateTimeField::new('createdAt', 'Occurred At')
+            ->setFormat('dd MMM yyyy | HH:mm:ss')
+            ->onlyOnIndex();
 
-        yield TextField::new('ipAddress', 'IP Address')->hideOnIndex();
-        yield TextField::new('transactionHash', 'Transaction')->hideOnIndex();
+        // Detail View: Structured and informative
+        yield FormField::addTab('Overview')->setIcon('fa fa-info-circle');
+        yield FormField::addPanel()->setHelp('Basic information about the audit event.');
+
+        yield IdField::new('id', 'Audit Log ID')->onlyOnDetail();
+        yield TextField::new('entityClass', 'Entity Class')->onlyOnDetail();
+        yield TextField::new('entityId', 'Entity ID')->onlyOnDetail();
+        yield TextField::new('action', 'Action Type')->onlyOnDetail();
+
+        yield FormField::addRow();
+        yield TextField::new('username', 'Performed By')
+            ->onlyOnDetail()
+            ->setColumns(6);
+
+        yield DateTimeField::new('createdAt', 'Timestamp')
+            ->setFormat('dd MMM yyyy | HH:mm:ss')
+            ->onlyOnDetail()
+            ->setColumns(6);
+
+        yield FormField::addRow();
+        yield TextField::new('ipAddress', 'IP Address')
+            ->formatValue(fn ($value) => $value ? $value : 'N/A')
+            ->renderAsHtml()
+            ->onlyOnDetail()
+            ->setColumns(6);
+
+        yield TextField::new('userAgent', 'User Agent')
+            ->onlyOnDetail()
+            ->setColumns(6);
+
+        yield FormField::addTab('Changes')->setIcon('fa fa-exchange-alt');
+        yield FormField::addPanel()->setHelp('Visual comparison of the entity state before and after the change.');
+
+        yield FormField::addRow();
+        yield $this->createJsonField('changedFields', 'Changed Fields')
+            ->setColumns(12)
+            ->setHelp('List of properties that were modified in this transaction.');
+
+        yield FormField::addRow();
+        yield $this->createJsonField('oldValues', 'Old Values')
+            ->setColumns(6)
+            ->setHelp('State of the entity <strong>before</strong> the change.');
+
+        yield $this->createJsonField('newValues', 'New Values')
+            ->setColumns(6)
+            ->setHelp('State of the entity <strong>after</strong> the change.');
+
+        yield FormField::addTab('Technical Context')->setIcon('fa fa-cogs');
+        yield FormField::addPanel()->setHelp('Low-level transaction details and custom context metadata.');
+
+        yield TextField::new('transactionHash', 'Transaction Hash')
+            ->onlyOnDetail()
+            ->setHelp('Unique identifier grouping all changes that happened in the same database transaction.');
+
+        yield $this->createJsonField('context', 'Full Context')
+            ->setHelp('Additional metadata such as impersonation details, request ID, or custom attributes.');
     }
 
     public function configureFilters(Filters $filters): Filters
@@ -90,6 +154,25 @@ class AuditLogCrudController extends AbstractCrudController
             ->add(TextFilter::new('username'))
             ->add(TextFilter::new('transactionHash'))
             ->add(DateTimeFilter::new('createdAt'));
+    }
+
+    private function createJsonField(string $propertyName, string $label): CodeEditorField
+    {
+        return CodeEditorField::new($propertyName, $label)
+            ->setLanguage('javascript')
+            ->formatValue(fn ($value) => $this->formatJson($value))
+            ->onlyOnDetail();
+    }
+
+    private function getShortClassName(string $className): string
+    {
+        $lastBackslash = strrpos($className, '\\');
+
+        if (false === $lastBackslash) {
+            return $className;
+        }
+
+        return substr($className, $lastBackslash + 1);
     }
 
     private function formatJson(mixed $value): string
