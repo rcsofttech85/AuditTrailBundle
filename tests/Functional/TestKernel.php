@@ -62,7 +62,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
 
     public function getCacheDir(): string
     {
-        return sys_get_temp_dir() . '/audit_trail_test/cache/' . md5(serialize($this->auditConfig));
+        return sys_get_temp_dir() . '/audit_trail_test/cache/' . md5(serialize([$this->auditConfig, $this->doctrineConfig]));
     }
 
     public function getLogDir(): string

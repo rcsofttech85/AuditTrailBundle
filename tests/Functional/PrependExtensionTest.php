@@ -8,6 +8,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpKernel\KernelInterface;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 
 class PrependExtensionTest extends KernelTestCase
 {
@@ -33,14 +34,19 @@ class PrependExtensionTest extends KernelTestCase
         return $kernel;
     }
 
+    #[RunInSeparateProcess]
     public function testAuditLogIsMappedWithAutoMappingFalse(): void
     {
         self::bootKernel();
-        $container = self::getContainer();
-        $em = $container->get('doctrine.orm.entity_manager');
-        assert($em instanceof EntityManagerInterface);
+        try {
+            $container = self::getContainer();
+            $em = $container->get('doctrine.orm.entity_manager');
+            assert($em instanceof EntityManagerInterface);
 
-        $metadata = $em->getClassMetadata(AuditLog::class);
-        self::assertSame(AuditLog::class, $metadata->getName());
+            $metadata = $em->getClassMetadata(AuditLog::class);
+            self::assertSame(AuditLog::class, $metadata->getName());
+        } finally {
+            self::ensureKernelShutdown();
+        }
     }
 }
