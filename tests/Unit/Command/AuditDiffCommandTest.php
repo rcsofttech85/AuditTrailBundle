@@ -274,9 +274,9 @@ class AuditDiffCommandTest extends TestCase
 
         $this->commandTester->execute(['identifier' => '999']);
 
-        self::assertEquals(Command::FAILURE, $this->commandTester->getStatusCode());
+        self::assertSame(Command::FAILURE, $this->commandTester->getStatusCode());
         $display = preg_replace('/\s+/', ' ', trim($this->commandTester->getDisplay()));
-        self::assertStringContainsString('No audit log found with ID 999', (string) $display);
+        self::assertStringContainsString('Audit log with ID 999 not found.', (string) $display);
     }
 
     public function testExecuteEntityIdRequiredForClassIdentifier(): void

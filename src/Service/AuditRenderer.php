@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Output\OutputInterface;
 
 class AuditRenderer
 {
+    use ClassNameHelperTrait;
+
     /**
-     * @param array<AuditLog> $audits
+     * @param array<AuditLogInterface> $audits
      */
     public function renderTable(OutputInterface $output, array $audits, bool $showDetails): void
     {
@@ -32,7 +35,7 @@ class AuditRenderer
     /**
      * @return array<int, mixed>
      */
-    public function buildRow(AuditLog $audit, bool $showDetails): array
+    public function buildRow(AuditLogInterface $audit, bool $showDetails): array
     {
         $user = $audit->getUsername() ?? (string) $audit->getUserId();
         if ('' === $user) {
@@ -63,7 +66,7 @@ class AuditRenderer
         ];
     }
 
-    public function formatChangedDetails(AuditLog $audit): string
+    public function formatChangedDetails(AuditLogInterface $audit): string
     {
         $old = (array) $audit->getOldValues();
         $new = (array) $audit->getNewValues();
@@ -161,11 +164,6 @@ class AuditRenderer
     private function truncateString(string $str): string
     {
         return strlen($str) > 50 ? substr($str, 0, 47) . '...' : $str;
-    }
-
-    public function shortenClass(string $class): string
-    {
-        return basename(str_replace('\\', '/', $class));
     }
 
     public function shortenHash(?string $hash): string

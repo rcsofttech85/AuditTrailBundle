@@ -24,49 +24,71 @@ final class DiffGenerator implements DiffGeneratorInterface
         $includeTimestamps = (bool) ($options['include_timestamps'] ?? false);
 
         $diff = [];
-
-        // Merge keys from both arrays and ensure uniqueness
         $allKeys = array_keys($oldValues + $newValues);
 
         foreach ($allKeys as $key) {
-            // Skip ignored fields unless timestamps are explicitly requested
-            if (!$includeTimestamps && in_array($key, self::IGNORED_FIELDS, true)) {
+            if ($this->shouldSkipField($key, $includeTimestamps)) {
                 continue;
             }
 
-            $old = $oldValues[$key] ?? null;
-            $new = $newValues[$key] ?? null;
+            $fieldDiff = $this->computeFieldDiff($key, $oldValues, $newValues, $raw);
 
-            if (!$raw) {
-                $old = $this->normalize($old);
-                $new = $this->normalize($new);
+            if (null !== $fieldDiff) {
+                $diff[$key] = $fieldDiff;
             }
-
-            // Strict comparison
-            if ($old === $new) {
-                continue;
-            }
-
-            $diff[$key] = [
-                'old' => $old,
-                'new' => $new,
-            ];
         }
 
         return $diff;
+    }
+
+    private function shouldSkipField(string $field, bool $includeTimestamps): bool
+    {
+        return !$includeTimestamps && \in_array($field, self::IGNORED_FIELDS, true);
+    }
+
+    /**
+     * @param array<string, mixed> $oldValues
+     * @param array<string, mixed> $newValues
+     *
+     * @return array{old: mixed, new: mixed}|null
+     */
+    private function computeFieldDiff(string $key, array $oldValues, array $newValues, bool $raw): ?array
+    {
+        $old = $oldValues[$key] ?? null;
+        $new = $newValues[$key] ?? null;
+
+        if (!$raw) {
+            $old = $this->normalize($old);
+            $new = $this->normalize($new);
+        }
+
+        if ($old === $new) {
+            return null;
+        }
+
+        return ['old' => $old, 'new' => $new];
     }
 
     private function normalize(mixed $value): mixed
     {
         return match (true) {
             $value instanceof \DateTimeInterface => $value->format('Y-m-d H:i:s e'),
-            is_array($value) => json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-            is_string($value) && json_validate($value) => (function () use ($value) {
-                $decoded = json_decode($value, true);
-
-                return is_array($decoded) ? json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) : $value;
-            })(),
+            \is_array($value) => json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+            \is_string($value) && json_validate($value) => $this->normalizeJsonString($value),
             default => $value,
         };
+    }
+
+    private function normalizeJsonString(string $value): string
+    {
+        $decoded = json_decode($value, true);
+
+        if (!\is_array($decoded)) {
+            return $value;
+        }
+
+        $encoded = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+
+        return false !== $encoded ? $encoded : $value;
     }
 }

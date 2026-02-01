@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\DependencyInjection;
 
+use Symfony\Component\Config\Definition\Builder\ArrayNodeDefinition;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
 
@@ -14,6 +15,17 @@ final class Configuration implements ConfigurationInterface
         $treeBuilder = new TreeBuilder('audit_trail');
         $rootNode = $treeBuilder->getRootNode();
 
+        $this->configureBaseSettings($rootNode);
+        $this->configureTransports($rootNode);
+        $this->configureIntegrity($rootNode);
+
+        $rootNode->end();
+
+        return $treeBuilder;
+    }
+
+    private function configureBaseSettings(ArrayNodeDefinition $rootNode): void
+    {
         $rootNode
             ->children()
             ->booleanNode('enabled')->defaultTrue()->end()
@@ -37,6 +49,13 @@ final class Configuration implements ConfigurationInterface
             ->booleanNode('defer_transport_until_commit')->defaultTrue()->end()
             ->booleanNode('fail_on_transport_error')->defaultFalse()->end()
             ->booleanNode('fallback_to_database')->defaultTrue()->end()
+            ->end();
+    }
+
+    private function configureTransports(ArrayNodeDefinition $rootNode): void
+    {
+        $rootNode
+            ->children()
             ->arrayNode('transports')
             ->addDefaultsIfNotSet()
             ->children()
@@ -54,19 +73,24 @@ final class Configuration implements ConfigurationInterface
             ->end()
             ->arrayNode('queue')
             ->canBeEnabled()
-            ->info('When enabled, audit logs are dispatched via Symfony Messenger. ' .
-                "You must define a transport named 'audit_trail'.")
-
+            ->info(
+                'When enabled, audit logs are dispatched via Symfony Messenger. ' .
+                'You must define a transport named \'audit_trail\'.'
+            )
             ->children()
-            ->scalarNode('bus')
-            ->defaultNull()->end()
-            ->scalarNode('api_key')
-            ->defaultNull()
+            ->scalarNode('bus')->defaultNull()->end()
+            ->scalarNode('api_key')->defaultNull()->end()
             ->end()
             ->end()
             ->end()
             ->end()
-            ->end()
+            ->end();
+    }
+
+    private function configureIntegrity(ArrayNodeDefinition $rootNode): void
+    {
+        $rootNode
+            ->children()
             ->arrayNode('integrity')
             ->canBeEnabled()
             ->children()
@@ -80,12 +104,10 @@ final class Configuration implements ConfigurationInterface
             ->end()
             ->end()
             ->validate()
-            ->ifTrue(fn ($v) => $v['enabled'] && (null === $v['secret'] || '' === $v['secret']))
+            ->ifTrue(static fn (array $v): bool => $v['enabled'] && (null === $v['secret'] || '' === $v['secret']))
             ->thenInvalid('The "secret" must be configured when integrity is enabled.')
             ->end()
             ->end()
             ->end();
-
-        return $treeBuilder;
     }
 }

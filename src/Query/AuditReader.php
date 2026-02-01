@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Query;
 use Doctrine\ORM\EntityManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReaderInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
 
 /**
  * Main service for programmatic audit log retrieval.
@@ -66,14 +67,13 @@ readonly class AuditReader implements AuditReaderInterface
      */
     public function getHistoryFor(object $entity): AuditEntryCollection
     {
-        $entityClass = $entity::class;
         $entityId = $this->extractEntityId($entity);
 
         if (null === $entityId) {
             return new AuditEntryCollection([]);
         }
 
-        return $this->forEntity($entityClass, $entityId)->getResults();
+        return $this->forEntity($entity::class, $entityId)->getResults();
     }
 
     /**
@@ -88,9 +88,7 @@ readonly class AuditReader implements AuditReaderInterface
 
         foreach ($history as $entry) {
             $txHash = $entry->getTransactionHash() ?? 'unknown';
-            if (!isset($grouped[$txHash])) {
-                $grouped[$txHash] = [];
-            }
+            $grouped[$txHash] ??= [];
             $grouped[$txHash][] = $entry;
         }
 
@@ -102,16 +100,13 @@ readonly class AuditReader implements AuditReaderInterface
      */
     public function getLatestFor(object $entity): ?AuditEntry
     {
-        $entityClass = $entity::class;
         $entityId = $this->extractEntityId($entity);
 
         if (null === $entityId) {
             return null;
         }
 
-        // Results are already ordered by ID DESC, so first result is the latest
-        return $this->forEntity($entityClass, $entityId)
-            ->getFirstResult();
+        return $this->forEntity($entity::class, $entityId)->getFirstResult();
     }
 
     /**
@@ -119,14 +114,13 @@ readonly class AuditReader implements AuditReaderInterface
      */
     public function hasHistoryFor(object $entity): bool
     {
-        $entityClass = $entity::class;
         $entityId = $this->extractEntityId($entity);
 
         if (null === $entityId) {
             return false;
         }
 
-        return $this->forEntity($entityClass, $entityId)->exists();
+        return $this->forEntity($entity::class, $entityId)->exists();
     }
 
     /**
@@ -134,40 +128,8 @@ readonly class AuditReader implements AuditReaderInterface
      */
     private function extractEntityId(object $entity): ?string
     {
-        try {
-            $meta = $this->entityManager->getClassMetadata($entity::class);
-            $ids = $meta->getIdentifierValues($entity);
+        $id = EntityIdResolver::resolveFromEntity($entity, $this->entityManager);
 
-            if ([] === $ids) {
-                if (method_exists($entity, 'getId')) {
-                    $id = $entity->getId();
-
-                    return null !== $id ? (string) $id : null;
-                }
-
-                return null;
-            }
-
-            $idValues = array_filter(
-                array_map('strval', $ids),
-                fn ($id) => '' !== $id
-            );
-
-            if ([] === $idValues) {
-                return null;
-            }
-
-            return \count($idValues) > 1
-                ? json_encode(array_values($idValues), JSON_THROW_ON_ERROR)
-                : reset($idValues);
-        } catch (\Throwable) {
-            if (method_exists($entity, 'getId')) {
-                $id = $entity->getId();
-
-                return null !== $id ? (string) $id : null;
-            }
-
-            return null;
-        }
+        return EntityIdResolver::PENDING_ID === $id ? null : $id;
     }
 }
