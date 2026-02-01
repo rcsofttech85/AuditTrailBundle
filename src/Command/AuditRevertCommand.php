@@ -19,13 +19,13 @@ use Symfony\Component\Console\Style\SymfonyStyle;
     name: 'audit:revert',
     description: 'Revert an entity change based on an audit log entry',
 )]
-class AuditRevertCommand extends Command
+class AuditRevertCommand extends BaseAuditCommand
 {
     public function __construct(
-        private readonly AuditLogRepository $auditLogRepository,
+        AuditLogRepository $auditLogRepository,
         private readonly AuditReverterInterface $auditReverter,
     ) {
-        parent::__construct();
+        parent::__construct($auditLogRepository);
     }
 
     protected function configure(): void
@@ -46,80 +46,85 @@ class AuditRevertCommand extends Command
                 InputOption::VALUE_REQUIRED,
                 'Custom context for the revert audit log (JSON string)',
                 '{}'
-            )
-        ;
+            );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $auditIdInput = $input->getArgument('auditId');
-        $auditId = filter_var($auditIdInput, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
-        if (false === $auditId) {
-            throw new \InvalidArgumentException('auditId must be a valid audit log ID');
-        }
+        $auditId = $this->parseAuditId($input);
+        $context = $this->parseContext($input, $io);
 
-        $dryRun = (bool) $input->getOption('dry-run');
-        $force = (bool) $input->getOption('force');
-        $raw = (bool) $input->getOption('raw');
-        $contextString = (string) $input->getOption('context');
-
-
-
-        $context = [];
-        if ('{}' !== $contextString && '' !== $contextString) {
-            try {
-                $context = json_decode($contextString, true, 512, JSON_THROW_ON_ERROR);
-                if (!is_array($context)) {
-                    throw new \InvalidArgumentException('Context must be a valid JSON object (array).');
-                }
-            } catch (\JsonException $e) {
-                $io->error(sprintf('Invalid JSON context: %s', $e->getMessage()));
-
-                return Command::FAILURE;
-            }
-        }
-
-        $log = $this->auditLogRepository->find($auditId);
-
-        if (!$log instanceof AuditLogInterface) {
-            $io->error(sprintf('Audit log with ID %d not found.', $auditId));
-
+        if (null === $context) {
             return Command::FAILURE;
         }
 
+        $log = $this->fetchAuditLog($auditId, $io);
+
+        if (null === $log) {
+            return Command::FAILURE;
+        }
+
+        $this->displayRevertHeader($io, $auditId, $log, (bool) $input->getOption('dry-run'));
+
+        return $this->performRevert($io, $input, $log, $context);
+    }
+
+    private function displayRevertHeader(SymfonyStyle $io, int $auditId, AuditLogInterface $log, bool $dryRun): void
+    {
         $io->title(sprintf('Reverting Audit Log #%d (%s)', $auditId, $log->getAction()));
         $io->text(sprintf('Entity: %s:%s', $log->getEntityClass(), $log->getEntityId()));
 
         if ($dryRun) {
             $io->note('Running in DRY-RUN mode. No changes will be persisted.');
         }
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function performRevert(SymfonyStyle $io, InputInterface $input, AuditLogInterface $log, array $context): int
+    {
+        $dryRun = (bool) $input->getOption('dry-run');
+        $force = (bool) $input->getOption('force');
+        $raw = (bool) $input->getOption('raw');
 
         try {
             $changes = $this->auditReverter->revert($log, $dryRun, $force, $context);
-
-            if ($raw) {
-                $io->writeln((string) json_encode($changes, JSON_PRETTY_PRINT));
-            } else {
-                if ([] === $changes) {
-                    $io->warning('No changes were applied (values might be identical or fields unmapped).');
-                } else {
-                    $io->success('Revert successful.');
-                    $io->section('Changes Applied:');
-                    foreach ($changes as $field => $value) {
-                        $valStr = is_scalar($value) ? (string) $value : json_encode($value);
-                        $io->writeln(sprintf(' - %s: %s', $field, $valStr));
-                    }
-                }
-            }
+            $this->displayRevertResult($io, $changes, $raw);
 
             return Command::SUCCESS;
-
         } catch (\Exception $e) {
             $io->error($e->getMessage());
 
             return Command::FAILURE;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $changes
+     */
+    private function displayRevertResult(SymfonyStyle $io, array $changes, bool $raw): void
+    {
+        if ($raw) {
+            $io->writeln((string) json_encode($changes, JSON_PRETTY_PRINT));
+
+            return;
+        }
+
+        if ([] === $changes) {
+            $io->warning('No changes were applied (values might be identical or fields unmapped).');
+
+            return;
+        }
+
+        $io->success('Revert successful.');
+        $io->section('Changes Applied:');
+
+        foreach ($changes as $field => $value) {
+            $valStr = \is_scalar($value) ? (string) $value : json_encode($value);
+            $io->writeln(sprintf(' - %s: %s', $field, $valStr));
         }
     }
 }

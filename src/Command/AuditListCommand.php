@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Command;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Rcsofttech\AuditTrailBundle\Service\AuditRenderer;
+use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -18,13 +19,15 @@ use Symfony\Component\Console\Style\SymfonyStyle;
     name: 'audit:list',
     description: 'List audit logs with optional filters',
 )]
-final class AuditListCommand extends Command
+final class AuditListCommand extends BaseAuditCommand
 {
+    use ClassNameHelperTrait;
+
     public function __construct(
-        private readonly AuditLogRepository $repository,
+        AuditLogRepository $repository,
         private readonly AuditRenderer $renderer,
     ) {
-        parent::__construct();
+        parent::__construct($repository);
     }
 
     protected function configure(): void
@@ -44,26 +47,13 @@ final class AuditListCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $limitRaw = $input->getOption('limit');
-        $limit = is_numeric($limitRaw) ? (int) $limitRaw : 50;
-        if ($limit < 1 || $limit > 1000) {
-            $io->error('Limit must be between 1 and 1000.');
 
+        $limit = $this->validateLimit($input, $io);
+        if (null === $limit) {
             return Command::FAILURE;
         }
 
-        $action = $input->getOption('action');
-        if (
-            is_string($action) && '' !== $action && !in_array($action, [
-                AuditLogInterface::ACTION_CREATE,
-                AuditLogInterface::ACTION_UPDATE,
-                AuditLogInterface::ACTION_DELETE,
-                AuditLogInterface::ACTION_SOFT_DELETE,
-                AuditLogInterface::ACTION_RESTORE,
-            ], true)
-        ) {
-            $io->error('Invalid action specified.');
-
+        if (!$this->validateAction($input, $io)) {
             return Command::FAILURE;
         }
 
@@ -74,7 +64,8 @@ final class AuditListCommand extends Command
 
             return Command::FAILURE;
         }
-        $audits = $this->repository->findWithFilters($filters, $limit);
+
+        $audits = $this->auditLogRepository->findWithFilters($filters, $limit);
 
         if ([] === $audits) {
             $io->info('No audit logs found matching the criteria.');
@@ -82,12 +73,7 @@ final class AuditListCommand extends Command
             return Command::SUCCESS;
         }
 
-        $io->title(sprintf('Audit Logs (%d results)', count($audits)));
-        $this->renderer->renderTable($output, $audits, (bool) $input->getOption('details'));
-
-        if (true !== $input->getOption('details')) {
-            $io->note('Tip: Use --details (-d) to see old → new value changes.');
-        }
+        $this->displayResults($io, $output, $input, $audits);
 
         return Command::SUCCESS;
     }
@@ -100,14 +86,31 @@ final class AuditListCommand extends Command
         $filters = array_filter([
             'entityClass' => $input->getOption('entity'),
             'entityId' => $input->getOption('entity-id'),
-            'userId' => (is_string($user = $input->getOption('user')) && '' !== $user) ? $user : null,
+            'userId' => $this->extractUserOption($input),
             'transactionHash' => $input->getOption('transaction'),
             'action' => $input->getOption('action'),
-        ], fn ($v) => null !== $v && '' !== $v);
+        ], static fn ($v): bool => null !== $v && '' !== $v);
 
+        return $this->addDateFilters($filters, $input);
+    }
+
+    private function extractUserOption(InputInterface $input): ?string
+    {
+        $user = $input->getOption('user');
+
+        return (\is_string($user) && '' !== $user) ? $user : null;
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     *
+     * @return array<string, mixed>
+     */
+    private function addDateFilters(array $filters, InputInterface $input): array
+    {
         foreach (['from', 'to'] as $key) {
             $val = $input->getOption($key);
-            if (is_string($val) && '' !== $val) {
+            if (\is_string($val) && '' !== $val) {
                 try {
                     $filters[$key] = new \DateTimeImmutable($val);
                 } catch (\Exception $e) {
@@ -117,5 +120,22 @@ final class AuditListCommand extends Command
         }
 
         return $filters;
+    }
+
+    /**
+     * @param array<AuditLogInterface> $audits
+     */
+    private function displayResults(
+        SymfonyStyle $io,
+        OutputInterface $output,
+        InputInterface $input,
+        array $audits,
+    ): void {
+        $io->title(sprintf('Audit Logs (%d results)', \count($audits)));
+        $this->renderer->renderTable($output, $audits, (bool) $input->getOption('details'));
+
+        if (true !== $input->getOption('details')) {
+            $io->note('Tip: Use --details (-d) to see old → new value changes.');
+        }
     }
 }

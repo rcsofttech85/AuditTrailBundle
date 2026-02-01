@@ -19,6 +19,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Filter\DateTimeFilter;
 use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
 
 /**
  * Responsible for providing a read-only view of audit logs in EasyAdmin.
@@ -29,6 +30,8 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
  */
 class AuditLogCrudController extends AbstractCrudController
 {
+    use ClassNameHelperTrait;
+
     public static function getEntityFqcn(): string
     {
         return AuditLog::class;
@@ -53,7 +56,17 @@ class AuditLogCrudController extends AbstractCrudController
 
     public function configureFields(string $pageName): iterable
     {
-        // Index View: Clean, information-dense, and visual
+        yield from $this->configureIndexFields();
+        yield from $this->configureOverviewTabFields();
+        yield from $this->configureChangesTabFields();
+        yield from $this->configureTechnicalContextTabFields();
+    }
+
+    /**
+     * @return iterable<int, mixed>
+     */
+    private function configureIndexFields(): iterable
+    {
         yield IdField::new('id')->onlyOnIndex();
 
         yield ChoiceField::new('action', 'Action')
@@ -76,19 +89,22 @@ class AuditLogCrudController extends AbstractCrudController
             ->onlyOnIndex();
 
         yield TextField::new('entityClass', 'Entity')
-            ->formatValue(fn ($value) => $this->getShortClassName((string) $value))
+            ->formatValue(fn ($value): string => $this->shortenClass((string) $value))
             ->setHelp('The PHP class of the modified entity')
             ->onlyOnIndex();
 
         yield TextField::new('entityId', 'ID')->onlyOnIndex();
-
         yield TextField::new('username', 'User')->onlyOnIndex();
-
         yield DateTimeField::new('createdAt', 'Occurred At')
             ->setFormat('dd MMM yyyy | HH:mm:ss')
             ->onlyOnIndex();
+    }
 
-        // Detail View: Structured and informative
+    /**
+     * @return iterable<int, mixed>
+     */
+    private function configureOverviewTabFields(): iterable
+    {
         yield FormField::addTab('Overview')->setIcon('fa fa-info-circle');
         yield FormField::addPanel()->setHelp('Basic information about the audit event.');
 
@@ -98,10 +114,7 @@ class AuditLogCrudController extends AbstractCrudController
         yield TextField::new('action', 'Action Type')->onlyOnDetail();
 
         yield FormField::addRow();
-        yield TextField::new('username', 'Performed By')
-            ->onlyOnDetail()
-            ->setColumns(6);
-
+        yield TextField::new('username', 'Performed By')->onlyOnDetail()->setColumns(6);
         yield DateTimeField::new('createdAt', 'Timestamp')
             ->setFormat('dd MMM yyyy | HH:mm:ss')
             ->onlyOnDetail()
@@ -109,15 +122,19 @@ class AuditLogCrudController extends AbstractCrudController
 
         yield FormField::addRow();
         yield TextField::new('ipAddress', 'IP Address')
-            ->formatValue(fn ($value) => $value ? $value : 'N/A')
+            ->formatValue(static fn ($value): string => (null !== $value && '' !== $value) ? $value : 'N/A')
             ->renderAsHtml()
             ->onlyOnDetail()
             ->setColumns(6);
 
-        yield TextField::new('userAgent', 'User Agent')
-            ->onlyOnDetail()
-            ->setColumns(6);
+        yield TextField::new('userAgent', 'User Agent')->onlyOnDetail()->setColumns(6);
+    }
 
+    /**
+     * @return iterable<int, mixed>
+     */
+    private function configureChangesTabFields(): iterable
+    {
         yield FormField::addTab('Changes')->setIcon('fa fa-exchange-alt');
         yield FormField::addPanel()->setHelp('Visual comparison of the entity state before and after the change.');
 
@@ -134,7 +151,13 @@ class AuditLogCrudController extends AbstractCrudController
         yield $this->createJsonField('newValues', 'New Values')
             ->setColumns(6)
             ->setHelp('State of the entity <strong>after</strong> the change.');
+    }
 
+    /**
+     * @return iterable<int, mixed>
+     */
+    private function configureTechnicalContextTabFields(): iterable
+    {
         yield FormField::addTab('Technical Context')->setIcon('fa fa-cogs');
         yield FormField::addPanel()->setHelp('Low-level transaction details and custom context metadata.');
 
@@ -160,31 +183,19 @@ class AuditLogCrudController extends AbstractCrudController
     {
         return CodeEditorField::new($propertyName, $label)
             ->setLanguage('javascript')
-            ->formatValue(fn ($value) => $this->formatJson($value))
+            ->formatValue(fn ($value): string => $this->formatJson($value))
             ->onlyOnDetail();
-    }
-
-    private function getShortClassName(string $className): string
-    {
-        $lastBackslash = strrpos($className, '\\');
-
-        if (false === $lastBackslash) {
-            return $className;
-        }
-
-        return substr($className, $lastBackslash + 1);
     }
 
     private function formatJson(mixed $value): string
     {
-        if (null === $value) {
-            return '';
-        }
-
-        if (is_array($value)) {
-            return (string) json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        }
-
-        return (string) $value;
+        return match (true) {
+            null === $value => '',
+            \is_array($value) => (false !== ($json = json_encode(
+                $value,
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+            )) ? $json : ''),
+            default => (string) $value,
+        };
     }
 }

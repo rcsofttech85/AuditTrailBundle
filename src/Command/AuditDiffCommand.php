@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Command;
 
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\DiffGeneratorInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -20,13 +20,13 @@ use Symfony\Component\Console\Style\SymfonyStyle;
     name: 'audit:diff',
     description: 'Shows a human-readable diff view for audit logs'
 )]
-class AuditDiffCommand extends Command
+class AuditDiffCommand extends BaseAuditCommand
 {
     public function __construct(
-        private readonly AuditLogRepository $auditLogRepository,
+        AuditLogRepository $auditLogRepository,
         private readonly DiffGeneratorInterface $diffGenerator,
     ) {
-        parent::__construct();
+        parent::__construct($auditLogRepository);
     }
 
     protected function configure(): void
@@ -41,14 +41,13 @@ class AuditDiffCommand extends Command
                 InputOption::VALUE_NONE,
                 'Include timestamp fields (createdAt, updatedAt, etc.)'
             )
-            ->addOption('json', null, InputOption::VALUE_NONE, 'Output in JSON format')
-        ;
+            ->addOption('json', null, InputOption::VALUE_NONE, 'Output in JSON format');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $log = $this->fetchAuditLog($input, $io);
+        $log = $this->resolveAuditLog($input, $io);
 
         if (null === $log) {
             return Command::FAILURE;
@@ -71,29 +70,27 @@ class AuditDiffCommand extends Command
         return Command::SUCCESS;
     }
 
-    private function fetchAuditLog(InputInterface $input, SymfonyStyle $io): ?AuditLog
+    private function resolveAuditLog(InputInterface $input, SymfonyStyle $io): ?AuditLogInterface
     {
         $identifier = $input->getArgument('identifier');
         $entityId = $input->getArgument('entityId');
 
-        if (!is_string($identifier)) {
+        if (!\is_string($identifier)) {
             return null;
         }
 
-        $entityId = is_string($entityId) ? $entityId : null;
+        $entityId = \is_string($entityId) ? $entityId : null;
 
-        if (is_numeric($identifier) && null === $entityId) {
-            $log = $this->auditLogRepository->find((int) $identifier);
+        return is_numeric($identifier) && null === $entityId
+            ? $this->fetchAuditLog((int) $identifier, $io)
+            : $this->fetchByEntityClassAndId($identifier, $entityId, $io);
+    }
 
-            if (!$log instanceof AuditLog) {
-                $io->error(sprintf('No audit log found with ID %s', $identifier));
-
-                return null;
-            }
-
-            return $log;
-        }
-
+    private function fetchByEntityClassAndId(
+        string $entityClass,
+        ?string $entityId,
+        SymfonyStyle $io,
+    ): ?AuditLogInterface {
         if (null === $entityId) {
             $io->error('Entity ID is required when providing an Entity Class.');
 
@@ -101,7 +98,7 @@ class AuditDiffCommand extends Command
         }
 
         $logs = $this->auditLogRepository->findWithFilters(
-            ['entityClass' => $identifier, 'entityId' => $entityId],
+            ['entityClass' => $entityClass, 'entityId' => $entityId],
             1
         );
 
@@ -111,7 +108,7 @@ class AuditDiffCommand extends Command
     /**
      * @param array<string, array{old: mixed, new: mixed}> $diff
      */
-    private function renderDiff(SymfonyStyle $io, OutputInterface $output, AuditLog $log, array $diff): void
+    private function renderDiff(SymfonyStyle $io, OutputInterface $output, AuditLogInterface $log, array $diff): void
     {
         $io->title(sprintf('Audit Diff for %s #%s', $log->getEntityClass(), $log->getEntityId()));
         $io->definitionList(
@@ -143,28 +140,16 @@ class AuditDiffCommand extends Command
 
     private function formatValue(mixed $value): string
     {
-        if (null === $value) {
-            return '<fg=gray>NULL</>';
-        }
-
-        if (is_bool($value)) {
-            return $value ? '<fg=green>TRUE</>' : '<fg=red>FALSE</>';
-        }
-
-        if (is_scalar($value)) {
-            return (string) $value;
-        }
-
-        if (is_array($value)) {
-            $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-
-            return false !== $json ? $json : '[]';
-        }
-
-        if ($value instanceof \DateTimeInterface) {
-            return $value->format('Y-m-d H:i:s');
-        }
-
-        return get_debug_type($value);
+        return match (true) {
+            null === $value => '<fg=gray>NULL</>',
+            \is_bool($value) => $value ? '<fg=green>TRUE</>' : '<fg=red>FALSE</>',
+            \is_scalar($value) => (string) $value,
+            \is_array($value) => (false !== ($json = json_encode(
+                $value,
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            )) ? $json : '[]'),
+            $value instanceof \DateTimeInterface => $value->format('Y-m-d H:i:s'),
+            default => get_debug_type($value),
+        };
     }
 }

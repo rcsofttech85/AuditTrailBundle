@@ -4,98 +4,99 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Security;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
-use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\TestCase;
-use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
-use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
-use Rcsofttech\AuditTrailBundle\Service\AuditService;
-use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
-use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
-use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
-use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
-use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
-use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
-use Symfony\Component\Clock\MockClock;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
+use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
+use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\SensitiveUser;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 #[AllowMockObjectsWithoutExpectations]
-class SensitiveDataUpdateTest extends TestCase
+class SensitiveDataUpdateTest extends AbstractAuditTestCase
 {
+    /** @var EntityManagerInterface&\PHPUnit\Framework\MockObject\Stub */
+    private EntityManagerInterface $entityManager;
+
+    /** @var AuditTransportInterface&\PHPUnit\Framework\MockObject\MockObject */
+    private AuditTransportInterface $transport;
+
+    /** @var TransactionIdGenerator&\PHPUnit\Framework\MockObject\Stub */
+    private TransactionIdGenerator $transactionIdGenerator;
+
+    protected function setUp(): void
+    {
+        $this->entityManager = self::createStub(EntityManagerInterface::class);
+        $this->transport = $this->createMock(AuditTransportInterface::class);
+        $this->transport->method('supports')->willReturn(true);
+
+        $this->transactionIdGenerator = self::createStub(TransactionIdGenerator::class);
+        $this->transactionIdGenerator->method('getTransactionId')->willReturn('test-transaction-id');
+    }
+
     public function testUpdateMasksSensitiveData(): void
     {
-        $em = self::createStub(EntityManagerInterface::class);
-        $userResolver = self::createStub(UserResolverInterface::class);
-        $clock = new MockClock();
-        $transactionIdGenerator = self::createStub(TransactionIdGenerator::class);
-        $transactionIdGenerator->method('getTransactionId')->willReturn('test-transaction-id');
+        $subscriber = $this->createSubscriber();
+        $entity = $this->createSensitiveUserEntity();
+        $this->configureMockUnitOfWork($entity);
 
-        $metadataCache = new MetadataCache();
-        $serializer = new ValueSerializer(null); // No logger
-        $extractor = new EntityDataExtractor($em, $serializer, $metadataCache);
+        $this->transport->expects($this->once())
+            ->method('send')
+            ->with(self::callback(static function (AuditLog $log): bool {
+                $old = $log->getOldValues();
+                $new = $log->getNewValues();
 
-        $auditService = new AuditService(
-            $em,
-            $userResolver,
-            $clock,
-            $transactionIdGenerator,
-            $extractor,
-            $metadataCache,
-            [], // ignoredEntities
-            []  // ignoredProperties
-        );
+                return '**REDACTED**' === ($old['password'] ?? '') && '**REDACTED**' === ($new['password'] ?? '');
+            }));
 
-        $transport = $this->createMock(AuditTransportInterface::class);
-        $transport->method('supports')->willReturn(true);
-        $dispatcher = new AuditDispatcher(
-            $transport,
-            self::createStub(AuditIntegrityServiceInterface::class),
-            null
-        ); // No logger
-        $auditManager = new ScheduledAuditManager(self::createStub(
-            EventDispatcherInterface::class
-        ));
-        $changeProcessor = new ChangeProcessor($auditService, $serializer, true, 'deletedAt');
+        $subscriber->onFlush(new OnFlushEventArgs($this->entityManager));
+    }
 
-        $entityProcessor = new EntityProcessor(
+    private function createSubscriber(): AuditSubscriber
+    {
+        $auditService = $this->createAuditService($this->entityManager, $this->transactionIdGenerator);
+        $dispatcher = $this->createAuditDispatcher($this->transport);
+        $auditManager = new ScheduledAuditManager(self::createStub(EventDispatcherInterface::class));
+        $changeProcessor = new ChangeProcessor($auditService, new ValueSerializer(null), true, 'deletedAt');
+
+        $entityProcessor = $this->createEntityProcessor(
             $auditService,
             $changeProcessor,
             $dispatcher,
-            $auditManager,
-            false
+            $auditManager
         );
 
-        $subscriber = new AuditSubscriber(
+        return new AuditSubscriber(
             $auditService,
             $changeProcessor,
             $dispatcher,
             $auditManager,
             $entityProcessor,
-            $transactionIdGenerator
+            $this->transactionIdGenerator
         );
+    }
 
+    private function createSensitiveUserEntity(): SensitiveUser
+    {
         $entity = new SensitiveUser();
         $entity->password = 'new_secret';
 
+        return $entity;
+    }
+
+    private function configureMockUnitOfWork(SensitiveUser $entity): void
+    {
         $uow = self::createStub(UnitOfWork::class);
-        $em->method('getUnitOfWork')->willReturn($uow);
+        $this->entityManager->method('getUnitOfWork')->willReturn($uow);
 
-        $metadata = self::createStub(ClassMetadata::class);
-        $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
-        $metadata->method('getName')->willReturn(SensitiveUser::class);
+        $metadata = $this->createEntityMetadataStub(SensitiveUser::class, $entity, ['id' => 1]);
         $metadata->method('getFieldNames')->willReturn(['id', 'password', 'username']);
-        $metadata->method('getAssociationNames')->willReturn([]);
-        $metadata->method('getReflectionClass')->willReturn(new \ReflectionClass($entity));
-        $metadata->method('getReflectionProperty')->willReturnCallback(fn ($p) => new \ReflectionProperty($entity, $p));
-
-        $em->method('getClassMetadata')->willReturn($metadata);
+        $this->entityManager->method('getClassMetadata')->willReturn($metadata);
 
         $uow->method('getScheduledEntityUpdates')->willReturn([$entity]);
         $uow->method('getScheduledEntityInsertions')->willReturn([]);
@@ -105,16 +106,5 @@ class SensitiveDataUpdateTest extends TestCase
             'password' => ['old_secret', 'new_secret'],
             'username' => ['user', 'user'],
         ]);
-
-        $transport->expects($this->once())
-            ->method('send')
-            ->with(self::callback(function (AuditLog $log) {
-                $old = $log->getOldValues();
-                $new = $log->getNewValues();
-
-                return '**REDACTED**' === ($old['password'] ?? '') && '**REDACTED**' === ($new['password'] ?? '');
-            }));
-
-        $subscriber->onFlush(new OnFlushEventArgs($em));
     }
 }
