@@ -1,5 +1,6 @@
 # AuditTrailBundle
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/b33150fe5e27413cb42df6b377b83edb)](https://app.codacy.com/gh/rcsofttech85/AuditTrailBundle?utm_source=github.com&utm_medium=referral&utm_content=rcsofttech85/AuditTrailBundle&utm_campaign=Badge_Grade)
 [![CI](https://github.com/rcsofttech85/AuditTrailBundle/actions/workflows/ci.yaml/badge.svg)](https://github.com/rcsofttech85/AuditTrailBundle/actions/workflows/ci.yaml)
 [![Version](https://img.shields.io/packagist/v/rcsofttech/audit-trail-bundle.svg?label=stable)](https://packagist.org/packages/rcsofttech/audit-trail-bundle)
 [![Downloads](https://img.shields.io/packagist/dt/rcsofttech/audit-trail-bundle.svg)](https://packagist.org/packages/rcsofttech/audit-trail-bundle)
