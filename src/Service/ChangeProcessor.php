@@ -7,6 +7,10 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 
+use function array_key_exists;
+use function in_array;
+use function is_array;
+
 class ChangeProcessor
 {
     public function __construct(
@@ -30,7 +34,7 @@ class ChangeProcessor
         $ignored = $this->auditService->getIgnoredProperties($entity);
 
         foreach ($changeSet as $field => $change) {
-            if (\in_array($field, $ignored, true)) {
+            if (in_array($field, $ignored, true)) {
                 continue;
             }
 
@@ -58,7 +62,7 @@ class ChangeProcessor
 
     private function valuesAreDifferent(mixed $oldValue, mixed $newValue): bool
     {
-        if (null === $oldValue || null === $newValue) {
+        if ($oldValue === null || $newValue === null) {
             return $oldValue !== $newValue;
         }
 
@@ -74,13 +78,13 @@ class ChangeProcessor
      */
     public function determineUpdateAction(array $changeSet): string
     {
-        if (!$this->enableSoftDelete || !\array_key_exists($this->softDeleteField, $changeSet)) {
+        if (!$this->enableSoftDelete || !array_key_exists($this->softDeleteField, $changeSet)) {
             return AuditLogInterface::ACTION_UPDATE;
         }
 
         [$oldValue, $newValue] = $changeSet[$this->softDeleteField];
 
-        return (null !== $oldValue && null === $newValue)
+        return ($oldValue !== null && $newValue === null)
             ? AuditLogInterface::ACTION_RESTORE
             : AuditLogInterface::ACTION_UPDATE;
     }
@@ -92,7 +96,7 @@ class ChangeProcessor
             if ($meta->hasField($this->softDeleteField)) {
                 $reflProp = $meta->getReflectionProperty($this->softDeleteField);
                 $softDeleteValue = $reflProp?->getValue($entity);
-                if (null !== $softDeleteValue) {
+                if ($softDeleteValue !== null) {
                     return AuditLogInterface::ACTION_SOFT_DELETE;
                 }
             }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Command;
 
+use DateTimeImmutable;
+use Exception;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Rcsofttech\AuditTrailBundle\Service\AuditExporter;
@@ -14,6 +16,13 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
+use function count;
+use function dirname;
+use function in_array;
+use function is_string;
+use function sprintf;
+use function strlen;
+
 #[AsCommand(
     name: 'audit:export',
     description: 'Export audit logs to JSON or CSV format',
@@ -21,10 +30,13 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 final class AuditExportCommand extends Command
 {
     private const string FORMAT_JSON = 'json';
+
     private const string FORMAT_CSV = 'csv';
+
     private const array VALID_FORMATS = [self::FORMAT_JSON, self::FORMAT_CSV];
 
     private const int DEFAULT_LIMIT = 1000;
+
     private const int MAX_LIMIT = 100000;
 
     public function __construct(
@@ -83,14 +95,14 @@ final class AuditExportCommand extends Command
             )
             ->setHelp(
                 <<<'HELP'
-The <info>%command.name%</info> command exports audit logs to JSON or CSV format.
+                    The <info>%command.name%</info> command exports audit logs to JSON or CSV format.
 
-Examples:
-  <info>php %command.full_name% --format=json --output=audits.json</info>
-  <info>php %command.full_name% --format=csv --entity="App\Entity\User" --from="2024-01-01"</info>
-  <info>php %command.full_name% -f csv -o audits.csv --limit=5000</info>
-  <info>php %command.full_name% --action=update --from="-30 days"</info>
-HELP
+                    Examples:
+                      <info>php %command.full_name% --format=json --output=audits.json</info>
+                      <info>php %command.full_name% --format=csv --entity="App\Entity\User" --from="2024-01-01"</info>
+                      <info>php %command.full_name% -f csv -o audits.csv --limit=5000</info>
+                      <info>php %command.full_name% --action=update --from="-30 days"</info>
+                    HELP
             );
     }
 
@@ -101,19 +113,19 @@ HELP
         $format = $this->parseFormat($input, $io);
         $limit = $this->parseLimit($input, $io);
 
-        if (null === $format || null === $limit) {
+        if ($format === null || $limit === null) {
             return Command::FAILURE;
         }
 
         $filters = $this->buildFilters($input, $io);
 
-        if (null === $filters) {
+        if ($filters === null) {
             return Command::FAILURE;
         }
 
         $audits = $this->repository->findWithFilters($filters, $limit);
 
-        if ([] === $audits) {
+        if ($audits === []) {
             $io->warning('No audit logs found matching the criteria.');
 
             return Command::SUCCESS;
@@ -124,7 +136,7 @@ HELP
         $data = $this->exporter->formatAudits($audits, $format);
         $outputFile = $input->getOption('output');
 
-        if (is_string($outputFile) && '' !== $outputFile) {
+        if (is_string($outputFile) && $outputFile !== '') {
             $this->writeToFile($io, $outputFile, $data, count($audits));
         } else {
             $output->writeln($data);
@@ -189,7 +201,7 @@ HELP
     private function addEntityFilter(array &$filters, InputInterface $input): void
     {
         $entity = $input->getOption('entity');
-        if (is_string($entity) && '' !== $entity) {
+        if (is_string($entity) && $entity !== '') {
             $filters['entityClass'] = $entity;
         }
     }
@@ -200,7 +212,7 @@ HELP
     private function addActionFilter(array &$filters, InputInterface $input, SymfonyStyle $io): bool
     {
         $action = $input->getOption('action');
-        if (is_string($action) && '' !== $action) {
+        if (is_string($action) && $action !== '') {
             if (!$this->validateAction($action, $io)) {
                 return false;
             }
@@ -216,9 +228,9 @@ HELP
     private function addDateFilter(array &$filters, InputInterface $input, string $param, SymfonyStyle $io): bool
     {
         $date = $input->getOption($param);
-        if (is_string($date) && '' !== $date) {
+        if (is_string($date) && $date !== '') {
             $parsedDate = $this->parseDate($date, $param, $io);
-            if (null === $parsedDate) {
+            if ($parsedDate === null) {
                 return false;
             }
             $filters[$param] = $parsedDate;
@@ -239,11 +251,11 @@ HELP
         return true;
     }
 
-    private function parseDate(string $date, string $param, SymfonyStyle $io): ?\DateTimeImmutable
+    private function parseDate(string $date, string $param, SymfonyStyle $io): ?DateTimeImmutable
     {
         try {
-            return new \DateTimeImmutable($date);
-        } catch (\Exception $e) {
+            return new DateTimeImmutable($date);
+        } catch (Exception $e) {
             $io->error(sprintf('Invalid "%s" date: %s. Error: %s', $param, $date, $e->getMessage()));
 
             return null;
@@ -253,7 +265,7 @@ HELP
     private function writeToFile(SymfonyStyle $io, string $outputFile, string $data, int $count): void
     {
         $directory = dirname($outputFile);
-        if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+        if (!is_dir($directory) && !mkdir($directory, 0o755, true) && !is_dir($directory)) {
             $io->error(sprintf('Failed to create directory: %s', $directory));
 
             return;

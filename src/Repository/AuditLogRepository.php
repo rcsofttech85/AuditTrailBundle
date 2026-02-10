@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Repository;
 
+use DateTimeImmutable;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
@@ -71,7 +72,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
         return $result;
     }
 
-    public function deleteOldLogs(\DateTimeImmutable $before): int
+    public function deleteOldLogs(DateTimeImmutable $before): int
     {
         /** @var int $count */
         $count = $this->createQueryBuilder('a')
@@ -131,7 +132,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
         } else {
             // Partial match for short names
             $qb->andWhere('a.entityClass LIKE :entityClass')
-                ->setParameter('entityClass', '%' . $entityClass . '%');
+                ->setParameter('entityClass', '%'.$entityClass.'%');
         }
     }
 
@@ -200,7 +201,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
     /**
      * Count audit logs older than a given date.
      */
-    public function countOlderThan(\DateTimeImmutable $before): int
+    public function countOlderThan(DateTimeImmutable $before): int
     {
         return (int) $this->createQueryBuilder('a')
             ->select('COUNT(a.id)')

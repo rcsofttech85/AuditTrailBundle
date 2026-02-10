@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Contract;
 
+use RuntimeException;
+
 /**
  * Interface for reverting entity changes based on audit logs.
  */
@@ -19,7 +21,7 @@ interface AuditReverterInterface
      *
      * @return array<string, mixed> The changes that were (or would be) applied
      *
-     * @throws \RuntimeException If the revert operation fails or is unsafe
+     * @throws RuntimeException If the revert operation fails or is unsafe
      */
     public function revert(
         AuditLogInterface $log,

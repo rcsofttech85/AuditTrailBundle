@@ -16,6 +16,6 @@ trait ClassNameHelperTrait
     {
         $lastBackslash = strrpos($className, '\\');
 
-        return false === $lastBackslash ? $className : substr($className, $lastBackslash + 1);
+        return $lastBackslash === false ? $className : substr($className, $lastBackslash + 1);
     }
 }

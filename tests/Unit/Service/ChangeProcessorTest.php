@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use DateTime;
+use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
@@ -13,11 +15,14 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
+use ReflectionProperty;
+use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class ChangeProcessorTest extends TestCase
 {
     private AuditService&MockObject $auditService;
+
     private ChangeProcessor $processor;
 
     protected function setUp(): void
@@ -33,7 +38,7 @@ class ChangeProcessorTest extends TestCase
 
     public function testExtractChanges(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $changeSet = [
             'name' => ['old', 'new'],
             'age' => [20, 21],
@@ -62,7 +67,7 @@ class ChangeProcessorTest extends TestCase
 
     public function testExtractChangesFloatPrecision(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $changeSet = [
             'float_diff' => [1.0, 1.1],
             'float_same' => [1.0000000001, 1.0000000002],
@@ -95,11 +100,11 @@ class ChangeProcessorTest extends TestCase
         // Restore (deletedAt: not null -> null)
         self::assertEquals(
             AuditLogInterface::ACTION_RESTORE,
-            $this->processor->determineUpdateAction(['deletedAt' => [new \DateTime(), null]])
+            $this->processor->determineUpdateAction(['deletedAt' => [new DateTime(), null]])
         );
         self::assertEquals(
             AuditLogInterface::ACTION_UPDATE,
-            $this->processor->determineUpdateAction(['deletedAt' => [null, new \DateTime()]])
+            $this->processor->determineUpdateAction(['deletedAt' => [null, new DateTime()]])
         );
     }
 
@@ -114,7 +119,7 @@ class ChangeProcessorTest extends TestCase
 
         self::assertEquals(
             AuditLogInterface::ACTION_UPDATE,
-            $processor->determineUpdateAction(['deletedAt' => [new \DateTime(), null]])
+            $processor->determineUpdateAction(['deletedAt' => [new DateTime(), null]])
         );
     }
 
@@ -122,15 +127,15 @@ class ChangeProcessorTest extends TestCase
     {
         $em = $this->createMock(EntityManagerInterface::class);
         $meta = $this->createMock(ClassMetadata::class);
-        $entity = new class () {
-            public ?\DateTimeInterface $deletedAt = null;
+        $entity = new class {
+            public ?DateTimeInterface $deletedAt = null;
         };
-        $entity->deletedAt = new \DateTime();
+        $entity->deletedAt = new DateTime();
 
         $em->method('getClassMetadata')->willReturn($meta);
         $meta->method('hasField')->with('deletedAt')->willReturn(true);
 
-        $reflProp = new \ReflectionProperty($entity, 'deletedAt');
+        $reflProp = new ReflectionProperty($entity, 'deletedAt');
         $meta->method('getReflectionProperty')->with('deletedAt')->willReturn($reflProp);
 
         $action = $this->processor->determineDeletionAction($em, $entity, true);
@@ -141,15 +146,15 @@ class ChangeProcessorTest extends TestCase
     {
         $em = $this->createMock(EntityManagerInterface::class);
         $meta = $this->createMock(ClassMetadata::class);
-        $entity = new class () {
-            public ?\DateTimeInterface $deletedAt = null;
+        $entity = new class {
+            public ?DateTimeInterface $deletedAt = null;
         };
         $entity->deletedAt = null;
 
         $em->method('getClassMetadata')->willReturn($meta);
         $meta->method('hasField')->with('deletedAt')->willReturn(true);
 
-        $reflProp = new \ReflectionProperty($entity, 'deletedAt');
+        $reflProp = new ReflectionProperty($entity, 'deletedAt');
         $meta->method('getReflectionProperty')->with('deletedAt')->willReturn($reflProp);
 
         $action = $this->processor->determineDeletionAction($em, $entity, true);
@@ -160,14 +165,14 @@ class ChangeProcessorTest extends TestCase
     {
         $em = $this->createMock(EntityManagerInterface::class);
         $meta = $this->createMock(ClassMetadata::class);
-        $entity = new class () {
-            public ?\DateTimeInterface $deletedAt = null;
+        $entity = new class {
+            public ?DateTimeInterface $deletedAt = null;
         };
         $entity->deletedAt = null; // Not soft deleted
 
         $em->method('getClassMetadata')->willReturn($meta);
         $meta->method('hasField')->with('deletedAt')->willReturn(true);
-        $reflProp = new \ReflectionProperty($entity, 'deletedAt');
+        $reflProp = new ReflectionProperty($entity, 'deletedAt');
         $meta->method('getReflectionProperty')->with('deletedAt')->willReturn($reflProp);
 
         $action = $this->processor->determineDeletionAction($em, $entity, false);
@@ -178,7 +183,7 @@ class ChangeProcessorTest extends TestCase
     {
         $em = $this->createMock(EntityManagerInterface::class);
         $meta = $this->createMock(ClassMetadata::class);
-        $entity = new \stdClass();
+        $entity = new stdClass();
 
         $em->method('getClassMetadata')->willReturn($meta);
         $meta->method('hasField')->with('deletedAt')->willReturn(false);

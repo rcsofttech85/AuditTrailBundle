@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Command;
 
+use DateTimeInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\DiffGeneratorInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
@@ -15,6 +16,16 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+
+use function is_array;
+use function is_bool;
+use function is_scalar;
+use function is_string;
+use function sprintf;
+
+use const JSON_PRETTY_PRINT;
+use const JSON_UNESCAPED_SLASHES;
+use const JSON_UNESCAPED_UNICODE;
 
 #[AsCommand(
     name: 'audit:diff',
@@ -49,7 +60,7 @@ class AuditDiffCommand extends BaseAuditCommand
         $io = new SymfonyStyle($input, $output);
         $log = $this->resolveAuditLog($input, $io);
 
-        if (null === $log) {
+        if ($log === null) {
             return Command::FAILURE;
         }
 
@@ -60,7 +71,7 @@ class AuditDiffCommand extends BaseAuditCommand
 
         if (true === $input->getOption('json')) {
             $json = json_encode($diff, JSON_PRETTY_PRINT);
-            $output->writeln(false !== $json ? $json : '{}');
+            $output->writeln($json !== false ? $json : '{}');
 
             return Command::SUCCESS;
         }
@@ -75,13 +86,13 @@ class AuditDiffCommand extends BaseAuditCommand
         $identifier = $input->getArgument('identifier');
         $entityId = $input->getArgument('entityId');
 
-        if (!\is_string($identifier)) {
+        if (!is_string($identifier)) {
             return null;
         }
 
-        $entityId = \is_string($entityId) ? $entityId : null;
+        $entityId = is_string($entityId) ? $entityId : null;
 
-        return is_numeric($identifier) && null === $entityId
+        return is_numeric($identifier) && $entityId === null
             ? $this->fetchAuditLog((int) $identifier, $io)
             : $this->fetchByEntityClassAndId($identifier, $entityId, $io);
     }
@@ -91,7 +102,7 @@ class AuditDiffCommand extends BaseAuditCommand
         ?string $entityId,
         SymfonyStyle $io,
     ): ?AuditLogInterface {
-        if (null === $entityId) {
+        if ($entityId === null) {
             $io->error('Entity ID is required when providing an Entity Class.');
 
             return null;
@@ -118,7 +129,7 @@ class AuditDiffCommand extends BaseAuditCommand
             ['User' => $log->getUsername() ?? 'System']
         );
 
-        if ([] === $diff) {
+        if ($diff === []) {
             $io->info('No semantic changes found.');
 
             return;
@@ -141,14 +152,14 @@ class AuditDiffCommand extends BaseAuditCommand
     private function formatValue(mixed $value): string
     {
         return match (true) {
-            null === $value => '<fg=gray>NULL</>',
-            \is_bool($value) => $value ? '<fg=green>TRUE</>' : '<fg=red>FALSE</>',
-            \is_scalar($value) => (string) $value,
-            \is_array($value) => (false !== ($json = json_encode(
+            $value === null => '<fg=gray>NULL</>',
+            is_bool($value) => $value ? '<fg=green>TRUE</>' : '<fg=red>FALSE</>',
+            is_scalar($value) => (string) $value,
+            is_array($value) => (($json = json_encode(
                 $value,
                 JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-            )) ? $json : '[]'),
-            $value instanceof \DateTimeInterface => $value->format('Y-m-d H:i:s'),
+            )) !== false ? $json : '[]'),
+            $value instanceof DateTimeInterface => $value->format('Y-m-d H:i:s'),
             default => get_debug_type($value),
         };
     }

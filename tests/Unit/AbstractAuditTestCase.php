@@ -21,6 +21,8 @@ use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
+use ReflectionClass;
+use ReflectionProperty;
 use Symfony\Component\Clock\MockClock;
 
 abstract class AbstractAuditTestCase extends TestCase
@@ -90,9 +92,9 @@ abstract class AbstractAuditTestCase extends TestCase
         $metadata->method('getName')->willReturn($className);
         $metadata->method('getFieldNames')->willReturn(array_keys($idValues));
         $metadata->method('getAssociationNames')->willReturn([]);
-        $metadata->method('getReflectionClass')->willReturn(new \ReflectionClass($entity));
+        $metadata->method('getReflectionClass')->willReturn(new ReflectionClass($entity));
         $metadata->method('getReflectionProperty')->willReturnCallback(
-            static fn (string $p): \ReflectionProperty => new \ReflectionProperty($entity, $p)
+            static fn (string $p): ReflectionProperty => new ReflectionProperty($entity, $p)
         );
 
         return $metadata;

@@ -1,8 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
+use DateTimeImmutable;
+use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
@@ -10,18 +15,22 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
+use stdClass;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
-use PHPUnit\Framework\MockObject\MockObject;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 #[AllowMockObjectsWithoutExpectations]
 class QueueAuditTransportTest extends TestCase
 {
     private QueueAuditTransport $transport;
+
     private MessageBusInterface&MockObject $bus;
+
     private LoggerInterface&MockObject $logger;
+
     private EventDispatcherInterface&MockObject $eventDispatcher;
+
     private AuditIntegrityServiceInterface&MockObject $integrityService;
 
     protected function setUp(): void
@@ -46,7 +55,7 @@ class QueueAuditTransportTest extends TestCase
         $log->setEntityClass('TestEntity');
         $log->setEntityId('1');
         $log->setAction(AuditLogInterface::ACTION_CREATE);
-        $log->setCreatedAt(new \DateTimeImmutable());
+        $log->setCreatedAt(new DateTimeImmutable());
 
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->integrityService->method('signPayload')->willReturn('test_signature');
@@ -61,13 +70,13 @@ class QueueAuditTransportTest extends TestCase
                     foreach ($stamps as $stamp) {
                         if (
                             $stamp instanceof \Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp
-                            && 'test_api_key' === $stamp->apiKey
+                            && $stamp->apiKey === 'test_api_key'
                         ) {
                             $hasApiKeyStamp = true;
                         }
                         if (
                             $stamp instanceof \Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp
-                            && 'test_signature' === $stamp->signature
+                            && $stamp->signature === 'test_signature'
                         ) {
                             $hasSignatureStamp = true;
                         }
@@ -76,7 +85,7 @@ class QueueAuditTransportTest extends TestCase
                     return $hasApiKeyStamp && $hasSignatureStamp;
                 })
             )
-            ->willReturn(new Envelope(new \stdClass()));
+            ->willReturn(new Envelope(new stdClass()));
 
         $this->transport->send($log);
     }
@@ -87,9 +96,9 @@ class QueueAuditTransportTest extends TestCase
         $log->setEntityClass('TestEntity');
         $log->setEntityId('1');
         $log->setAction(AuditLogInterface::ACTION_CREATE);
-        $log->setCreatedAt(new \DateTimeImmutable());
+        $log->setCreatedAt(new DateTimeImmutable());
 
-        $this->bus->method('dispatch')->willThrowException(new \Exception('Bus error'));
+        $this->bus->method('dispatch')->willThrowException(new Exception('Bus error'));
         $this->logger->expects($this->once())->method('error');
 
         $this->transport->send($log);
@@ -105,7 +114,7 @@ class QueueAuditTransportTest extends TestCase
         // we need to pass context that EntityIdResolver understands.
         $context = ['is_insert' => true];
 
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $em = $this->createMock(\Doctrine\ORM\EntityManagerInterface::class);
         $metadata = $this->createMock(\Doctrine\ORM\Mapping\ClassMetadata::class);
         $em->method('getClassMetadata')->willReturn($metadata);
@@ -117,9 +126,9 @@ class QueueAuditTransportTest extends TestCase
         $this->bus->expects($this->once())
             ->method('dispatch')
             ->with(self::callback(function (AuditLogMessage $message) {
-                return '123' === $message->entityId;
+                return $message->entityId === '123';
             }))
-            ->willReturn(new Envelope(new \stdClass()));
+            ->willReturn(new Envelope(new stdClass()));
 
         $this->transport->send($log, $context);
     }

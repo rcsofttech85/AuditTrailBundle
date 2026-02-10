@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
+use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -12,6 +13,7 @@ use Rcsofttech\AuditTrailBundle\Command\VerifyIntegrityCommand;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+use ReflectionClass;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -20,7 +22,9 @@ use Symfony\Component\Console\Tester\CommandTester;
 class VerifyIntegrityCommandTest extends TestCase
 {
     private AuditLogRepository&MockObject $repository;
+
     private AuditIntegrityServiceInterface&MockObject $integrityService;
+
     private CommandTester $commandTester;
 
     protected function setUp(): void
@@ -34,7 +38,7 @@ class VerifyIntegrityCommandTest extends TestCase
 
     private function setLogId(AuditLog $log, int $id): void
     {
-        $reflection = new \ReflectionClass($log);
+        $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
         $property->setValue($log, $id);
     }
@@ -77,7 +81,7 @@ class VerifyIntegrityCommandTest extends TestCase
         $log->setEntityClass('App\Entity\User');
         $log->setEntityId('1');
         $log->setAction('update');
-        $log->setCreatedAt(new \DateTimeImmutable('2024-01-01 12:00:00'));
+        $log->setCreatedAt(new DateTimeImmutable('2024-01-01 12:00:00'));
 
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->repository->method('find')->with(1)->willReturn($log);
@@ -100,7 +104,7 @@ class VerifyIntegrityCommandTest extends TestCase
         $log->setEntityClass('App\Entity\User');
         $log->setEntityId('1');
         $log->setAction('update');
-        $log->setCreatedAt(new \DateTimeImmutable());
+        $log->setCreatedAt(new DateTimeImmutable());
 
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->repository->method('find')->with(1)->willReturn($log);
@@ -158,7 +162,7 @@ class VerifyIntegrityCommandTest extends TestCase
         $log1->setEntityClass('User');
         $log1->setEntityId('1');
         $log1->setAction('update');
-        $log1->setCreatedAt(new \DateTimeImmutable('2024-01-01 10:00:00'));
+        $log1->setCreatedAt(new DateTimeImmutable('2024-01-01 10:00:00'));
 
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->repository->method('count')->willReturn(1);
@@ -191,11 +195,11 @@ class VerifyIntegrityCommandTest extends TestCase
                 100,
                 self::callback(function ($offset) use (&$callCount) {
                     ++$callCount;
-                    if (1 === $callCount) {
-                        return 0 === $offset;
+                    if ($callCount === 1) {
+                        return $offset === 0;
                     }
 
-                    return 100 === $offset;
+                    return $offset === 100;
                 })
             )
             ->willReturnOnConsecutiveCalls($batch1, $batch2);

@@ -4,20 +4,23 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\DependencyInjection;
 
+use LogicException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessageSerializer;
 use Rcsofttech\AuditTrailBundle\Transport\ChainAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
-use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessageSerializer;
+use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
 use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
-use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+
+use function count;
 
 final class AuditTrailExtension extends Extension implements PrependExtensionInterface
 {
@@ -46,7 +49,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         $container->setParameter('audit_trail.integrity.secret', $config['integrity']['secret'] ?? '');
         $container->setParameter('audit_trail.integrity.algorithm', $config['integrity']['algorithm'] ?? 'sha256');
 
-        $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
+        $loader = new YamlFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'));
         $loader->load('services.yaml');
 
         $this->configureTransports($config, $container);
@@ -65,7 +68,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
                     'RcsofttechAuditTrailBundle' => [
                         'is_bundle' => false,
                         'type' => 'attribute',
-                        'dir' => __DIR__ . '/../Entity',
+                        'dir' => __DIR__.'/../Entity',
                         'prefix' => 'Rcsofttech\AuditTrailBundle\Entity',
                         'alias' => 'AuditTrail',
                     ],
@@ -88,15 +91,15 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     {
         $transports = [];
 
-        if (true === $config['transports']['doctrine']) {
+        if ($config['transports']['doctrine'] === true) {
             $transports[] = $this->registerDoctrineTransport($container);
         }
 
-        if (true === $config['transports']['http']['enabled']) {
+        if ($config['transports']['http']['enabled'] === true) {
             $transports[] = $this->registerHttpTransport($container, $config['transports']['http']);
         }
 
-        if (true === $config['transports']['queue']['enabled']) {
+        if ($config['transports']['queue']['enabled'] === true) {
             $transports[] = $this->registerQueueTransport($container, $config['transports']['queue']);
         }
 
@@ -119,7 +122,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     private function registerHttpTransport(ContainerBuilder $container, array $config): string
     {
         if (!interface_exists(HttpClientInterface::class)) {
-            throw new \LogicException('To use the HTTP transport, you must install the symfony/http-client package.');
+            throw new LogicException('To use the HTTP transport, you must install the symfony/http-client package.');
         }
 
         $id = 'rcsofttech_audit_trail.transport.http';
@@ -139,7 +142,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     private function registerQueueTransport(ContainerBuilder $container, array $config): string
     {
         if (!interface_exists(MessageBusInterface::class)) {
-            throw new \LogicException('To use the Queue transport, you must install the symfony/messenger package.');
+            throw new LogicException('To use the Queue transport, you must install the symfony/messenger package.');
         }
 
         $id = 'rcsofttech_audit_trail.transport.queue';
@@ -148,7 +151,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
             ->setArgument('$apiKey', $config['api_key'])
             ->addTag('audit_trail.transport');
 
-        if (isset($config['bus']) && '' !== $config['bus']) {
+        if (isset($config['bus']) && $config['bus'] !== '') {
             $definition->setArgument('$bus', new Reference($config['bus']));
         }
 

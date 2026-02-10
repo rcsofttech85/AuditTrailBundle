@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Event;
 
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;

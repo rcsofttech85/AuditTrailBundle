@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditEntry;
+use ReflectionClass;
 
 #[CoversClass(AuditEntry::class)]
 #[AllowMockObjectsWithoutExpectations()]
@@ -39,15 +40,15 @@ class AuditEntryTest extends TestCase
         $softDeleteLog = $this->createAuditLog(AuditLogInterface::ACTION_SOFT_DELETE);
         $restoreLog = $this->createAuditLog(AuditLogInterface::ACTION_RESTORE);
 
-        self::assertTrue((new AuditEntry($createLog))->isCreate());
-        self::assertFalse((new AuditEntry($createLog))->isUpdate());
+        self::assertTrue(new AuditEntry($createLog)->isCreate());
+        self::assertFalse(new AuditEntry($createLog)->isUpdate());
 
-        self::assertTrue((new AuditEntry($updateLog))->isUpdate());
-        self::assertFalse((new AuditEntry($updateLog))->isDelete());
+        self::assertTrue(new AuditEntry($updateLog)->isUpdate());
+        self::assertFalse(new AuditEntry($updateLog)->isDelete());
 
-        self::assertTrue((new AuditEntry($deleteLog))->isDelete());
-        self::assertTrue((new AuditEntry($softDeleteLog))->isSoftDelete());
-        self::assertTrue((new AuditEntry($restoreLog))->isRestore());
+        self::assertTrue(new AuditEntry($deleteLog)->isDelete());
+        self::assertTrue(new AuditEntry($softDeleteLog)->isSoftDelete());
+        self::assertTrue(new AuditEntry($restoreLog)->isRestore());
     }
 
     public function testGetDiffReturnsOldAndNewValues(): void
@@ -133,7 +134,7 @@ class AuditEntryTest extends TestCase
         $log->setChangedFields(['name', 'email']);
 
         // Use reflection to set the ID
-        $reflection = new \ReflectionClass($log);
+        $reflection = new ReflectionClass($log);
         $idProperty = $reflection->getProperty('id');
         $idProperty->setValue($log, 1);
 

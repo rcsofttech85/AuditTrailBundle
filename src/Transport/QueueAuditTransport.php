@@ -15,6 +15,9 @@ use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
 use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
+use Throwable;
+
+use const JSON_THROW_ON_ERROR;
 
 final class QueueAuditTransport implements AuditTransportInterface
 {
@@ -32,7 +35,6 @@ final class QueueAuditTransport implements AuditTransportInterface
      */
     public function send(AuditLogInterface $log, array $context = []): void
     {
-
         $entityId = EntityIdResolver::resolve($log, $context) ?? $log->getEntityId();
 
         $message = AuditLogMessage::createFromAuditLog($log, $entityId);
@@ -47,7 +49,7 @@ final class QueueAuditTransport implements AuditTransportInterface
         try {
             $stamps = $event->getStamps();
 
-            if (null !== $this->apiKey) {
+            if ($this->apiKey !== null) {
                 $stamps[] = new ApiKeyStamp($this->apiKey);
             }
 
@@ -59,7 +61,7 @@ final class QueueAuditTransport implements AuditTransportInterface
             }
 
             $this->bus->dispatch($message, $stamps);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->logger->error('Failed to dispatch audit message to queue', [
                 'entity_class' => $log->getEntityClass(),
                 'entity_id' => $entityId,
@@ -70,6 +72,6 @@ final class QueueAuditTransport implements AuditTransportInterface
 
     public function supports(string $phase, array $context = []): bool
     {
-        return 'post_flush' === $phase;
+        return $phase === 'post_flush';
     }
 }

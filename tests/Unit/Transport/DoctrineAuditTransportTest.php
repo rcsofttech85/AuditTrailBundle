@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
 use Doctrine\ORM\EntityManagerInterface;
@@ -9,6 +11,7 @@ use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
+use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class DoctrineAuditTransportTest extends TestCase
@@ -44,7 +47,7 @@ class DoctrineAuditTransportTest extends TestCase
         $log = new AuditLog();
         $log->setEntityId('pending');
 
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
         $meta = self::createStub(ClassMetadata::class);
 
@@ -67,7 +70,7 @@ class DoctrineAuditTransportTest extends TestCase
         $log = new AuditLog();
         $log->setEntityId('pending');
 
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
         $meta = self::createStub(ClassMetadata::class);
 

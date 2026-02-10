@@ -26,7 +26,7 @@ final class TablePrefixSubscriber
             return;
         }
 
-        if ('' === $this->tablePrefix && '' === $this->tableSuffix) {
+        if ($this->tablePrefix === '' && $this->tableSuffix === '') {
             return;
         }
 

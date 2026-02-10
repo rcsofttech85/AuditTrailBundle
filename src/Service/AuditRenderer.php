@@ -9,6 +9,14 @@ use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Output\OutputInterface;
 
+use function is_array;
+use function is_bool;
+use function sprintf;
+use function strlen;
+
+use const JSON_UNESCAPED_SLASHES;
+use const JSON_UNESCAPED_UNICODE;
+
 class AuditRenderer
 {
     use ClassNameHelperTrait;
@@ -38,7 +46,7 @@ class AuditRenderer
     public function buildRow(AuditLogInterface $audit, bool $showDetails): array
     {
         $user = $audit->getUsername() ?? (string) $audit->getUserId();
-        if ('' === $user) {
+        if ($user === '') {
             $user = '-';
         }
         $hash = $this->shortenHash($audit->getTransactionHash());
@@ -88,7 +96,7 @@ class AuditRenderer
      */
     private function isEmptyAudit(array $old, array $new, array $changed): bool
     {
-        return [] === $old && [] === $new && [] === $changed;
+        return $old === [] && $new === [] && $changed === [];
     }
 
     /**
@@ -127,7 +135,7 @@ class AuditRenderer
      */
     private function determineFieldsToShow(array $changedFields, array $oldValues, array $newValues): array
     {
-        if ([] !== $changedFields) {
+        if ($changedFields !== []) {
             return $changedFields;
         }
 
@@ -136,7 +144,7 @@ class AuditRenderer
 
     public function formatValue(mixed $value): string
     {
-        if (null === $value) {
+        if ($value === null) {
             return 'null';
         }
 
@@ -158,16 +166,16 @@ class AuditRenderer
     {
         $json = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
-        return false !== $json ? $json : '[]';
+        return $json !== false ? $json : '[]';
     }
 
     private function truncateString(string $str): string
     {
-        return strlen($str) > 50 ? substr($str, 0, 47) . '...' : $str;
+        return strlen($str) > 50 ? substr($str, 0, 47).'...' : $str;
     }
 
     public function shortenHash(?string $hash): string
     {
-        return (null !== $hash && '' !== $hash) ? substr($hash, 0, 8) : '-';
+        return ($hash !== null && $hash !== '') ? substr($hash, 0, 8) : '-';
     }
 }

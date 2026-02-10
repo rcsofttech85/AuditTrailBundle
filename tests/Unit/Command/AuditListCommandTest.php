@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
+use DateTimeImmutable;
+use DateTimeInterface;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -18,6 +20,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 class AuditListCommandTest extends TestCase
 {
     private AuditLogRepository&MockObject $repository;
+
     private CommandTester $commandTester;
 
     protected function setUp(): void
@@ -93,9 +96,9 @@ class AuditListCommandTest extends TestCase
             ->method('findWithFilters')
             ->with(
                 self::callback(function (array $filters) {
-                    return 'TestEntity' === $filters['entityClass']
-                        && 'update' === $filters['action']
-                        && '123' === $filters['userId'];
+                    return $filters['entityClass'] === 'TestEntity'
+                        && $filters['action'] === 'update'
+                        && $filters['userId'] === '123';
                 }),
                 50
             )
@@ -135,7 +138,7 @@ class AuditListCommandTest extends TestCase
             ->method('findWithFilters')
             ->with(
                 self::callback(function (array $filters) {
-                    return 'abc-123' === $filters['transactionHash'];
+                    return $filters['transactionHash'] === 'abc-123';
                 }),
                 50
             )
@@ -187,9 +190,9 @@ class AuditListCommandTest extends TestCase
             ->with(
                 self::callback(function (array $filters) {
                     return isset($filters['from'])
-                        && $filters['from'] instanceof \DateTimeInterface
+                        && $filters['from'] instanceof DateTimeInterface
                         && isset($filters['to'])
-                        && $filters['to'] instanceof \DateTimeInterface;
+                        && $filters['to'] instanceof DateTimeInterface;
                 }),
                 50
             )
@@ -280,7 +283,7 @@ class AuditListCommandTest extends TestCase
         $audit->method('getEntityClass')->willReturn($entityClass);
         $audit->method('getEntityId')->willReturn($entityId);
         $audit->method('getAction')->willReturn($action);
-        $audit->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2024-01-01 12:00:00'));
+        $audit->method('getCreatedAt')->willReturn(new DateTimeImmutable('2024-01-01 12:00:00'));
         $audit->method('getUsername')->willReturn('test_user');
         $audit->method('getChangedFields')->willReturn(['title']);
         $audit->method('getOldValues')->willReturn(['title' => 'Old Title']);

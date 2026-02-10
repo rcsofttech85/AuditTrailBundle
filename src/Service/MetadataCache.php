@@ -4,9 +4,16 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
-use Rcsofttech\AuditTrailBundle\Attribute\AuditCondition;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
+use Rcsofttech\AuditTrailBundle\Attribute\AuditCondition;
 use Rcsofttech\AuditTrailBundle\Attribute\Sensitive;
+use ReflectionAttribute;
+use ReflectionClass;
+use ReflectionException;
+use SensitiveParameter;
+
+use function array_key_exists;
+use function count;
 
 class MetadataCache
 {
@@ -23,7 +30,7 @@ class MetadataCache
 
     public function getAuditableAttribute(string $class): ?Auditable
     {
-        if (\array_key_exists($class, $this->auditableCache)) {
+        if (array_key_exists($class, $this->auditableCache)) {
             return $this->auditableCache[$class];
         }
 
@@ -36,7 +43,7 @@ class MetadataCache
 
     public function getAuditCondition(string $class): ?AuditCondition
     {
-        if (\array_key_exists($class, $this->conditionCache)) {
+        if (array_key_exists($class, $this->conditionCache)) {
             return $this->conditionCache[$class];
         }
 
@@ -55,7 +62,7 @@ class MetadataCache
      */
     public function getSensitiveFields(string $class): array
     {
-        if (\array_key_exists($class, $this->sensitiveFieldsCache)) {
+        if (array_key_exists($class, $this->sensitiveFieldsCache)) {
             return $this->sensitiveFieldsCache[$class];
         }
 
@@ -74,7 +81,7 @@ class MetadataCache
      */
     private function ensureCacheSize(array &$cache): void
     {
-        if (\count($cache) >= self::MAX_CACHE_SIZE) {
+        if (count($cache) >= self::MAX_CACHE_SIZE) {
             array_shift($cache);
         }
     }
@@ -94,12 +101,12 @@ class MetadataCache
                 if (!class_exists($currentClass)) {
                     break;
                 }
-                $reflection = new \ReflectionClass($currentClass);
+                $reflection = new ReflectionClass($currentClass);
                 $attributes = $reflection->getAttributes($attributeClass);
-                if ([] !== $attributes) {
+                if ($attributes !== []) {
                     return $attributes[0]->newInstance();
                 }
-            } catch (\ReflectionException) {
+            } catch (ReflectionException) {
                 break;
             }
             $currentClass = get_parent_class($currentClass);
@@ -119,11 +126,11 @@ class MetadataCache
             if (!class_exists($class)) {
                 return [];
             }
-            $reflection = new \ReflectionClass($class);
+            $reflection = new ReflectionClass($class);
 
             $this->analyzeProperties($reflection, $sensitiveFields);
             $this->analyzeConstructorParameters($reflection, $sensitiveFields);
-        } catch (\ReflectionException) {
+        } catch (ReflectionException) {
             // Ignore
         }
 
@@ -131,15 +138,15 @@ class MetadataCache
     }
 
     /**
-     * @param \ReflectionClass<object> $reflection
-     * @param array<string, string>    $sensitiveFields
+     * @param ReflectionClass<object> $reflection
+     * @param array<string, string>   $sensitiveFields
      */
-    private function analyzeProperties(\ReflectionClass $reflection, array &$sensitiveFields): void
+    private function analyzeProperties(ReflectionClass $reflection, array &$sensitiveFields): void
     {
         foreach ($reflection->getProperties() as $property) {
-            /** @var list<\ReflectionAttribute<Sensitive>> $attributes */
+            /** @var list<ReflectionAttribute<Sensitive>> $attributes */
             $attributes = $property->getAttributes(Sensitive::class);
-            if ([] !== $attributes) {
+            if ($attributes !== []) {
                 /** @var Sensitive $sensitive */
                 $sensitive = $attributes[0]->newInstance();
                 $sensitiveFields[$property->getName()] = $sensitive->mask;
@@ -148,16 +155,16 @@ class MetadataCache
     }
 
     /**
-     * @param \ReflectionClass<object> $reflection
-     * @param array<string, string>    $sensitiveFields
+     * @param ReflectionClass<object> $reflection
+     * @param array<string, string>   $sensitiveFields
      */
-    private function analyzeConstructorParameters(\ReflectionClass $reflection, array &$sensitiveFields): void
+    private function analyzeConstructorParameters(ReflectionClass $reflection, array &$sensitiveFields): void
     {
         $constructor = $reflection->getConstructor();
-        if (null !== $constructor) {
+        if ($constructor !== null) {
             foreach ($constructor->getParameters() as $param) {
-                $attributes = $param->getAttributes(\SensitiveParameter::class);
-                if ([] !== $attributes && $param->isPromoted() && !isset($sensitiveFields[$param->getName()])) {
+                $attributes = $param->getAttributes(SensitiveParameter::class);
+                if ($attributes !== [] && $param->isPromoted() && !isset($sensitiveFields[$param->getName()])) {
                     $sensitiveFields[$param->getName()] = '**REDACTED**';
                 }
             }

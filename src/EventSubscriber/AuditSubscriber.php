@@ -19,6 +19,7 @@ use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Symfony\Contracts\Service\ResetInterface;
+use Throwable;
 
 #[AsDoctrineListener(event: Events::onFlush, priority: 1000)]
 #[AsDoctrineListener(event: Events::postFlush, priority: 1000)]
@@ -28,6 +29,7 @@ final class AuditSubscriber implements ResetInterface
     private const int BATCH_FLUSH_THRESHOLD = 500;
 
     private bool $isFlushing = false;
+
     private int $recursionDepth = 0;
 
     public function __construct(
@@ -97,11 +99,11 @@ final class AuditSubscriber implements ResetInterface
         $hasNewAudits = false;
         foreach ($this->auditManager->getPendingDeletions() as $pending) {
             $action = $this->changeProcessor->determineDeletionAction($em, $pending['entity'], $this->enableHardDelete);
-            if (null === $action) {
+            if ($action === null) {
                 continue;
             }
 
-            $newData = AuditLogInterface::ACTION_SOFT_DELETE === $action
+            $newData = $action === AuditLogInterface::ACTION_SOFT_DELETE
                 ? $this->auditService->getEntityData($pending['entity'])
                 : null;
             $audit = $this->auditService->createAuditLog($pending['entity'], $action, $pending['data'], $newData);
@@ -122,7 +124,7 @@ final class AuditSubscriber implements ResetInterface
         foreach ($this->auditManager->getScheduledAudits() as $scheduled) {
             if ($scheduled['is_insert']) {
                 $id = EntityIdResolver::resolveFromEntity($scheduled['entity'], $em);
-                if (EntityIdResolver::PENDING_ID !== $id) {
+                if ($id !== EntityIdResolver::PENDING_ID) {
                     $scheduled['audit']->setEntityId($id);
                 }
             }
@@ -176,7 +178,7 @@ final class AuditSubscriber implements ResetInterface
         $this->isFlushing = true;
         try {
             $em->flush();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->logger?->critical('Failed to flush audits', ['exception' => $e->getMessage()]);
         } finally {
             $this->isFlushing = false;

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures;
 
 use Rcsofttech\AuditTrailBundle\Attribute\Sensitive;
+use SensitiveParameter;
 
 class SensitiveEntity
 {
@@ -14,7 +15,7 @@ class SensitiveEntity
     public string $public = 'val';
 
     public function __construct(
-        #[\SensitiveParameter]
+        #[SensitiveParameter]
         public string $password = 'pass',
     ) {
     }

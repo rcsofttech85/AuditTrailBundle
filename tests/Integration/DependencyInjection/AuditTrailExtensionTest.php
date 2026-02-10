@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Tests\Integration\DependencyInjection;
 
 use PHPUnit\Framework\TestCase;

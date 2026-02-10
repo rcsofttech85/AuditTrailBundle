@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use DateTime;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query\FilterCollection;
@@ -19,6 +20,7 @@ use Rcsofttech\AuditTrailBundle\Service\RevertValueDenormalizer;
 use Rcsofttech\AuditTrailBundle\Service\SoftDeleteHandler;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\DummySoftDeleteableFilter;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\RevertTestUser;
+use RuntimeException;
 use Symfony\Component\Validator\ConstraintViolation;
 use Symfony\Component\Validator\ConstraintViolationList;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -32,11 +34,17 @@ if (!class_exists('Gedmo\SoftDeleteable\Filter\SoftDeleteableFilter')) {
 class AuditReverterTest extends TestCase
 {
     private EntityManagerInterface&MockObject $em;
+
     private ValidatorInterface&MockObject $validator;
+
     private AuditService&MockObject $auditService;
+
     private FilterCollection&MockObject $filterCollection;
+
     private SoftDeleteHandler&MockObject $softDeleteHandler;
+
     private AuditIntegrityServiceInterface&MockObject $integrityService;
+
     private AuditReverter $reverter;
 
     protected function setUp(): void
@@ -69,7 +77,7 @@ class AuditReverterTest extends TestCase
         $this->filterCollection->method('getEnabledFilters')->willReturn([]);
         $this->em->method('find')->willReturn(null);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('not found');
 
         $this->reverter->revert($log);
@@ -110,7 +118,7 @@ class AuditReverterTest extends TestCase
         $this->filterCollection->method('getEnabledFilters')->willReturn([]);
         $this->em->method('find')->willReturn(new RevertTestUser());
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('not supported');
 
         $this->reverter->revert($log);
@@ -127,7 +135,7 @@ class AuditReverterTest extends TestCase
         $this->filterCollection->method('getEnabledFilters')->willReturn([]);
         $this->em->method('find')->willReturn(new RevertTestUser());
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('No old values');
 
         $this->reverter->revert($log);
@@ -178,7 +186,7 @@ class AuditReverterTest extends TestCase
         $violations->add(new ConstraintViolation('Error', null, [], null, 'path', 'val'));
         $this->validator->method('validate')->willReturn($violations);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->reverter->revert($log);
     }
 
@@ -261,7 +269,7 @@ class AuditReverterTest extends TestCase
         $log->setAction(AuditLogInterface::ACTION_SOFT_DELETE);
 
         $entity = new RevertTestUser();
-        $entity->setDeletedAt(new \DateTime());
+        $entity->setDeletedAt(new DateTime());
 
         $this->filterCollection->method('getEnabledFilters')->willReturn([]);
         $this->em->method('find')->willReturn($entity);

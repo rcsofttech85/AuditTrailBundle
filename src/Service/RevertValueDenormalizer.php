@@ -4,8 +4,19 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use DateTime;
+use DateTimeImmutable;
+use DateTimeInterface;
+use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Exception;
+
+use function in_array;
+use function is_array;
+use function is_object;
+use function is_scalar;
+use function is_string;
 
 class RevertValueDenormalizer
 {
@@ -19,7 +30,7 @@ class RevertValueDenormalizer
      */
     public function denormalize(ClassMetadata $metadata, string $field, mixed $value): mixed
     {
-        if (null === $value) {
+        if ($value === null) {
             return null;
         }
 
@@ -51,21 +62,21 @@ class RevertValueDenormalizer
 
     public function valuesAreEqual(mixed $currentValue, mixed $newValue): bool
     {
-        if ($currentValue instanceof \DateTimeInterface && $newValue instanceof \DateTimeInterface) {
-            return $currentValue->format(\DateTimeInterface::ATOM) === $newValue->format(\DateTimeInterface::ATOM);
+        if ($currentValue instanceof DateTimeInterface && $newValue instanceof DateTimeInterface) {
+            return $currentValue->format(DateTimeInterface::ATOM) === $newValue->format(DateTimeInterface::ATOM);
         }
 
         return $currentValue === $newValue;
     }
 
-    private function denormalizeDateTime(mixed $value, string $type): ?\DateTimeInterface
+    private function denormalizeDateTime(mixed $value, string $type): ?DateTimeInterface
     {
-        if ($value instanceof \DateTimeInterface) {
+        if ($value instanceof DateTimeInterface) {
             return $value;
         }
 
         $isImmutable = str_contains($type, 'immutable');
-        $dateTimeClass = $isImmutable ? \DateTimeImmutable::class : \DateTime::class;
+        $dateTimeClass = $isImmutable ? DateTimeImmutable::class : DateTime::class;
 
         if (is_array($value) && isset($value['date'])) {
             return $this->denormalizeDateTimeFromArray($value, $dateTimeClass);
@@ -79,22 +90,22 @@ class RevertValueDenormalizer
     }
 
     /**
-     * @param array<string, mixed>             $value
-     * @param class-string<\DateTimeInterface> $dateTimeClass
+     * @param array<string, mixed>            $value
+     * @param class-string<DateTimeInterface> $dateTimeClass
      */
-    private function denormalizeDateTimeFromArray(array $value, string $dateTimeClass): ?\DateTimeInterface
+    private function denormalizeDateTimeFromArray(array $value, string $dateTimeClass): ?DateTimeInterface
     {
         try {
-            return new $dateTimeClass($value['date'], new \DateTimeZone($value['timezone'] ?? 'UTC'));
-        } catch (\Exception) {
+            return new $dateTimeClass($value['date'], new DateTimeZone($value['timezone'] ?? 'UTC'));
+        } catch (Exception) {
             return null;
         }
     }
 
     /**
-     * @param class-string<\DateTimeInterface> $dateTimeClass
+     * @param class-string<DateTimeInterface> $dateTimeClass
      */
-    private function denormalizeDateTimeFromString(string $value, string $dateTimeClass): \DateTimeInterface
+    private function denormalizeDateTimeFromString(string $value, string $dateTimeClass): DateTimeInterface
     {
         return new $dateTimeClass($value);
     }

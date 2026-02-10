@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Query;
 
+use DateTimeImmutable;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+
+use function in_array;
 
 /**
  * Rich value object wrapping an AuditLog with diff helpers.
@@ -49,7 +52,7 @@ class AuditEntry
             $parts = explode('\\', $this->log->getEntityClass());
             $shortName = end($parts);
 
-            return ('' !== $shortName) ? $shortName : $this->log->getEntityClass();
+            return ($shortName !== '') ? $shortName : $this->log->getEntityClass();
         }
     }
 
@@ -124,13 +127,13 @@ class AuditEntry
         return $this->transactionHash;
     }
 
-    public \DateTimeImmutable $createdAt {
+    public DateTimeImmutable $createdAt {
         get {
             return $this->log->getCreatedAt();
         }
     }
 
-    public function getCreatedAt(): \DateTimeImmutable
+    public function getCreatedAt(): DateTimeImmutable
     {
         return $this->createdAt;
     }
@@ -228,7 +231,7 @@ class AuditEntry
     {
         $changedFields = $this->log->getChangedFields() ?? [];
 
-        return \in_array($field, $changedFields, true);
+        return in_array($field, $changedFields, true);
     }
 
     /**

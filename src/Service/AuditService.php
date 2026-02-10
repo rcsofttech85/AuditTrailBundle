@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
@@ -13,6 +14,9 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
+use Throwable;
+
+use function in_array;
 
 class AuditService
 {
@@ -35,8 +39,10 @@ class AuditService
         private readonly array $ignoredProperties = [],
         private readonly ?LoggerInterface $logger = null,
         private readonly string $timezone = 'UTC',
-        #[AutowireIterator('audit_trail.voter')] private readonly iterable $voters = [],
-        #[AutowireIterator('audit_trail.context_contributor')] private readonly iterable $contributors = [],
+        #[AutowireIterator('audit_trail.voter')]
+        private readonly iterable $voters = [],
+        #[AutowireIterator('audit_trail.context_contributor')]
+        private readonly iterable $contributors = [],
     ) {
     }
 
@@ -52,13 +58,13 @@ class AuditService
     ): bool {
         $class = $entity::class;
 
-        if (\in_array($class, $this->ignoredEntities, true)) {
+        if (in_array($class, $this->ignoredEntities, true)) {
             return false;
         }
 
         $auditable = $this->metadataCache->getAuditableAttribute($class);
 
-        if (null === $auditable || !$auditable->enabled) {
+        if ($auditable === null || !$auditable->enabled) {
             return false;
         }
 
@@ -95,7 +101,7 @@ class AuditService
         $ignored = [...$this->ignoredProperties, ...$additionalIgnored];
 
         $auditable = $this->metadataCache->getAuditableAttribute($entity::class);
-        if (null !== $auditable) {
+        if ($auditable !== null) {
             $ignored = [...$ignored, ...$auditable->ignoredProperties];
         }
 
@@ -120,7 +126,7 @@ class AuditService
         $auditLog->setEntityClass($entity::class);
 
         $entityId = EntityIdResolver::resolveFromEntity($entity, $this->entityManager);
-        if (self::PENDING_ID === $entityId && AuditLogInterface::ACTION_DELETE === $action && null !== $oldValues) {
+        if ($entityId === self::PENDING_ID && $action === AuditLogInterface::ACTION_DELETE && $oldValues !== null) {
             $entityId = EntityIdResolver::resolveFromValues(
                 $entity,
                 $oldValues,
@@ -133,13 +139,13 @@ class AuditService
         $auditLog->setOldValues($oldValues);
         $auditLog->setNewValues($newValues);
 
-        if (AuditLogInterface::ACTION_UPDATE === $action && null !== $newValues) {
+        if ($action === AuditLogInterface::ACTION_UPDATE && $newValues !== null) {
             $auditLog->setChangedFields(array_keys($newValues));
         }
 
         $this->enrichWithUserContext($auditLog, $entity, $context);
         $auditLog->setTransactionHash($this->transactionIdGenerator->getTransactionId());
-        $auditLog->setCreatedAt($this->clock->now()->setTimezone(new \DateTimeZone($this->timezone)));
+        $auditLog->setCreatedAt($this->clock->now()->setTimezone(new DateTimeZone($this->timezone)));
 
         return $auditLog;
     }
@@ -165,7 +171,7 @@ class AuditService
 
             $context = [...$auditLog->getContext(), ...$extraContext];
             $impersonatorId = $this->userResolver->getImpersonatorId();
-            if (null !== $impersonatorId) {
+            if ($impersonatorId !== null) {
                 $context['impersonation'] = [
                     'impersonator_id' => $impersonatorId,
                     'impersonator_username' => $this->userResolver->getImpersonatorUsername(),
@@ -181,7 +187,7 @@ class AuditService
             }
 
             $auditLog->setContext($context);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->logger?->error('Failed to set user context', ['exception' => $e->getMessage()]);
         }
     }

@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -14,14 +15,19 @@ use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
+use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class EntityDataExtractorTest extends TestCase
 {
     private EntityManagerInterface&MockObject $em;
+
     private ValueSerializer&MockObject $serializer;
+
     private MetadataCache&MockObject $metadataCache;
+
     private LoggerInterface&MockObject $logger;
+
     private EntityDataExtractor $extractor;
 
     protected function setUp(): void
@@ -41,7 +47,7 @@ class EntityDataExtractorTest extends TestCase
 
     public function testExtractSuccess(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $meta = $this->createMock(ClassMetadata::class);
 
         $this->em->method('getClassMetadata')->willReturn($meta);
@@ -54,7 +60,7 @@ class EntityDataExtractorTest extends TestCase
         $meta->method('getFieldValue')->willReturnMap([
             [$entity, 'name', 'John'],
             [$entity, 'password', 'secret'],
-            [$entity, 'profile', new \stdClass()],
+            [$entity, 'profile', new stdClass()],
         ]);
 
         $this->serializer->method('serialize')->willReturnMap([
@@ -76,7 +82,7 @@ class EntityDataExtractorTest extends TestCase
 
     public function testExtractWithIgnoredProperties(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $meta = $this->createMock(ClassMetadata::class);
 
         $this->em->method('getClassMetadata')->willReturn($meta);
@@ -99,8 +105,8 @@ class EntityDataExtractorTest extends TestCase
 
     public function testExtractException(): void
     {
-        $entity = new \stdClass();
-        $this->em->method('getClassMetadata')->willThrowException(new \Exception('Error'));
+        $entity = new stdClass();
+        $this->em->method('getClassMetadata')->willThrowException(new Exception('Error'));
 
         $this->logger->expects($this->once())->method('error');
 
@@ -112,7 +118,7 @@ class EntityDataExtractorTest extends TestCase
 
     public function testGetFieldValueSafelyException(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $meta = $this->createMock(ClassMetadata::class);
 
         $this->em->method('getClassMetadata')->willReturn($meta);
@@ -122,7 +128,7 @@ class EntityDataExtractorTest extends TestCase
         $meta->method('getFieldNames')->willReturn(['broken_field']);
         $meta->method('getAssociationNames')->willReturn([]);
 
-        $meta->method('getFieldValue')->willThrowException(new \Exception());
+        $meta->method('getFieldValue')->willThrowException(new Exception());
 
         $data = $this->extractor->extract($entity);
 

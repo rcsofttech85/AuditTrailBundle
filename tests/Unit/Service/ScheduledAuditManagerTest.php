@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use OverflowException;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
+use stdClass;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 #[AllowMockObjectsWithoutExpectations]
@@ -17,7 +19,7 @@ class ScheduledAuditManagerTest extends TestCase
     public function testSchedule(): void
     {
         $manager = new ScheduledAuditManager();
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $log = new AuditLog();
 
         $manager->schedule($entity, $log, true);
@@ -35,7 +37,7 @@ class ScheduledAuditManagerTest extends TestCase
     public function testScheduleOverflow(): void
     {
         $manager = new ScheduledAuditManager();
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $log = new AuditLog();
 
         // Fill up to max (1000)
@@ -43,7 +45,7 @@ class ScheduledAuditManagerTest extends TestCase
             $manager->schedule($entity, $log, true);
         }
 
-        $this->expectException(\OverflowException::class);
+        $this->expectException(OverflowException::class);
         $manager->schedule($entity, $log, true);
     }
 
@@ -55,13 +57,13 @@ class ScheduledAuditManagerTest extends TestCase
             ->with(self::isInstanceOf(AuditLogCreatedEvent::class), AuditLogCreatedEvent::NAME);
 
         $manager = new ScheduledAuditManager($dispatcher);
-        $manager->schedule(new \stdClass(), new AuditLog(), false);
+        $manager->schedule(new stdClass(), new AuditLog(), false);
     }
 
     public function testPendingDeletions(): void
     {
         $manager = new ScheduledAuditManager();
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $data = ['id' => 1];
 
         $manager->addPendingDeletion($entity, $data, true);
@@ -76,8 +78,8 @@ class ScheduledAuditManagerTest extends TestCase
     public function testClear(): void
     {
         $manager = new ScheduledAuditManager();
-        $manager->schedule(new \stdClass(), new AuditLog(), true);
-        $manager->addPendingDeletion(new \stdClass(), [], true);
+        $manager->schedule(new stdClass(), new AuditLog(), true);
+        $manager->addPendingDeletion(new stdClass(), [], true);
 
         $manager->clear();
 

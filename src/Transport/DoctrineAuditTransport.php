@@ -20,9 +20,9 @@ final class DoctrineAuditTransport implements AuditTransportInterface
     {
         $phase = $context['phase'] ?? null;
 
-        if ('on_flush' === $phase) {
+        if ($phase === 'on_flush') {
             $this->handleOnFlush($log, $context);
-        } elseif ('post_flush' === $phase) {
+        } elseif ($phase === 'post_flush') {
             $this->handlePostFlush($log, $context);
         }
     }
@@ -63,11 +63,11 @@ final class DoctrineAuditTransport implements AuditTransportInterface
         // Doctrine will pick this change up when the subscriber does the final flush.
         $entityId = EntityIdResolver::resolve($log, $context);
 
-        if (null !== $entityId) {
+        if ($entityId !== null) {
             $log->setEntityId($entityId);
         }
 
-        if (null !== $entityId) {
+        if ($entityId !== null) {
             $log->setEntityId($entityId);
         }
     }

@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Event;
 
+use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
@@ -83,7 +86,7 @@ class AuditMessageStampEventTest extends TestCase
             null,
             null,
             [],
-            new \DateTimeImmutable()
+            new DateTimeImmutable()
         );
     }
 }

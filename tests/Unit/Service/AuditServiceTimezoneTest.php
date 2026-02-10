@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
@@ -13,9 +15,9 @@ use Psr\Clock\ClockInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
-use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
+use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 
 #[AllowMockObjectsWithoutExpectations]
 #[CoversClass(AuditService::class)]
@@ -28,7 +30,7 @@ final class AuditServiceTimezoneTest extends TestCase
         $clock = self::createStub(ClockInterface::class);
 
         // Mock current time as UTC
-        $now = new \DateTimeImmutable('2023-01-01 12:00:00', new \DateTimeZone('UTC'));
+        $now = new DateTimeImmutable('2023-01-01 12:00:00', new DateTimeZone('UTC'));
         $clock->method('now')->willReturn($now);
 
         // Configure service with 'Asia/Kolkata' (UTC+5:30)
@@ -45,7 +47,7 @@ final class AuditServiceTimezoneTest extends TestCase
             'Asia/Kolkata'
         );
 
-        $entity = new class () {
+        $entity = new class {
             public function getId(): int
             {
                 return 1;
@@ -69,7 +71,7 @@ final class AuditServiceTimezoneTest extends TestCase
         $userResolver = self::createStub(UserResolverInterface::class);
         $clock = self::createStub(ClockInterface::class);
 
-        $now = new \DateTimeImmutable('2023-01-01 12:00:00', new \DateTimeZone('UTC'));
+        $now = new DateTimeImmutable('2023-01-01 12:00:00', new DateTimeZone('UTC'));
         $clock->method('now')->willReturn($now);
 
         // Default timezone is UTC
@@ -84,7 +86,7 @@ final class AuditServiceTimezoneTest extends TestCase
             [] // ignoredProperties
         );
 
-        $entity = new class () {
+        $entity = new class {
             public function getId(): int
             {
                 return 1;

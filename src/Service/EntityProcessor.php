@@ -10,6 +10,8 @@ use Doctrine\ORM\UnitOfWork;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
+use function in_array;
+
 readonly class EntityProcessor
 {
     public function __construct(
@@ -46,7 +48,7 @@ readonly class EntityProcessor
             /* @var array<string, array{mixed, mixed}> $changeSet */
             [$old, $new] = $this->changeProcessor->extractChanges($entity, $changeSet);
 
-            if ([] === $old && [] === $new) {
+            if ($old === [] && $new === []) {
                 continue;
             }
 
@@ -72,13 +74,13 @@ readonly class EntityProcessor
     ): void {
         foreach ($collectionUpdates as $collection) {
             $owner = $collection->getOwner();
-            if (null === $owner) {
+            if ($owner === null) {
                 continue;
             }
 
             $insertDiff = $collection->getInsertDiff();
             $deleteDiff = $collection->getDeleteDiff();
-            if ([] === $insertDiff && [] === $deleteDiff) {
+            if ($insertDiff === [] && $deleteDiff === []) {
                 continue;
             }
 
@@ -155,7 +157,7 @@ readonly class EntityProcessor
         $ids = [];
         foreach ($items as $item) {
             $id = EntityIdResolver::resolveFromEntity($item, $em);
-            if (EntityIdResolver::PENDING_ID !== $id) {
+            if ($id !== EntityIdResolver::PENDING_ID) {
                 $ids[] = $id;
             }
         }
@@ -180,7 +182,7 @@ readonly class EntityProcessor
 
         $insertedIds = $this->extractIdsFromCollection($insertDiff, $em);
         foreach ($insertedIds as $id) {
-            if (!\in_array($id, $newIds, true)) {
+            if (!in_array($id, $newIds, true)) {
                 $newIds[] = $id;
             }
         }
@@ -188,6 +190,6 @@ readonly class EntityProcessor
         $deletedIds = $this->extractIdsFromCollection($deleteDiff, $em);
         $newIds = array_filter($newIds, fn ($id) => !in_array($id, $deletedIds, true));
 
-        return \array_values($newIds);
+        return array_values($newIds);
     }
 }

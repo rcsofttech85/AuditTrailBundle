@@ -34,7 +34,7 @@ class SoftDeleteHandler
         $disabled = [];
 
         foreach ($filters->getEnabledFilters() as $name => $filter) {
-            if (str_contains(get_class($filter), 'SoftDeleteableFilter')) {
+            if (str_contains($filter::class, 'SoftDeleteableFilter')) {
                 $filters->disable($name);
                 $disabled[] = $name;
             }

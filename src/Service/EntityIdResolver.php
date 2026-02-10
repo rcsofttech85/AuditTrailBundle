@@ -6,6 +6,14 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Stringable;
+use Throwable;
+
+use function count;
+use function is_object;
+use function is_scalar;
+
+use const JSON_THROW_ON_ERROR;
 
 /**
  * @internal
@@ -21,7 +29,7 @@ final class EntityIdResolver
     {
         $currentId = $log->getEntityId();
 
-        if (self::PENDING_ID !== $currentId) {
+        if ($currentId !== self::PENDING_ID) {
             return (bool) ($context['is_insert'] ?? false) ? $currentId : null;
         }
 
@@ -32,7 +40,7 @@ final class EntityIdResolver
     {
         try {
             return self::resolveFromMetadata($entity, $em) ?? self::resolveFromMethod($entity) ?? self::PENDING_ID;
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return self::resolveFromMethod($entity) ?? self::PENDING_ID;
         }
     }
@@ -47,14 +55,14 @@ final class EntityIdResolver
             $idFields = $meta->getIdentifierFieldNames();
 
             $ids = self::collectIdsFromValues($idFields, $values);
-            if (null === $ids) {
+            if ($ids === null) {
                 return null;
             }
 
             return count($ids) > 1
                 ? json_encode($ids, JSON_THROW_ON_ERROR)
                 : ($ids[0] ?? null);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return null;
         }
     }
@@ -64,19 +72,19 @@ final class EntityIdResolver
         $meta = $em->getClassMetadata($entity::class);
         $ids = $meta->getIdentifierValues($entity);
 
-        if ([] === $ids) {
+        if ($ids === []) {
             return null;
         }
 
         $idValues = [];
         foreach ($ids as $val) {
             $formatted = self::formatId($val);
-            if (null !== $formatted) {
+            if ($formatted !== null) {
                 $idValues[] = $formatted;
             }
         }
 
-        if ([] === $idValues) {
+        if ($idValues === []) {
             return null;
         }
 
@@ -95,14 +103,14 @@ final class EntityIdResolver
             $id = $entity->getId();
 
             return self::formatId($id);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return null;
         }
     }
 
     private static function formatId(mixed $id): ?string
     {
-        if (is_scalar($id) || $id instanceof \Stringable) {
+        if (is_scalar($id) || $id instanceof Stringable) {
             return (string) $id;
         }
 
@@ -137,7 +145,7 @@ final class EntityIdResolver
         $entity = $context['entity'] ?? null;
         $em = $context['em'] ?? null;
 
-        if (!\is_object($entity) || !$em instanceof EntityManagerInterface) {
+        if (!is_object($entity) || !$em instanceof EntityManagerInterface) {
             return null;
         }
 

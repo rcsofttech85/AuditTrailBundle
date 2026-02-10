@@ -4,15 +4,20 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 
+use function strlen;
+
 #[AllowMockObjectsWithoutExpectations]
 final class AuditIntegrityServiceTest extends TestCase
 {
     private AuditIntegrityService $service;
+
     private string $secret = 'test-secret';
 
     protected function setUp(): void
@@ -41,7 +46,7 @@ final class AuditIntegrityServiceTest extends TestCase
         $log->method('getIpAddress')->willReturn('127.0.0.1');
         $log->method('getUserAgent')->willReturn('Mozilla/5.0');
         $log->method('getTransactionHash')->willReturn('abc-123');
-        $log->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2023-01-01 12:00:00'));
+        $log->method('getCreatedAt')->willReturn(new DateTimeImmutable('2023-01-01 12:00:00'));
 
         $signature = $this->service->generateSignature($log);
 
@@ -62,7 +67,7 @@ final class AuditIntegrityServiceTest extends TestCase
         $log->method('getIpAddress')->willReturn('127.0.0.1');
         $log->method('getUserAgent')->willReturn('Mozilla/5.0');
         $log->method('getTransactionHash')->willReturn('abc-123');
-        $log->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2023-01-01 12:00:00'));
+        $log->method('getCreatedAt')->willReturn(new DateTimeImmutable('2023-01-01 12:00:00'));
 
         $signature = $this->service->generateSignature($log);
         $log->method('getSignature')->willReturn($signature);
@@ -83,7 +88,7 @@ final class AuditIntegrityServiceTest extends TestCase
         $log->method('getIpAddress')->willReturn('127.0.0.1');
         $log->method('getUserAgent')->willReturn('Mozilla/5.0');
         $log->method('getTransactionHash')->willReturn('abc-123');
-        $log->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2023-01-01 12:00:00'));
+        $log->method('getCreatedAt')->willReturn(new DateTimeImmutable('2023-01-01 12:00:00'));
 
         $log->method('getSignature')->willReturn('invalid-signature');
 
@@ -103,7 +108,7 @@ final class AuditIntegrityServiceTest extends TestCase
         $log->method('getIpAddress')->willReturn('127.0.0.1');
         $log->method('getUserAgent')->willReturn('Mozilla/5.0');
         $log->method('getTransactionHash')->willReturn('abc-123');
-        $log->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2023-01-01 12:00:00'));
+        $log->method('getCreatedAt')->willReturn(new DateTimeImmutable('2023-01-01 12:00:00'));
 
         $signature = $this->service->generateSignature($log);
 
@@ -119,7 +124,7 @@ final class AuditIntegrityServiceTest extends TestCase
         $tamperedLog->method('getIpAddress')->willReturn('127.0.0.1');
         $tamperedLog->method('getUserAgent')->willReturn('Mozilla/5.0');
         $tamperedLog->method('getTransactionHash')->willReturn('abc-123');
-        $tamperedLog->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2023-01-01 12:00:00'));
+        $tamperedLog->method('getCreatedAt')->willReturn(new DateTimeImmutable('2023-01-01 12:00:00'));
         $tamperedLog->method('getSignature')->willReturn($signature);
 
         self::assertFalse($this->service->verifySignature($tamperedLog));
@@ -138,7 +143,7 @@ final class AuditIntegrityServiceTest extends TestCase
         $log->method('getIpAddress')->willReturn('127.0.0.1');
         $log->method('getUserAgent')->willReturn('Mozilla/5.0');
         $log->method('getTransactionHash')->willReturn('abc-123');
-        $log->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2023-01-01 12:00:00'));
+        $log->method('getCreatedAt')->willReturn(new DateTimeImmutable('2023-01-01 12:00:00'));
 
         $signature = $this->service->generateSignature($log);
 
@@ -153,7 +158,7 @@ final class AuditIntegrityServiceTest extends TestCase
         $tamperedLog->method('getIpAddress')->willReturn('127.0.0.1');
         $tamperedLog->method('getUserAgent')->willReturn('Mozilla/5.0');
         $tamperedLog->method('getTransactionHash')->willReturn('abc-123');
-        $tamperedLog->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2023-01-01 12:00:00'));
+        $tamperedLog->method('getCreatedAt')->willReturn(new DateTimeImmutable('2023-01-01 12:00:00'));
         $tamperedLog->method('getSignature')->willReturn($signature);
 
         self::assertFalse($this->service->verifySignature($tamperedLog));
@@ -169,7 +174,7 @@ final class AuditIntegrityServiceTest extends TestCase
         $logInt->method('getOldValues')->willReturn(['author_id' => 1]); // Integer ID
         $logInt->method('getNewValues')->willReturn(['author_id' => 1]);
         $logInt->method('getUserId')->willReturn('42');
-        $logInt->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2023-01-01 12:00:00'));
+        $logInt->method('getCreatedAt')->willReturn(new DateTimeImmutable('2023-01-01 12:00:00'));
 
         $signature = $this->service->generateSignature($logInt);
 
@@ -181,7 +186,7 @@ final class AuditIntegrityServiceTest extends TestCase
         $logStr->method('getOldValues')->willReturn(['author_id' => '1']); // String ID
         $logStr->method('getNewValues')->willReturn(['author_id' => '1']);
         $logStr->method('getUserId')->willReturn('42');
-        $logStr->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2023-01-01 12:00:00'));
+        $logStr->method('getCreatedAt')->willReturn(new DateTimeImmutable('2023-01-01 12:00:00'));
         $logStr->method('getSignature')->willReturn($signature);
 
         // Should pass despite type difference
@@ -199,7 +204,7 @@ final class AuditIntegrityServiceTest extends TestCase
         $logUtc->method('getNewValues')->willReturn(['name' => 'New']);
         $logUtc->method('getUserId')->willReturn('42');
         $logUtc->method('getCreatedAt')->willReturn(
-            new \DateTimeImmutable('2023-01-01 12:00:00', new \DateTimeZone('UTC'))
+            new DateTimeImmutable('2023-01-01 12:00:00', new DateTimeZone('UTC'))
         );
 
         $signature = $this->service->generateSignature($logUtc);
@@ -214,7 +219,7 @@ final class AuditIntegrityServiceTest extends TestCase
         $logIst->method('getUserId')->willReturn('42');
         // 2023-01-01 12:00:00 UTC is 2023-01-01 17:30:00 IST
         $logIst->method('getCreatedAt')->willReturn(
-            new \DateTimeImmutable('2023-01-01 17:30:00', new \DateTimeZone('Asia/Kolkata'))
+            new DateTimeImmutable('2023-01-01 17:30:00', new DateTimeZone('Asia/Kolkata'))
         );
         $logIst->method('getSignature')->willReturn($signature);
 
@@ -232,7 +237,7 @@ final class AuditIntegrityServiceTest extends TestCase
         $logAtom->method('getOldValues')->willReturn(['createdAt' => '2026-01-22T08:04:32+00:00']);
         $logAtom->method('getNewValues')->willReturn(['createdAt' => '2025-12-22T02:01:21+00:00']);
         $logAtom->method('getUserId')->willReturn('1');
-        $logAtom->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2026-01-22 08:05:06'));
+        $logAtom->method('getCreatedAt')->willReturn(new DateTimeImmutable('2026-01-22 08:05:06'));
 
         $signature = $this->service->generateSignature($logAtom);
 
@@ -256,7 +261,7 @@ final class AuditIntegrityServiceTest extends TestCase
             ],
         ]);
         $logArrayUtc->method('getUserId')->willReturn('1');
-        $logArrayUtc->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2026-01-22 08:05:06'));
+        $logArrayUtc->method('getCreatedAt')->willReturn(new DateTimeImmutable('2026-01-22 08:05:06'));
         $logArrayUtc->method('getSignature')->willReturn($signature);
 
         self::assertTrue($this->service->verifySignature($logArrayUtc));

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Service\DiffGenerator;
@@ -33,8 +35,8 @@ class DiffGeneratorTest extends TestCase
 
     public function testGenerateWithNormalization(): void
     {
-        $date1 = new \DateTimeImmutable('2023-01-01 10:00:00', new \DateTimeZone('UTC'));
-        $date2 = new \DateTimeImmutable('2023-01-01 11:00:00', new \DateTimeZone('UTC'));
+        $date1 = new DateTimeImmutable('2023-01-01 10:00:00', new DateTimeZone('UTC'));
+        $date2 = new DateTimeImmutable('2023-01-01 11:00:00', new DateTimeZone('UTC'));
 
         $old = ['updatedAt' => $date1, 'data' => ['foo' => 'bar']];
         $new = ['updatedAt' => $date2, 'data' => ['foo' => 'baz']];

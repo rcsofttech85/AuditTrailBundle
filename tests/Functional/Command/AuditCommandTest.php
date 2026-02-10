@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional\Command;
 
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\TestKernel;
@@ -13,7 +15,10 @@ use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\HttpKernel\KernelInterface;
-use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+
+use function assert;
+use function is_array;
+use function is_string;
 
 class AuditCommandTest extends KernelTestCase
 {
@@ -58,7 +63,7 @@ class AuditCommandTest extends KernelTestCase
         $em->persist($entity);
         $em->flush();
 
-        assert(null !== self::$kernel);
+        assert(self::$kernel !== null);
         $application = new Application(self::$kernel);
         $command = $application->find('audit:list');
         $commandTester = new CommandTester($command);
@@ -90,7 +95,7 @@ class AuditCommandTest extends KernelTestCase
         $auditLog = $em->getRepository(AuditLog::class)->findOneBy(['action' => 'update']);
         self::assertNotNull($auditLog);
 
-        assert(null !== self::$kernel);
+        assert(self::$kernel !== null);
         $application = new Application(self::$kernel);
         $command = $application->find('audit:diff');
         $commandTester = new CommandTester($command);
@@ -122,7 +127,7 @@ class AuditCommandTest extends KernelTestCase
         $auditLog = $em->getRepository(AuditLog::class)->findOneBy(['action' => 'update']);
         self::assertNotNull($auditLog);
 
-        assert(null !== self::$kernel);
+        assert(self::$kernel !== null);
         $application = new Application(self::$kernel);
         $command = $application->find('audit:revert');
         $commandTester = new CommandTester($command);
@@ -160,12 +165,12 @@ class AuditCommandTest extends KernelTestCase
         $em->persist($entity);
         $em->flush();
 
-        assert(null !== self::$kernel);
+        assert(self::$kernel !== null);
         $application = new Application(self::$kernel);
         $command = $application->find('audit:export');
         $commandTester = new CommandTester($command);
 
-        $tempFile = sys_get_temp_dir() . '/audit_export.json';
+        $tempFile = sys_get_temp_dir().'/audit_export.json';
         $commandTester->execute(['--output' => $tempFile, '--format' => 'json']);
 
         self::assertSame(0, $commandTester->getStatusCode());
@@ -191,13 +196,13 @@ class AuditCommandTest extends KernelTestCase
 
         self::assertCount(1, $em->getRepository(AuditLog::class)->findAll());
 
-        assert(null !== self::$kernel);
+        assert(self::$kernel !== null);
         $application = new Application(self::$kernel);
         $command = $application->find('audit:purge');
         $commandTester = new CommandTester($command);
 
         // Purge everything older than tomorrow
-        $tomorrow = (new \DateTimeImmutable('+1 day'))->format('Y-m-d');
+        $tomorrow = new DateTimeImmutable('+1 day')->format('Y-m-d');
         $commandTester->setInputs(['yes']); // Confirm purge
         $commandTester->execute(['--before' => $tomorrow]);
 

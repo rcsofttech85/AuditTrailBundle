@@ -74,7 +74,7 @@ final class Configuration implements ConfigurationInterface
             ->arrayNode('queue')
             ->canBeEnabled()
             ->info(
-                'When enabled, audit logs are dispatched via Symfony Messenger. ' .
+                'When enabled, audit logs are dispatched via Symfony Messenger. '.
                 'You must define a transport named \'audit_trail\'.'
             )
             ->children()
@@ -104,7 +104,7 @@ final class Configuration implements ConfigurationInterface
             ->end()
             ->end()
             ->validate()
-            ->ifTrue(static fn (array $v): bool => $v['enabled'] && (null === $v['secret'] || '' === $v['secret']))
+            ->ifTrue(static fn (array $v): bool => $v['enabled'] && ($v['secret'] === null || $v['secret'] === ''))
             ->thenInvalid('The "secret" must be configured when integrity is enabled.')
             ->end()
             ->end()

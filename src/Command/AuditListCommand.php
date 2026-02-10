@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Command;
 
+use DateTimeImmutable;
+use Exception;
+use InvalidArgumentException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Rcsofttech\AuditTrailBundle\Service\AuditRenderer;
@@ -14,6 +17,11 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Throwable;
+
+use function count;
+use function is_string;
+use function sprintf;
 
 #[AsCommand(
     name: 'audit:list',
@@ -49,7 +57,7 @@ final class AuditListCommand extends BaseAuditCommand
         $io = new SymfonyStyle($input, $output);
 
         $limit = $this->validateLimit($input, $io);
-        if (null === $limit) {
+        if ($limit === null) {
             return Command::FAILURE;
         }
 
@@ -59,7 +67,7 @@ final class AuditListCommand extends BaseAuditCommand
 
         try {
             $filters = $this->buildFilters($input);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $io->error($e->getMessage());
 
             return Command::FAILURE;
@@ -67,7 +75,7 @@ final class AuditListCommand extends BaseAuditCommand
 
         $audits = $this->auditLogRepository->findWithFilters($filters, $limit);
 
-        if ([] === $audits) {
+        if ($audits === []) {
             $io->info('No audit logs found matching the criteria.');
 
             return Command::SUCCESS;
@@ -89,7 +97,7 @@ final class AuditListCommand extends BaseAuditCommand
             'userId' => $this->extractUserOption($input),
             'transactionHash' => $input->getOption('transaction'),
             'action' => $input->getOption('action'),
-        ], static fn ($v): bool => null !== $v && '' !== $v);
+        ], static fn ($v): bool => $v !== null && $v !== '');
 
         return $this->addDateFilters($filters, $input);
     }
@@ -98,7 +106,7 @@ final class AuditListCommand extends BaseAuditCommand
     {
         $user = $input->getOption('user');
 
-        return (\is_string($user) && '' !== $user) ? $user : null;
+        return (is_string($user) && $user !== '') ? $user : null;
     }
 
     /**
@@ -110,11 +118,11 @@ final class AuditListCommand extends BaseAuditCommand
     {
         foreach (['from', 'to'] as $key) {
             $val = $input->getOption($key);
-            if (\is_string($val) && '' !== $val) {
+            if (is_string($val) && $val !== '') {
                 try {
-                    $filters[$key] = new \DateTimeImmutable($val);
-                } catch (\Exception $e) {
-                    throw new \InvalidArgumentException(sprintf('Invalid %s date format: %s', $key, $e->getMessage()));
+                    $filters[$key] = new DateTimeImmutable($val);
+                } catch (Exception $e) {
+                    throw new InvalidArgumentException(sprintf('Invalid %s date format: %s', $key, $e->getMessage()));
                 }
             }
         }
@@ -131,7 +139,7 @@ final class AuditListCommand extends BaseAuditCommand
         InputInterface $input,
         array $audits,
     ): void {
-        $io->title(sprintf('Audit Logs (%d results)', \count($audits)));
+        $io->title(sprintf('Audit Logs (%d results)', count($audits)));
         $this->renderer->renderTable($output, $audits, (bool) $input->getOption('details'));
 
         if (true !== $input->getOption('details')) {

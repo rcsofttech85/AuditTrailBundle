@@ -17,14 +17,19 @@ use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubCollection;
+use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class EntityProcessorTest extends TestCase
 {
     private AuditService&MockObject $auditService;
+
     private ChangeProcessor&MockObject $changeProcessor;
+
     private AuditDispatcher&MockObject $dispatcher;
+
     private ScheduledAuditManager&MockObject $auditManager;
+
     private EntityProcessor $processor;
 
     protected function setUp(): void
@@ -47,7 +52,7 @@ class EntityProcessorTest extends TestCase
     {
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $audit = new AuditLog();
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
@@ -64,7 +69,7 @@ class EntityProcessorTest extends TestCase
     {
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
-        $entity = new \stdClass();
+        $entity = new stdClass();
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->method('shouldAudit')->with($entity)->willReturn(false);
@@ -78,7 +83,7 @@ class EntityProcessorTest extends TestCase
     {
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $audit = new AuditLog();
 
         $uow->method('getScheduledEntityUpdates')->willReturn([$entity]);
@@ -98,7 +103,7 @@ class EntityProcessorTest extends TestCase
     {
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
-        $entity = new \stdClass();
+        $entity = new stdClass();
 
         $uow->method('getScheduledEntityUpdates')->willReturn([$entity]);
         $uow->method('getEntityChangeSet')->willReturn([]);
@@ -115,7 +120,7 @@ class EntityProcessorTest extends TestCase
     {
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
-        $entity = new \stdClass();
+        $entity = new stdClass();
 
         $uow->method('getScheduledEntityDeletions')->willReturn([$entity]);
         $this->auditService->method('shouldAudit')->with($entity)->willReturn(true);
@@ -132,14 +137,14 @@ class EntityProcessorTest extends TestCase
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
 
-        $owner = new \stdClass();
-        $item1 = new class () {
+        $owner = new stdClass();
+        $item1 = new class {
             public function getId(): int
             {
                 return 1;
             }
         };
-        $item2 = new class () {
+        $item2 = new class {
             public function getId(): int
             {
                 return 2;
@@ -176,7 +181,7 @@ class EntityProcessorTest extends TestCase
 
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $audit = new AuditLog();
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);

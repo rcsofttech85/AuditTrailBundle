@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Security;
 
 use Doctrine\ORM\EntityManagerInterface;
@@ -51,7 +53,7 @@ class SensitiveDataUpdateTest extends AbstractAuditTestCase
                 $old = $log->getOldValues();
                 $new = $log->getNewValues();
 
-                return '**REDACTED**' === ($old['password'] ?? '') && '**REDACTED**' === ($new['password'] ?? '');
+                return ($old['password'] ?? '') === '**REDACTED**' && ($new['password'] ?? '') === '**REDACTED**';
             }));
 
         $subscriber->onFlush(new OnFlushEventArgs($this->entityManager));

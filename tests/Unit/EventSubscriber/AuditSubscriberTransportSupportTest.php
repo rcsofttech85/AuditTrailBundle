@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\EventSubscriber;
 
 use Doctrine\ORM\EntityManagerInterface;
@@ -19,6 +21,7 @@ use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
+use stdClass;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 #[CoversClass(AuditSubscriber::class)]
@@ -39,7 +42,7 @@ class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
             ->method('send')
             ->with(
                 self::isInstanceOf(AuditLog::class),
-                self::callback(static fn (array $context): bool => 'post_flush' === ($context['phase'] ?? ''))
+                self::callback(static fn (array $context): bool => ($context['phase'] ?? '') === 'post_flush')
             );
 
         $subscriber->onFlush(new OnFlushEventArgs($em));
@@ -91,7 +94,7 @@ class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
 
     private function createMockEntityManagerWithUow(): EntityManagerInterface
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
 
         $metadata = self::createStub(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 123]);

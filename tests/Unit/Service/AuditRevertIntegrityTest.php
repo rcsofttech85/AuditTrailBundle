@@ -16,16 +16,20 @@ use Rcsofttech\AuditTrailBundle\Service\AuditReverter;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\RevertValueDenormalizer;
 use Rcsofttech\AuditTrailBundle\Service\SoftDeleteHandler;
-use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\DummyEntity;
+use RuntimeException;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 #[CoversClass(AuditReverter::class)]
 #[AllowMockObjectsWithoutExpectations]
 class AuditRevertIntegrityTest extends TestCase
 {
     private EntityManagerInterface&MockObject $em;
+
     private AuditIntegrityServiceInterface&MockObject $integrityService;
+
     private SoftDeleteHandler&MockObject $softDeleteHandler;
+
     private AuditReverter $reverter;
 
     protected function setUp(): void
@@ -56,7 +60,7 @@ class AuditRevertIntegrityTest extends TestCase
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->integrityService->method('verifySignature')->with($log)->willReturn(false);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('has been tampered with');
 
         $this->reverter->revert($log);
@@ -117,7 +121,7 @@ class AuditRevertIntegrityTest extends TestCase
         $this->em->method('find')->willReturn(new DummyEntity());
 
         // It should pass integrity check and fail on unsupported action
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Reverting action "revert" is not supported.');
 
         $this->reverter->revert($log);

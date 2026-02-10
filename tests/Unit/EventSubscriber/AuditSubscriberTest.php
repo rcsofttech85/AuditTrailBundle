@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\EventSubscriber;
 
 use Doctrine\ORM\EntityManagerInterface;
@@ -7,9 +9,10 @@ use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
+use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
@@ -19,17 +22,25 @@ use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class AuditSubscriberTest extends TestCase
 {
     private AuditService&MockObject $auditService;
+
     private ChangeProcessor&MockObject $changeProcessor;
+
     private AuditDispatcher&MockObject $dispatcher;
+
     private ScheduledAuditManager&MockObject $auditManager;
+
     private EntityProcessor&MockObject $entityProcessor;
+
     private TransactionIdGenerator&MockObject $transactionIdGenerator;
+
     private LoggerInterface&MockObject $logger;
+
     private AuditSubscriber $subscriber;
 
     protected function setUp(): void
@@ -82,7 +93,6 @@ class AuditSubscriberTest extends TestCase
 
     public function testOnFlushRecursion(): void
     {
-
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
         $args = $this->createMock(OnFlushEventArgs::class);
@@ -109,7 +119,7 @@ class AuditSubscriberTest extends TestCase
         $this->auditManager->method('getScheduledAudits')->willReturn([
             [
                 'audit' => new AuditLog(),
-                'entity' => new \stdClass(),
+                'entity' => new stdClass(),
                 'is_insert' => false,
             ],
         ]);
@@ -126,7 +136,7 @@ class AuditSubscriberTest extends TestCase
         $args = $this->createMock(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $audit = new AuditLog();
 
         $this->auditManager->method('getPendingDeletions')->willReturn([
@@ -150,7 +160,7 @@ class AuditSubscriberTest extends TestCase
         $args = $this->createMock(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $audit = new AuditLog();
 
         $this->auditManager->method('getScheduledAudits')->willReturn([
@@ -158,7 +168,7 @@ class AuditSubscriberTest extends TestCase
         ]);
 
         $metadata = $this->createMock(ClassMetadata::class);
-        $em->method('getClassMetadata')->with(\stdClass::class)->willReturn($metadata);
+        $em->method('getClassMetadata')->with(stdClass::class)->willReturn($metadata);
         $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
 
         $this->dispatcher->expects($this->once())->method('dispatch');
@@ -179,7 +189,7 @@ class AuditSubscriberTest extends TestCase
         $audit = new AuditLog();
         $this->auditManager->method('getScheduledAudits')->willReturn([
             [
-                'entity' => new \stdClass(),
+                'entity' => new stdClass(),
                 'audit' => $audit,
                 'is_insert' => false,
             ],
@@ -187,7 +197,7 @@ class AuditSubscriberTest extends TestCase
         $this->dispatcher->method('dispatch');
         $em->method('contains')->with($audit)->willReturn(true);
 
-        $em->method('flush')->willThrowException(new \Exception('Flush failed'));
+        $em->method('flush')->willThrowException(new Exception('Flush failed'));
 
         $this->logger->expects($this->once())->method('critical');
 

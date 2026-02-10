@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Query;
 
+use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditQuery;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+use ReflectionClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class AuditQueryTest extends TestCase
 {
     private AuditLogRepository&MockObject $repository;
+
     private AuditQuery $query;
 
     protected function setUp(): void
@@ -36,8 +39,8 @@ class AuditQueryTest extends TestCase
             ->method('findWithFilters')
             ->with(
                 self::callback(function (array $filters) {
-                    return 'App\Entity\User' === ($filters['entityClass'] ?? null)
-                        && '123' === ($filters['entityId'] ?? null);
+                    return ($filters['entityClass'] ?? null) === 'App\Entity\User'
+                        && ($filters['entityId'] ?? null) === '123';
                 }),
                 30
             )
@@ -54,8 +57,8 @@ class AuditQueryTest extends TestCase
             ->method('findWithFilters')
             ->with(
                 self::callback(function (array $filters) {
-                    return 'update' === ($filters['action'] ?? null)
-                        && '1' === ($filters['userId'] ?? null);
+                    return ($filters['action'] ?? null) === 'update'
+                        && ($filters['userId'] ?? null) === '1';
                 }),
                 30
             )
@@ -73,8 +76,8 @@ class AuditQueryTest extends TestCase
             ->method('findWithFilters')
             ->with(
                 self::callback(function (array $filters) {
-                    return 'hash' === ($filters['transactionHash'] ?? null)
-                        && 10 === ($filters['afterId'] ?? null)
+                    return ($filters['transactionHash'] ?? null) === 'hash'
+                        && ($filters['afterId'] ?? null) === 10
                         && !isset($filters['beforeId']);
                 }),
                 10
@@ -101,8 +104,8 @@ class AuditQueryTest extends TestCase
             ->willReturn([]);
 
         $this->query
-            ->since(new \DateTimeImmutable())
-            ->until(new \DateTimeImmutable())
+            ->since(new DateTimeImmutable())
+            ->until(new DateTimeImmutable())
             ->getResults();
     }
 
@@ -113,11 +116,11 @@ class AuditQueryTest extends TestCase
             ->method('findWithFilters')
             ->with(self::callback(function (array $f) use (&$callCount) {
                 ++$callCount;
-                if (1 === $callCount) {
-                    return 10 === ($f['afterId'] ?? null) && !isset($f['beforeId']);
+                if ($callCount === 1) {
+                    return ($f['afterId'] ?? null) === 10 && !isset($f['beforeId']);
                 }
 
-                return 20 === ($f['beforeId'] ?? null) && !isset($f['afterId']);
+                return ($f['beforeId'] ?? null) === 20 && !isset($f['afterId']);
             }), 30)
             ->willReturn([]);
 
@@ -127,7 +130,7 @@ class AuditQueryTest extends TestCase
 
     private function setLogId(AuditLog $log, int $id): void
     {
-        $reflection = new \ReflectionClass($log);
+        $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
         $property->setValue($log, $id);
     }
@@ -214,7 +217,7 @@ class AuditQueryTest extends TestCase
     {
         $this->repository->expects($this->once())
             ->method('findWithFilters')
-            ->with(self::callback(fn ($f) => '123' === $f['entityId']), 30)
+            ->with(self::callback(fn ($f) => $f['entityId'] === '123'), 30)
             ->willReturn([]);
 
         $this->query->entityId('123')->getResults();
@@ -227,6 +230,6 @@ class AuditQueryTest extends TestCase
             ->with(self::callback(fn ($f) => isset($f['from']) && isset($f['to'])), 30)
             ->willReturn([]);
 
-        $this->query->between(new \DateTimeImmutable(), new \DateTimeImmutable())->getResults();
+        $this->query->between(new DateTimeImmutable(), new DateTimeImmutable())->getResults();
     }
 }

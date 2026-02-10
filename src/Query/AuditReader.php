@@ -69,7 +69,7 @@ readonly class AuditReader implements AuditReaderInterface
     {
         $entityId = $this->extractEntityId($entity);
 
-        if (null === $entityId) {
+        if ($entityId === null) {
             return new AuditEntryCollection([]);
         }
 
@@ -102,7 +102,7 @@ readonly class AuditReader implements AuditReaderInterface
     {
         $entityId = $this->extractEntityId($entity);
 
-        if (null === $entityId) {
+        if ($entityId === null) {
             return null;
         }
 
@@ -116,7 +116,7 @@ readonly class AuditReader implements AuditReaderInterface
     {
         $entityId = $this->extractEntityId($entity);
 
-        if (null === $entityId) {
+        if ($entityId === null) {
             return false;
         }
 
@@ -130,6 +130,6 @@ readonly class AuditReader implements AuditReaderInterface
     {
         $id = EntityIdResolver::resolveFromEntity($entity, $this->entityManager);
 
-        return EntityIdResolver::PENDING_ID === $id ? null : $id;
+        return $id === EntityIdResolver::PENDING_ID ? null : $id;
     }
 }

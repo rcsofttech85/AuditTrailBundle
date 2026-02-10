@@ -6,13 +6,19 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\HttpKernel\KernelInterface;
-use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+
+use function assert;
+use function is_array;
+use function strlen;
+
+use const JSON_THROW_ON_ERROR;
 
 class IntegrityTest extends KernelTestCase
 {
