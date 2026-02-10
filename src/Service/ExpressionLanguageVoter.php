@@ -25,11 +25,11 @@ class ExpressionLanguageVoter implements AuditVoterInterface
     public function vote(object $entity, string $action, array $changeSet): bool
     {
         $condition = $this->metadataCache->getAuditCondition($entity::class);
-        if (null === $condition) {
+        if ($condition === null) {
             return true;
         }
 
-        if (null === $this->expressionLanguage) {
+        if ($this->expressionLanguage === null) {
             $this->expressionLanguage = new ExpressionLanguage();
         }
 

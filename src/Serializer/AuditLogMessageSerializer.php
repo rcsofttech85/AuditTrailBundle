@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Serializer;
 
+use InvalidArgumentException;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
+
+use function sprintf;
+
+use const JSON_THROW_ON_ERROR;
+use const JSON_UNESCAPED_SLASHES;
+use const JSON_UNESCAPED_UNICODE;
 
 /**
  * Serializer for publishing audit logs to external SaaS dashboard.
@@ -18,8 +25,11 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 final readonly class AuditLogMessageSerializer implements SerializerInterface
 {
     private const CONTENT_TYPE = 'application/json';
+
     private const API_KEY_HEADER = 'X-Audit-Api-Key';
+
     private const SIGNATURE_HEADER = 'X-Audit-Signature';
+
     private const BUNDLE_VERSION = '1.0.0';
 
     /**
@@ -30,12 +40,8 @@ final readonly class AuditLogMessageSerializer implements SerializerInterface
         $message = $envelope->getMessage();
 
         if (!$message instanceof AuditLogMessage) {
-            throw new \InvalidArgumentException(sprintf(
-                'The message must be an instance of "%s".',
-                AuditLogMessage::class
-            ));
+            throw new InvalidArgumentException(sprintf('The message must be an instance of "%s".', AuditLogMessage::class));
         }
-
 
         return [
             'body' => json_encode($message, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
@@ -45,9 +51,7 @@ final readonly class AuditLogMessageSerializer implements SerializerInterface
 
     public function decode(array $encodedEnvelope): Envelope
     {
-        throw new MessageDecodingFailedException(
-            'Decoding is not supported. This serializer is designed for publishing audit logs only.'
-        );
+        throw new MessageDecodingFailedException('Decoding is not supported. This serializer is designed for publishing audit logs only.');
     }
 
     /**
@@ -57,18 +61,18 @@ final readonly class AuditLogMessageSerializer implements SerializerInterface
     {
         $headers = [
             'Content-Type' => self::CONTENT_TYPE,
-            'User-Agent' => 'RcsoftTech-AuditTrailBundle/' . self::BUNDLE_VERSION,
+            'User-Agent' => 'RcsoftTech-AuditTrailBundle/'.self::BUNDLE_VERSION,
         ];
 
         /** @var ApiKeyStamp|null $apiKeyStamp */
         $apiKeyStamp = $envelope->last(ApiKeyStamp::class);
-        if (null !== $apiKeyStamp) {
+        if ($apiKeyStamp !== null) {
             $headers[self::API_KEY_HEADER] = $apiKeyStamp->apiKey;
         }
 
         /** @var SignatureStamp|null $signatureStamp */
         $signatureStamp = $envelope->last(SignatureStamp::class);
-        if (null !== $signatureStamp) {
+        if ($signatureStamp !== null) {
             $headers[self::SIGNATURE_HEADER] = $signatureStamp->signature;
         }
 

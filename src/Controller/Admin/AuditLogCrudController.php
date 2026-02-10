@@ -21,6 +21,11 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
 
+use function is_array;
+
+use const JSON_PRETTY_PRINT;
+use const JSON_UNESCAPED_SLASHES;
+
 /**
  * Responsible for providing a read-only view of audit logs in EasyAdmin.
  *
@@ -122,7 +127,7 @@ class AuditLogCrudController extends AbstractCrudController
 
         yield FormField::addRow();
         yield TextField::new('ipAddress', 'IP Address')
-            ->formatValue(static fn ($value): string => (null !== $value && '' !== $value) ? $value : 'N/A')
+            ->formatValue(static fn ($value): string => ($value !== null && $value !== '') ? $value : 'N/A')
             ->renderAsHtml()
             ->onlyOnDetail()
             ->setColumns(6);
@@ -190,11 +195,11 @@ class AuditLogCrudController extends AbstractCrudController
     private function formatJson(mixed $value): string
     {
         return match (true) {
-            null === $value => '',
-            \is_array($value) => (false !== ($json = json_encode(
+            $value === null => '',
+            is_array($value) => (($json = json_encode(
                 $value,
                 JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
-            )) ? $json : ''),
+            )) !== false ? $json : ''),
             default => (string) $value,
         };
     }

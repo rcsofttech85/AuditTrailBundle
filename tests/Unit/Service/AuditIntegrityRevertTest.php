@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -48,7 +49,7 @@ class AuditIntegrityRevertTest extends TestCase
         $log->setEntityId('1');
         $log->setOldValues(['name' => 'John']);
         $log->setNewValues(null);
-        $log->setCreatedAt(new \DateTimeImmutable());
+        $log->setCreatedAt(new DateTimeImmutable());
 
         $signature = $this->service->generateSignature($log);
         $log->setSignature($signature);

@@ -4,7 +4,16 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use DateTimeInterface;
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\DiffGeneratorInterface;
+
+use function in_array;
+use function is_array;
+use function is_string;
+
+use const JSON_PRETTY_PRINT;
+use const JSON_UNESCAPED_SLASHES;
 
 final class DiffGenerator implements DiffGeneratorInterface
 {
@@ -14,7 +23,7 @@ final class DiffGenerator implements DiffGeneratorInterface
         'deletedAt',
     ];
 
-    #[\Override]
+    #[Override]
     public function generate(?array $oldValues, ?array $newValues, array $options = []): array
     {
         $oldValues ??= [];
@@ -33,7 +42,7 @@ final class DiffGenerator implements DiffGeneratorInterface
 
             $fieldDiff = $this->computeFieldDiff($key, $oldValues, $newValues, $raw);
 
-            if (null !== $fieldDiff) {
+            if ($fieldDiff !== null) {
                 $diff[$key] = $fieldDiff;
             }
         }
@@ -43,7 +52,7 @@ final class DiffGenerator implements DiffGeneratorInterface
 
     private function shouldSkipField(string $field, bool $includeTimestamps): bool
     {
-        return !$includeTimestamps && \in_array($field, self::IGNORED_FIELDS, true);
+        return !$includeTimestamps && in_array($field, self::IGNORED_FIELDS, true);
     }
 
     /**
@@ -72,9 +81,9 @@ final class DiffGenerator implements DiffGeneratorInterface
     private function normalize(mixed $value): mixed
     {
         return match (true) {
-            $value instanceof \DateTimeInterface => $value->format('Y-m-d H:i:s e'),
-            \is_array($value) => json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-            \is_string($value) && json_validate($value) => $this->normalizeJsonString($value),
+            $value instanceof DateTimeInterface => $value->format('Y-m-d H:i:s e'),
+            is_array($value) => json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+            is_string($value) && json_validate($value) => $this->normalizeJsonString($value),
             default => $value,
         };
     }
@@ -83,12 +92,12 @@ final class DiffGenerator implements DiffGeneratorInterface
     {
         $decoded = json_decode($value, true);
 
-        if (!\is_array($decoded)) {
+        if (!is_array($decoded)) {
             return $value;
         }
 
         $encoded = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
-        return false !== $encoded ? $encoded : $value;
+        return $encoded !== false ? $encoded : $value;
     }
 }

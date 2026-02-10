@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Repository;
 
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
@@ -13,17 +14,23 @@ use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+use ReflectionClass;
 use Symfony\Bridge\Doctrine\ManagerRegistry;
 
 #[AllowMockObjectsWithoutExpectations]
 class AuditLogRepositoryTest extends TestCase
 {
     private AuditLogRepository $repository;
+
     private EntityManagerInterface&MockObject $entityManager;
+
     /** @var ClassMetadata<AuditLog>&MockObject */
     private ClassMetadata&MockObject $classMetadata;
+
     private ManagerRegistry&MockObject $registry;
+
     private QueryBuilder&MockObject $qb;
+
     /** @var Query<mixed>&MockObject */
     private Query&MockObject $query;
 
@@ -103,7 +110,7 @@ class AuditLogRepositoryTest extends TestCase
         $this->qb->expects($this->once())->method('where')->with('a.createdAt < :before')->willReturnSelf();
         $this->query->method('execute')->willReturn(5);
 
-        self::assertEquals(5, $this->repository->deleteOldLogs(new \DateTimeImmutable()));
+        self::assertEquals(5, $this->repository->deleteOldLogs(new DateTimeImmutable()));
     }
 
     public function testFindWithFiltersAll(): void
@@ -116,8 +123,8 @@ class AuditLogRepositoryTest extends TestCase
             'userId' => 2,
             'action' => 'create',
             'transactionHash' => 'tx1',
-            'from' => new \DateTimeImmutable(),
-            'to' => new \DateTimeImmutable(),
+            'from' => new DateTimeImmutable(),
+            'to' => new DateTimeImmutable(),
             'afterId' => 10,
         ];
 
@@ -261,12 +268,12 @@ class AuditLogRepositoryTest extends TestCase
         $this->qb->expects($this->once())->method('where')->with('a.createdAt < :before')->willReturnSelf();
         $this->query->method('getSingleScalarResult')->willReturn(10);
 
-        self::assertEquals(10, $this->repository->countOlderThan(new \DateTimeImmutable()));
+        self::assertEquals(10, $this->repository->countOlderThan(new DateTimeImmutable()));
     }
 
     private function setLogId(AuditLog $log, int $id): void
     {
-        $reflection = new \ReflectionClass($log);
+        $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
         $property->setValue($log, $id);
     }

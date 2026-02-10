@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Transport;
 
+use DateTimeInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+
+use const JSON_THROW_ON_ERROR;
 
 final class HttpAuditTransport implements AuditTransportInterface
 {
@@ -45,7 +48,7 @@ final class HttpAuditTransport implements AuditTransportInterface
             'transaction_hash' => $log->getTransactionHash(),
             'signature' => $log->getSignature(),
             'context' => [...$log->getContext(), ...$context],
-            'created_at' => $log->getCreatedAt()->format(\DateTimeInterface::ATOM),
+            'created_at' => $log->getCreatedAt()->format(DateTimeInterface::ATOM),
         ];
 
         $jsonPayload = json_encode($payload, JSON_THROW_ON_ERROR);
@@ -64,6 +67,6 @@ final class HttpAuditTransport implements AuditTransportInterface
 
     public function supports(string $phase, array $context = []): bool
     {
-        return 'post_flush' === $phase;
+        return $phase === 'post_flush';
     }
 }

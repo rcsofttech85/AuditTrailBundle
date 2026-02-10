@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
+use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class EntityIdResolverTest extends TestCase
@@ -43,11 +44,11 @@ class EntityIdResolverTest extends TestCase
         $log = new AuditLog();
         $log->setEntityId('pending');
 
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $em = $this->createMock(EntityManagerInterface::class);
         $metadata = $this->createMock(ClassMetadata::class);
 
-        $em->method('getClassMetadata')->with(\stdClass::class)->willReturn($metadata);
+        $em->method('getClassMetadata')->with(stdClass::class)->willReturn($metadata);
         $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
 
         self::assertEquals('123', EntityIdResolver::resolve($log, ['entity' => $entity, 'em' => $em]));
@@ -58,11 +59,11 @@ class EntityIdResolverTest extends TestCase
         $log = new AuditLog();
         $log->setEntityId('pending');
 
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $em = $this->createMock(EntityManagerInterface::class);
         $metadata = $this->createMock(ClassMetadata::class);
 
-        $em->method('getClassMetadata')->with(\stdClass::class)->willReturn($metadata);
+        $em->method('getClassMetadata')->with(stdClass::class)->willReturn($metadata);
         $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id1' => 1, 'id2' => 2]);
 
         self::assertEquals('["1","2"]', EntityIdResolver::resolve($log, ['entity' => $entity, 'em' => $em]));
@@ -73,11 +74,11 @@ class EntityIdResolverTest extends TestCase
         $log = new AuditLog();
         $log->setEntityId('pending');
 
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $em = $this->createMock(EntityManagerInterface::class);
         $metadata = $this->createMock(ClassMetadata::class);
 
-        $em->method('getClassMetadata')->with(\stdClass::class)->willReturn($metadata);
+        $em->method('getClassMetadata')->with(stdClass::class)->willReturn($metadata);
         $metadata->method('getIdentifierValues')->with($entity)->willReturn([]);
 
         self::assertEquals('pending', EntityIdResolver::resolve($log, ['entity' => $entity, 'em' => $em]));

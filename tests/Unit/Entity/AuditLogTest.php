@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Entity;
 
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
@@ -25,7 +26,7 @@ class AuditLogTest extends TestCase
         $log->setAction('create');
         self::assertEquals('create', $log->getAction());
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $log->setAction('invalid_action');
     }
 }

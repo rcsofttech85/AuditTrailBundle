@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Command;
 
+use Exception;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
@@ -14,6 +15,11 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+
+use function is_scalar;
+use function sprintf;
+
+use const JSON_PRETTY_PRINT;
 
 #[AsCommand(
     name: 'audit:revert',
@@ -56,13 +62,13 @@ class AuditRevertCommand extends BaseAuditCommand
         $auditId = $this->parseAuditId($input);
         $context = $this->parseContext($input, $io);
 
-        if (null === $context) {
+        if ($context === null) {
             return Command::FAILURE;
         }
 
         $log = $this->fetchAuditLog($auditId, $io);
 
-        if (null === $log) {
+        if ($log === null) {
             return Command::FAILURE;
         }
 
@@ -95,7 +101,7 @@ class AuditRevertCommand extends BaseAuditCommand
             $this->displayRevertResult($io, $changes, $raw);
 
             return Command::SUCCESS;
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $io->error($e->getMessage());
 
             return Command::FAILURE;
@@ -113,7 +119,7 @@ class AuditRevertCommand extends BaseAuditCommand
             return;
         }
 
-        if ([] === $changes) {
+        if ($changes === []) {
             $io->warning('No changes were applied (values might be identical or fields unmapped).');
 
             return;
@@ -123,7 +129,7 @@ class AuditRevertCommand extends BaseAuditCommand
         $io->section('Changes Applied:');
 
         foreach ($changes as $field => $value) {
-            $valStr = \is_scalar($value) ? (string) $value : json_encode($value);
+            $valStr = is_scalar($value) ? (string) $value : json_encode($value);
             $io->writeln(sprintf(' - %s: %s', $field, $valStr));
         }
     }

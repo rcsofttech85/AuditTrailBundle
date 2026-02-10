@@ -11,6 +11,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Throwable;
 
 readonly class AuditDispatcher
 {
@@ -68,7 +69,7 @@ readonly class AuditDispatcher
             $this->transport->send($audit, $context);
 
             return true;
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->logger?->error('Failed to send audit to transport', [
                 'exception' => $e->getMessage(),
                 'audit_action' => $audit->getAction(),
@@ -98,13 +99,13 @@ readonly class AuditDispatcher
 
             $em->persist($audit);
 
-            if ('on_flush' === $phase) {
+            if ($phase === 'on_flush') {
                 $em->getUnitOfWork()->computeChangeSet(
                     $em->getClassMetadata(AuditLog::class),
                     $audit
                 );
             }
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->logger?->critical('Failed to persist audit log to database fallback', [
                 'exception' => $e->getMessage(),
             ]);

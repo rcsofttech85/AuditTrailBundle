@@ -4,17 +4,21 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use DateTime;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Service\RevertValueDenormalizer;
+use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class RevertValueDenormalizerTest extends TestCase
 {
     private EntityManagerInterface&MockObject $em;
+
     private RevertValueDenormalizer $denormalizer;
 
     protected function setUp(): void
@@ -45,7 +49,7 @@ class RevertValueDenormalizerTest extends TestCase
         $metadata->method('getTypeOfField')->with('field')->willReturn('datetime_immutable');
 
         $result = $this->denormalizer->denormalize($metadata, 'field', '2023-01-01 12:00:00');
-        self::assertInstanceOf(\DateTimeImmutable::class, $result);
+        self::assertInstanceOf(DateTimeImmutable::class, $result);
         self::assertEquals('2023-01-01 12:00:00', $result->format('Y-m-d H:i:s'));
     }
 
@@ -58,7 +62,7 @@ class RevertValueDenormalizerTest extends TestCase
         $value = ['date' => '2023-01-01 12:00:00.000000', 'timezone' => 'UTC'];
         $result = $this->denormalizer->denormalize($metadata, 'field', $value);
 
-        self::assertInstanceOf(\DateTime::class, $result);
+        self::assertInstanceOf(DateTime::class, $result);
         self::assertEquals('2023-01-01 12:00:00', $result->format('Y-m-d H:i:s'));
     }
 
@@ -68,7 +72,7 @@ class RevertValueDenormalizerTest extends TestCase
         $metadata->method('hasField')->with('field')->willReturn(true);
         $metadata->method('getTypeOfField')->with('field')->willReturn('datetime');
 
-        $date = new \DateTime();
+        $date = new DateTime();
         $result = $this->denormalizer->denormalize($metadata, 'field', $date);
         self::assertSame($date, $result);
     }
@@ -78,9 +82,9 @@ class RevertValueDenormalizerTest extends TestCase
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('hasField')->willReturn(false);
         $metadata->method('hasAssociation')->with('field')->willReturn(true);
-        $metadata->method('getAssociationTargetClass')->with('field')->willReturn(\stdClass::class);
+        $metadata->method('getAssociationTargetClass')->with('field')->willReturn(stdClass::class);
 
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $result = $this->denormalizer->denormalize($metadata, 'field', $entity);
         self::assertSame($entity, $result);
     }
@@ -90,10 +94,10 @@ class RevertValueDenormalizerTest extends TestCase
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('hasField')->willReturn(false);
         $metadata->method('hasAssociation')->with('field')->willReturn(true);
-        $metadata->method('getAssociationTargetClass')->with('field')->willReturn(\stdClass::class);
+        $metadata->method('getAssociationTargetClass')->with('field')->willReturn(stdClass::class);
 
-        $entity = new \stdClass();
-        $this->em->expects($this->once())->method('find')->with(\stdClass::class, 1)->willReturn($entity);
+        $entity = new stdClass();
+        $this->em->expects($this->once())->method('find')->with(stdClass::class, 1)->willReturn($entity);
 
         $result = $this->denormalizer->denormalize($metadata, 'field', 1);
         self::assertSame($entity, $result);
@@ -104,11 +108,11 @@ class RevertValueDenormalizerTest extends TestCase
         self::assertTrue($this->denormalizer->valuesAreEqual('a', 'a'));
         self::assertFalse($this->denormalizer->valuesAreEqual('a', 'b'));
 
-        $date1 = new \DateTime('2023-01-01 12:00:00');
-        $date2 = new \DateTimeImmutable('2023-01-01 12:00:00');
+        $date1 = new DateTime('2023-01-01 12:00:00');
+        $date2 = new DateTimeImmutable('2023-01-01 12:00:00');
         self::assertTrue($this->denormalizer->valuesAreEqual($date1, $date2));
 
-        $date3 = new \DateTime('2023-01-01 12:00:01');
+        $date3 = new DateTime('2023-01-01 12:00:01');
         self::assertFalse($this->denormalizer->valuesAreEqual($date1, $date3));
     }
 

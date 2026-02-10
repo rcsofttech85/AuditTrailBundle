@@ -4,12 +4,22 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Command;
 
+use InvalidArgumentException;
+use JsonException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+
+use function in_array;
+use function is_array;
+use function is_string;
+use function sprintf;
+
+use const FILTER_VALIDATE_INT;
+use const JSON_THROW_ON_ERROR;
 
 /**
  * Base class for audit-related commands to reduce logic duplication.
@@ -50,7 +60,7 @@ abstract class BaseAuditCommand extends Command
     {
         $action = $input->getOption('action');
 
-        if (\is_string($action) && '' !== $action && !\in_array($action, self::VALID_ACTIONS, true)) {
+        if (is_string($action) && $action !== '' && !in_array($action, self::VALID_ACTIONS, true)) {
             $io->error('Invalid action specified.');
 
             return false;
@@ -62,14 +72,14 @@ abstract class BaseAuditCommand extends Command
     protected function parseAuditId(InputInterface $input): int
     {
         $auditIdInput = $input->getArgument('auditId');
-        if (null === $auditIdInput) {
+        if ($auditIdInput === null) {
             return 0;
         }
 
         $auditId = filter_var($auditIdInput, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
-        if (false === $auditId) {
-            throw new \InvalidArgumentException('auditId must be a valid audit log ID');
+        if ($auditId === false) {
+            throw new InvalidArgumentException('auditId must be a valid audit log ID');
         }
 
         return $auditId;
@@ -82,19 +92,19 @@ abstract class BaseAuditCommand extends Command
     {
         $contextString = (string) $input->getOption('context');
 
-        if ('{}' === $contextString || '' === $contextString) {
+        if ($contextString === '{}' || $contextString === '') {
             return [];
         }
 
         try {
             $context = json_decode($contextString, true, 512, JSON_THROW_ON_ERROR);
 
-            if (!\is_array($context)) {
-                throw new \InvalidArgumentException('Context must be a valid JSON object (array).');
+            if (!is_array($context)) {
+                throw new InvalidArgumentException('Context must be a valid JSON object (array).');
             }
 
             return $context;
-        } catch (\JsonException $e) {
+        } catch (JsonException $e) {
             $io->error(sprintf('Invalid JSON context: %s', $e->getMessage()));
 
             return null;

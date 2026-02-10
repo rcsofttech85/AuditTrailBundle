@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Command;
 
+use DateTimeImmutable;
+use Exception;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -11,6 +13,9 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+
+use function is_string;
+use function sprintf;
 
 #[AsCommand(
     name: 'audit:purge',
@@ -47,13 +52,13 @@ final class AuditPurgeCommand extends Command
             )
             ->setHelp(
                 <<<'HELP'
-The <info>%command.name%</info> command deletes old audit logs.
+                    The <info>%command.name%</info> command deletes old audit logs.
 
-Examples:
-  <info>php %command.full_name% --before="30 days ago" --dry-run</info>
-  <info>php %command.full_name% --before="2024-01-01" --force</info>
-  <info>php %command.full_name% --before="1 year ago"</info>
-HELP
+                    Examples:
+                      <info>php %command.full_name% --before="30 days ago" --dry-run</info>
+                      <info>php %command.full_name% --before="2024-01-01" --force</info>
+                      <info>php %command.full_name% --before="1 year ago"</info>
+                    HELP
             );
     }
 
@@ -63,14 +68,14 @@ HELP
 
         // Parse and validate the date
         $before = $this->parseBeforeDate($input, $io);
-        if (null === $before) {
+        if ($before === null) {
             return Command::FAILURE;
         }
 
         // Count logs that will be deleted
         $count = $this->repository->countOlderThan($before);
 
-        if (0 === $count) {
+        if ($count === 0) {
             $io->info(sprintf('No audit logs found before %s.', $before->format('Y-m-d H:i:s')));
 
             return Command::SUCCESS;
@@ -102,11 +107,11 @@ HELP
         return Command::SUCCESS;
     }
 
-    private function parseBeforeDate(InputInterface $input, SymfonyStyle $io): ?\DateTimeImmutable
+    private function parseBeforeDate(InputInterface $input, SymfonyStyle $io): ?DateTimeImmutable
     {
         $beforeStr = $input->getOption('before');
 
-        if (!is_string($beforeStr) || '' === $beforeStr) {
+        if (!is_string($beforeStr) || $beforeStr === '') {
             $io->error('The --before option is required.');
             $io->note('Example: --before="30 days ago"');
             $io->note('Valid formats: "30 days ago", "2024-01-01", "-1 year", "last month"');
@@ -115,8 +120,8 @@ HELP
         }
 
         try {
-            return new \DateTimeImmutable($beforeStr);
-        } catch (\Exception $e) {
+            return new DateTimeImmutable($beforeStr);
+        } catch (Exception $e) {
             $io->error(sprintf('Invalid date format: %s', $beforeStr));
             $io->note(sprintf('Error: %s', $e->getMessage()));
             $io->note('Valid formats: "30 days ago", "2024-01-01", "-1 year", "last month"');
@@ -125,7 +130,7 @@ HELP
         }
     }
 
-    private function displaySummary(SymfonyStyle $io, int $count, \DateTimeImmutable $before): void
+    private function displaySummary(SymfonyStyle $io, int $count, DateTimeImmutable $before): void
     {
         $io->section('Purge Summary');
         $io->table(

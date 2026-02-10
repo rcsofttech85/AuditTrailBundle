@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use OverflowException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
+
+use function count;
+use function sprintf;
 
 class ScheduledAuditManager
 {
@@ -34,11 +38,8 @@ class ScheduledAuditManager
         AuditLogInterface $audit,
         bool $isInsert,
     ): void {
-        if (\count($this->scheduledAudits) >= self::MAX_SCHEDULED_AUDITS) {
-            throw new \OverflowException(\sprintf(
-                'Maximum audit queue size exceeded (%d). Consider batch processing.',
-                self::MAX_SCHEDULED_AUDITS
-            ));
+        if (count($this->scheduledAudits) >= self::MAX_SCHEDULED_AUDITS) {
+            throw new OverflowException(sprintf('Maximum audit queue size exceeded (%d). Consider batch processing.', self::MAX_SCHEDULED_AUDITS));
         }
 
         $audit = $this->dispatchCreatedEvent($entity, $audit);
@@ -90,7 +91,7 @@ class ScheduledAuditManager
 
     public function hasScheduledAudits(): bool
     {
-        return [] !== $this->scheduledAudits;
+        return $this->scheduledAudits !== [];
     }
 
     public function countScheduled(): int
@@ -102,7 +103,7 @@ class ScheduledAuditManager
         object $entity,
         AuditLogInterface $audit,
     ): AuditLogInterface {
-        if (null === $this->eventDispatcher) {
+        if ($this->eventDispatcher === null) {
             return $audit;
         }
 

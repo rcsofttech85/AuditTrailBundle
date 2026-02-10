@@ -6,14 +6,14 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
 use Doctrine\Bundle\DoctrineBundle\DoctrineBundle;
 use Rcsofttech\AuditTrailBundle\AuditTrailBundle;
+use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
-use Symfony\Component\Config\Loader\LoaderInterface;
 use Symfony\Bundle\SecurityBundle\SecurityBundle;
+use Symfony\Component\Config\Loader\LoaderInterface;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\HttpKernel\Kernel;
-use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 
 class TestKernel extends Kernel implements CompilerPassInterface
 {
@@ -24,7 +24,6 @@ class TestKernel extends Kernel implements CompilerPassInterface
 
     /** @var array<string, mixed> */
     private array $doctrineConfig = [];
-
 
     public static bool $useThrowingTransport = false;
 
@@ -62,13 +61,13 @@ class TestKernel extends Kernel implements CompilerPassInterface
 
     public function getCacheDir(): string
     {
-        return sys_get_temp_dir() . '/audit_trail_test/cache/' .
+        return sys_get_temp_dir().'/audit_trail_test/cache/'.
             md5(serialize([$this->auditConfig, $this->doctrineConfig]));
     }
 
     public function getLogDir(): string
     {
-        return sys_get_temp_dir() . '/audit_trail_test/logs';
+        return sys_get_temp_dir().'/audit_trail_test/logs';
     }
 
     public function registerBundles(): iterable
@@ -111,7 +110,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
                     'TestEntity' => [
                         'is_bundle' => false,
                         'type' => 'attribute',
-                        'dir' => __DIR__ . '/Entity',
+                        'dir' => __DIR__.'/Entity',
                         'prefix' => 'Rcsofttech\AuditTrailBundle\Tests\Functional\Entity',
                         'alias' => 'TestEntity',
                     ],

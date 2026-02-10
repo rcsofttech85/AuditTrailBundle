@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
+use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -18,6 +19,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 class AuditExportCommandTest extends TestCase
 {
     private AuditLogRepository&MockObject $repository;
+
     private CommandTester $commandTester;
 
     protected function setUp(): void
@@ -64,7 +66,7 @@ class AuditExportCommandTest extends TestCase
     public function testExportToFile(): void
     {
         $audit = $this->createAuditLog(1, 'App\\Entity\\User', '42', 'create');
-        $tempFile = sys_get_temp_dir() . '/audit_export_test.json';
+        $tempFile = sys_get_temp_dir().'/audit_export_test.json';
         if (file_exists($tempFile)) {
             unlink($tempFile);
         }
@@ -154,10 +156,10 @@ class AuditExportCommandTest extends TestCase
             ->method('findWithFilters')
             ->with(
                 self::callback(function (array $filters) {
-                    return 'User' === $filters['entityClass']
-                        && 'create' === $filters['action']
-                        && $filters['from'] instanceof \DateTimeImmutable
-                        && $filters['to'] instanceof \DateTimeImmutable;
+                    return $filters['entityClass'] === 'User'
+                        && $filters['action'] === 'create'
+                        && $filters['from'] instanceof DateTimeImmutable
+                        && $filters['to'] instanceof DateTimeImmutable;
                 }),
                 1000
             )
@@ -210,7 +212,7 @@ class AuditExportCommandTest extends TestCase
         $audit->method('getEntityClass')->willReturn($entityClass);
         $audit->method('getEntityId')->willReturn($entityId);
         $audit->method('getAction')->willReturn($action);
-        $audit->method('getCreatedAt')->willReturn(new \DateTimeImmutable('2024-01-01 12:00:00'));
+        $audit->method('getCreatedAt')->willReturn(new DateTimeImmutable('2024-01-01 12:00:00'));
 
         return $audit;
     }

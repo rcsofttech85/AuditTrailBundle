@@ -7,6 +7,8 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Functional\Entity;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Security\Core\User\UserInterface;
 
+use function assert;
+
 #[ORM\Entity]
 #[ORM\Table(name: 'test_user')]
 class TestUser implements UserInterface
@@ -34,7 +36,7 @@ class TestUser implements UserInterface
      */
     public function getUserIdentifier(): string
     {
-        assert('' !== $this->username);
+        assert($this->username !== '');
 
         return $this->username;
     }

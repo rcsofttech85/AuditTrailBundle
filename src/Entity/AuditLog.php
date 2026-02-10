@@ -4,10 +4,17 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Entity;
 
+use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use InvalidArgumentException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+
+use function in_array;
+use function sprintf;
+
+use const FILTER_VALIDATE_IP;
 
 #[ORM\Entity(repositoryClass: AuditLogRepository::class)]
 #[ORM\Index(name: 'created_idx', columns: ['created_at'])]
@@ -33,8 +40,8 @@ class AuditLog implements AuditLogInterface
         get => $this->entityClass;
         set {
             $trimmed = trim($value);
-            if ('' === $trimmed) {
-                throw new \InvalidArgumentException('Entity class cannot be empty');
+            if ($trimmed === '') {
+                throw new InvalidArgumentException('Entity class cannot be empty');
             }
             $this->entityClass = $trimmed;
         }
@@ -45,8 +52,8 @@ class AuditLog implements AuditLogInterface
         get => $this->entityId;
         set {
             $trimmed = trim($value);
-            if ('' === $trimmed) {
-                throw new \InvalidArgumentException('Entity ID cannot be empty');
+            if ($trimmed === '') {
+                throw new InvalidArgumentException('Entity ID cannot be empty');
             }
             $this->entityId = $trimmed;
         }
@@ -56,12 +63,8 @@ class AuditLog implements AuditLogInterface
     public private(set) string $action {
         get => $this->action;
         set {
-            if (!\in_array($value, self::VALID_ACTIONS, true)) {
-                throw new \InvalidArgumentException(sprintf(
-                    'Invalid action "%s". Must be one of: %s',
-                    $value,
-                    implode(', ', self::VALID_ACTIONS)
-                ));
+            if (!in_array($value, self::VALID_ACTIONS, true)) {
+                throw new InvalidArgumentException(sprintf('Invalid action "%s". Must be one of: %s', $value, implode(', ', self::VALID_ACTIONS)));
             }
             $this->action = $value;
         }
@@ -89,8 +92,8 @@ class AuditLog implements AuditLogInterface
     public private(set) ?string $ipAddress = null {
         get => $this->ipAddress;
         set {
-            if (null !== $value && false === filter_var($value, FILTER_VALIDATE_IP)) {
-                throw new \InvalidArgumentException(sprintf('Invalid IP address format: "%s"', $value));
+            if ($value !== null && false === filter_var($value, FILTER_VALIDATE_IP)) {
+                throw new InvalidArgumentException(sprintf('Invalid IP address format: "%s"', $value));
             }
             $this->ipAddress = $value;
         }
@@ -107,11 +110,11 @@ class AuditLog implements AuditLogInterface
     public private(set) array $context = [];
 
     #[ORM\Column]
-    public private(set) \DateTimeImmutable $createdAt;
+    public private(set) DateTimeImmutable $createdAt;
 
     public function __construct()
     {
-        $this->createdAt = new \DateTimeImmutable();
+        $this->createdAt = new DateTimeImmutable();
     }
 
     // Getters
@@ -185,7 +188,7 @@ class AuditLog implements AuditLogInterface
         return $this->transactionHash;
     }
 
-    public function getCreatedAt(): \DateTimeImmutable
+    public function getCreatedAt(): DateTimeImmutable
     {
         return $this->createdAt;
     }
@@ -278,7 +281,7 @@ class AuditLog implements AuditLogInterface
         return $this;
     }
 
-    public function setCreatedAt(\DateTimeImmutable $createdAt): self
+    public function setCreatedAt(DateTimeImmutable $createdAt): self
     {
         $this->createdAt = $createdAt;
 

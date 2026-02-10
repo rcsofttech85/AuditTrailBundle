@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
+use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -13,6 +14,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\DiffGeneratorInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+use ReflectionClass;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -21,7 +23,9 @@ use Symfony\Component\Console\Tester\CommandTester;
 class AuditDiffCommandTest extends TestCase
 {
     private AuditLogRepository&MockObject $repository;
+
     private DiffGeneratorInterface&MockObject $diffGenerator;
+
     private CommandTester $commandTester;
 
     protected function setUp(): void
@@ -35,7 +39,7 @@ class AuditDiffCommandTest extends TestCase
 
     private function setLogId(AuditLog $log, int $id): void
     {
-        $reflection = new \ReflectionClass($log);
+        $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
         $property->setValue($log, $id);
     }
@@ -61,7 +65,7 @@ class AuditDiffCommandTest extends TestCase
         $log->setEntityId('123');
         $log->setAction(AuditLogInterface::ACTION_UPDATE);
         $log->setUsername('testuser');
-        $log->setCreatedAt(new \DateTimeImmutable('2023-01-01 10:00:00'));
+        $log->setCreatedAt(new DateTimeImmutable('2023-01-01 10:00:00'));
         $log->setOldValues(['title' => 'Old Title']);
         $log->setNewValues(['title' => 'New Title']);
 
@@ -98,7 +102,7 @@ class AuditDiffCommandTest extends TestCase
         $log->setEntityClass('App\Entity\Post');
         $log->setEntityId('123');
         $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new \DateTimeImmutable());
+        $log->setCreatedAt(new DateTimeImmutable());
 
         $this->repository->method('find')->willReturn($log);
         $this->diffGenerator->method('generate')->willReturn([]);
@@ -117,7 +121,7 @@ class AuditDiffCommandTest extends TestCase
         $log->setEntityClass('App\Entity\Post');
         $log->setEntityId('123');
         $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new \DateTimeImmutable());
+        $log->setCreatedAt(new DateTimeImmutable());
 
         $this->repository->expects($this->once())
             ->method('findWithFilters')
@@ -190,7 +194,7 @@ class AuditDiffCommandTest extends TestCase
         $log->setEntityClass('App\Entity\Post');
         $log->setEntityId('123');
         $log->setAction('update'); // Lowercase to test strtoupper
-        $log->setCreatedAt(new \DateTimeImmutable('2023-01-01 12:00:00'));
+        $log->setCreatedAt(new DateTimeImmutable('2023-01-01 12:00:00'));
 
         $this->repository->expects($this->once())
             ->method('find')
@@ -219,12 +223,11 @@ class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithNumericIdentifierAndEntityId(): void
     {
-
         $log = new AuditLog();
         $log->setEntityClass('123'); // Weird class name
         $log->setEntityId('456');
         $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new \DateTimeImmutable());
+        $log->setCreatedAt(new DateTimeImmutable());
 
         $this->repository->expects($this->once())
             ->method('findWithFilters')
@@ -247,7 +250,7 @@ class AuditDiffCommandTest extends TestCase
         $log->setEntityClass('App\Entity\Post');
         $log->setEntityId('123');
         $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new \DateTimeImmutable());
+        $log->setCreatedAt(new DateTimeImmutable());
 
         $this->repository->method('find')->willReturn($log);
 
@@ -284,7 +287,6 @@ class AuditDiffCommandTest extends TestCase
         // identifier is NOT numeric (so it's a class), but entityId is null
         $this->commandTester->execute(['identifier' => 'App\Entity\Post']);
 
-
         self::assertEquals(Command::FAILURE, $this->commandTester->getStatusCode());
         $display = (string) preg_replace('/\s+/', ' ', trim($this->commandTester->getDisplay()));
         self::assertStringContainsString('Entity ID is required', $display);
@@ -311,7 +313,7 @@ class AuditDiffCommandTest extends TestCase
         $log->setEntityClass('App\Entity\Post');
         $log->setEntityId('123');
         $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new \DateTimeImmutable());
+        $log->setCreatedAt(new DateTimeImmutable());
 
         $this->repository->method('find')->willReturn($log);
 
@@ -340,7 +342,7 @@ class AuditDiffCommandTest extends TestCase
         $log->setEntityClass('App\\Entity\\Post');
         $log->setEntityId('1');
         $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new \DateTimeImmutable());
+        $log->setCreatedAt(new DateTimeImmutable());
 
         $this->repository->method('find')->willReturn($log);
 
@@ -369,7 +371,7 @@ class AuditDiffCommandTest extends TestCase
         $log->setEntityClass('App\\Entity\\Post');
         $log->setEntityId('123');
         $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new \DateTimeImmutable());
+        $log->setCreatedAt(new DateTimeImmutable());
 
         $this->repository->method('find')->willReturn($log);
         $this->diffGenerator->method('generate')->willReturn([]);

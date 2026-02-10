@@ -1,9 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -18,17 +22,25 @@ use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class AuditServiceTest extends TestCase
 {
     private EntityManagerInterface&MockObject $entityManager;
+
     private UserResolverInterface&MockObject $userResolver;
+
     private ClockInterface&MockObject $clock;
+
     private LoggerInterface&MockObject $logger;
+
     private TransactionIdGenerator&MockObject $transactionIdGenerator;
+
     private EntityDataExtractor&MockObject $dataExtractor;
+
     private MetadataCache&MockObject $metadataCache;
+
     private AuditService $service;
 
     protected function setUp(): void
@@ -42,7 +54,7 @@ class AuditServiceTest extends TestCase
         $this->metadataCache = $this->createMock(MetadataCache::class);
 
         $this->transactionIdGenerator->method('getTransactionId')->willReturn('tx1');
-        $this->clock->method('now')->willReturn(new \DateTimeImmutable('2023-01-01 12:00:00'));
+        $this->clock->method('now')->willReturn(new DateTimeImmutable('2023-01-01 12:00:00'));
 
         $this->service = new AuditService(
             $this->entityManager,
@@ -62,7 +74,7 @@ class AuditServiceTest extends TestCase
     public function testShouldAudit(): void
     {
         $this->metadataCache->method('getAuditableAttribute')->willReturn(new Auditable(enabled: true));
-        self::assertTrue($this->service->shouldAudit(new \stdClass()));
+        self::assertTrue($this->service->shouldAudit(new stdClass()));
 
         $this->metadataCache = $this->createMock(MetadataCache::class);
         $this->metadataCache->method('getAuditableAttribute')->willReturn(null);
@@ -79,7 +91,7 @@ class AuditServiceTest extends TestCase
             'UTC',
             []
         );
-        self::assertFalse($service->shouldAudit(new \stdClass()));
+        self::assertFalse($service->shouldAudit(new stdClass()));
     }
 
     public function testShouldAuditWithVoters(): void
@@ -106,7 +118,7 @@ class AuditServiceTest extends TestCase
             [$voter1, $voter2]
         );
 
-        self::assertFalse($service->shouldAudit(new \stdClass()));
+        self::assertFalse($service->shouldAudit(new stdClass()));
     }
 
     public function testShouldAuditIgnored(): void
@@ -118,22 +130,22 @@ class AuditServiceTest extends TestCase
             $this->transactionIdGenerator,
             $this->dataExtractor,
             $this->metadataCache,
-            [\stdClass::class],
+            [stdClass::class],
             [] // ignoredProperties
         );
-        self::assertFalse($service->shouldAudit(new \stdClass()));
+        self::assertFalse($service->shouldAudit(new stdClass()));
     }
 
     public function testGetEntityData(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $this->dataExtractor->expects($this->once())->method('extract')->with($entity, [])->willReturn(['data']);
         self::assertEquals(['data'], $this->service->getEntityData($entity));
     }
 
     public function testCreateAuditLog(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $this->entityManager->method('getClassMetadata')->willReturn($metadata);
@@ -149,7 +161,7 @@ class AuditServiceTest extends TestCase
 
     public function testCreateAuditLogWithContext(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $this->entityManager->method('getClassMetadata')->willReturn($metadata);
@@ -168,7 +180,7 @@ class AuditServiceTest extends TestCase
 
     public function testCreateAuditLogWithContributors(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $this->entityManager->method('getClassMetadata')->willReturn($metadata);
@@ -203,7 +215,7 @@ class AuditServiceTest extends TestCase
 
     public function testCreateAuditLogWithCustomContext(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $this->entityManager->method('getClassMetadata')->willReturn($metadata);
@@ -223,7 +235,7 @@ class AuditServiceTest extends TestCase
 
     public function testCreateAuditLogPendingIdDelete(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->willReturn([]); // No ID yet (simulated)
         $metadata->method('getIdentifierFieldNames')->willReturn(['id']);
@@ -241,7 +253,7 @@ class AuditServiceTest extends TestCase
 
     public function testCreateAuditLogPendingIdDeleteComposite(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->willReturn([]);
         $metadata->method('getIdentifierFieldNames')->willReturn(['id1', 'id2']);
@@ -259,12 +271,12 @@ class AuditServiceTest extends TestCase
 
     public function testEnrichUserContextException(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $this->entityManager->method('getClassMetadata')->willReturn($metadata);
 
-        $this->userResolver->method('getUserId')->willThrowException(new \Exception('User error'));
+        $this->userResolver->method('getUserId')->willThrowException(new Exception('User error'));
         $this->logger->expects($this->once())->method('error');
 
         $this->service->createAuditLog($entity, 'create');
@@ -273,6 +285,6 @@ class AuditServiceTest extends TestCase
     public function testGetSensitiveFields(): void
     {
         $this->metadataCache->method('getSensitiveFields')->willReturn(['field' => 'mask']);
-        self::assertEquals(['field' => 'mask'], $this->service->getSensitiveFields(new \stdClass()));
+        self::assertEquals(['field' => 'mask'], $this->service->getSensitiveFields(new stdClass()));
     }
 }

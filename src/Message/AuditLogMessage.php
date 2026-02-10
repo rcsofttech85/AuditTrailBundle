@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Message;
 
+use DateTimeImmutable;
+use DateTimeInterface;
+use JsonSerializable;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Symfony\Component\Messenger\Attribute\AsMessage;
 
 #[AsMessage(transport: 'audit_trail')]
-final readonly class AuditLogMessage implements \JsonSerializable
+final readonly class AuditLogMessage implements JsonSerializable
 {
     /**
      * @param array<string, mixed>|null $oldValues
@@ -30,7 +33,7 @@ final readonly class AuditLogMessage implements \JsonSerializable
         public ?string $transactionHash,
         public ?string $signature,
         public array $context,
-        public \DateTimeImmutable $createdAt,
+        public DateTimeImmutable $createdAt,
     ) {
     }
 
@@ -73,7 +76,7 @@ final readonly class AuditLogMessage implements \JsonSerializable
             'transaction_hash' => $this->transactionHash,
             'signature' => $this->signature,
             'context' => $this->context,
-            'created_at' => $this->createdAt->format(\DateTimeInterface::ATOM),
+            'created_at' => $this->createdAt->format(DateTimeInterface::ATOM),
         ];
     }
 }

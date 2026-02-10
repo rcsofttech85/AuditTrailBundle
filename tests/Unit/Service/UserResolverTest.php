@@ -8,17 +8,20 @@ use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Service\UserResolver;
+use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubUserWithId;
+use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubUserWithoutId;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Security\Core\User\UserInterface;
-use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubUserWithId;
-use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubUserWithoutId;
+
+use function strlen;
 
 #[AllowMockObjectsWithoutExpectations]
 class UserResolverTest extends TestCase
 {
     private Security&MockObject $security;
+
     private RequestStack&MockObject $requestStack;
 
     protected function setUp(): void

@@ -14,6 +14,9 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
+use function count;
+use function sprintf;
+
 #[AsCommand(
     name: 'audit:verify-integrity',
     description: 'Verifies the integrity of audit logs by checking their signatures.'
@@ -48,7 +51,7 @@ final class VerifyIntegrityCommand extends Command
         }
 
         $logId = $input->getOption('id');
-        if (null !== $logId) {
+        if ($logId !== null) {
             return $this->verifySingleLog((int) $logId, $io);
         }
 
@@ -58,7 +61,7 @@ final class VerifyIntegrityCommand extends Command
     private function verifySingleLog(int $id, SymfonyStyle $io): int
     {
         $log = $this->repository->find($id);
-        if (null === $log) {
+        if ($log === null) {
             $io->error(sprintf('Audit log with ID %d not found.', $id));
 
             return Command::FAILURE;
@@ -80,10 +83,10 @@ final class VerifyIntegrityCommand extends Command
 
         if ($io->isVeryVerbose()) {
             $io->section('Debug Information');
-            $io->writeln('<info>Expected Signature:</info> ' . $this->integrityService->generateSignature($log));
-            $io->writeln('<info>Actual Signature:  </info> ' . $log->getSignature());
-            $io->writeln('<info>Normalized Old Values:</info> ' . json_encode($log->getOldValues()));
-            $io->writeln('<info>Normalized New Values:</info> ' . json_encode($log->getNewValues()));
+            $io->writeln('<info>Expected Signature:</info> '.$this->integrityService->generateSignature($log));
+            $io->writeln('<info>Actual Signature:  </info> '.$log->getSignature());
+            $io->writeln('<info>Normalized Old Values:</info> '.json_encode($log->getOldValues()));
+            $io->writeln('<info>Normalized New Values:</info> '.json_encode($log->getNewValues()));
         }
 
         return Command::FAILURE;
@@ -92,7 +95,7 @@ final class VerifyIntegrityCommand extends Command
     private function verifyAllLogs(SymfonyStyle $io, OutputInterface $output): int
     {
         $count = $this->repository->count([]);
-        if (0 === $count) {
+        if ($count === 0) {
             $io->success('No audit logs found to verify.');
 
             return Command::SUCCESS;
@@ -126,7 +129,7 @@ final class VerifyIntegrityCommand extends Command
         $progressBar->finish();
         $io->newLine(2);
 
-        if ([] === $tamperedLogs) {
+        if ($tamperedLogs === []) {
             $io->success(sprintf('All %d audit logs verified successfully.', $count));
 
             return Command::SUCCESS;

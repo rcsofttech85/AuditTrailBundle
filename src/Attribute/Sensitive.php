@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Attribute;
 
+use Attribute;
+
 /**
  * Marks an entity property as sensitive.
  *
@@ -17,7 +19,7 @@ namespace Rcsofttech\AuditTrailBundle\Attribute;
  *     #[Sensitive(mask: '****')]
  *     private string $ssn;
  */
-#[\Attribute(\Attribute::TARGET_PROPERTY)]
+#[Attribute(Attribute::TARGET_PROPERTY)]
 final class Sensitive
 {
     public function __construct(

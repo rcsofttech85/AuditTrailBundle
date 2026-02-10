@@ -4,8 +4,15 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Query;
 
+use DateTimeImmutable;
+use DateTimeInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+
+use function array_key_exists;
+use function count;
+
+use const PHP_INT_MAX;
 
 /**
  * Fluent, immutable query builder for audit logs.
@@ -30,8 +37,8 @@ readonly class AuditQuery
         private array $actions = [],
         private ?string $userId = null,
         private ?string $transactionHash = null,
-        private ?\DateTimeInterface $since = null,
-        private ?\DateTimeInterface $until = null,
+        private ?DateTimeInterface $since = null,
+        private ?DateTimeInterface $until = null,
         private array $changedFields = [],
         private int $limit = self::DEFAULT_LIMIT,
         private ?int $afterId = null,
@@ -106,7 +113,7 @@ readonly class AuditQuery
     /**
      * Filter for logs created on or after the given date.
      */
-    public function since(\DateTimeInterface $from): self
+    public function since(DateTimeInterface $from): self
     {
         return $this->with(['since' => $from]);
     }
@@ -114,7 +121,7 @@ readonly class AuditQuery
     /**
      * Filter for logs created on or before the given date.
      */
-    public function until(\DateTimeInterface $to): self
+    public function until(DateTimeInterface $to): self
     {
         return $this->with(['until' => $to]);
     }
@@ -122,7 +129,7 @@ readonly class AuditQuery
     /**
      * Filter for logs within a date range.
      */
-    public function between(\DateTimeInterface $from, \DateTimeInterface $to): self
+    public function between(DateTimeInterface $from, DateTimeInterface $to): self
     {
         return $this->since($from)->until($to);
     }
@@ -204,7 +211,7 @@ readonly class AuditQuery
      */
     public function count(): int
     {
-        if ([] !== $this->changedFields) {
+        if ($this->changedFields !== []) {
             return $this->getResults()->count();
         }
 
@@ -221,7 +228,7 @@ readonly class AuditQuery
     {
         $logs = $this->repository->findWithFilters($this->buildFilters(), $limit);
 
-        return [] !== $this->changedFields ? $this->filterByChangedFields($logs) : $logs;
+        return $this->changedFields !== [] ? $this->filterByChangedFields($logs) : $logs;
     }
 
     /**
@@ -261,14 +268,14 @@ readonly class AuditQuery
             'afterId' => $this->afterId,
             'beforeId' => $this->beforeId,
             'action' => 1 === count($this->actions) ? $this->actions[0] : null,
-        ], fn ($v) => null !== $v);
+        ], fn ($v) => $v !== null);
 
-        if (null !== $this->since) {
-            $filters['from'] = \DateTimeImmutable::createFromInterface($this->since);
+        if ($this->since !== null) {
+            $filters['from'] = DateTimeImmutable::createFromInterface($this->since);
         }
 
-        if (null !== $this->until) {
-            $filters['to'] = \DateTimeImmutable::createFromInterface($this->until);
+        if ($this->until !== null) {
+            $filters['to'] = DateTimeImmutable::createFromInterface($this->until);
         }
 
         return $filters;

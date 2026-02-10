@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use DateTimeInterface;
 use Doctrine\Common\Collections\Collection;
 use Psr\Log\LoggerInterface;
+
+use function is_array;
+use function is_object;
+use function is_resource;
+use function sprintf;
 
 class ValueSerializer
 {
     private const int MAX_SERIALIZATION_DEPTH = 5;
+
     private const int MAX_COLLECTION_ITEMS = 100;
 
     public function __construct(
@@ -24,21 +31,21 @@ class ValueSerializer
         }
 
         return match (true) {
-            $value instanceof \DateTimeInterface => $value->format(\DateTimeInterface::ATOM),
+            $value instanceof DateTimeInterface => $value->format(DateTimeInterface::ATOM),
             $value instanceof Collection => $this->serializeCollection($value, $depth),
-            \is_object($value) => $this->serializeObject($value),
-            \is_array($value) => array_map(
+            is_object($value) => $this->serializeObject($value),
+            is_array($value) => array_map(
                 fn ($v) => $this->serialize($v, $depth + 1),
                 $value
             ),
-            \is_resource($value) => sprintf('[resource: %s]', get_resource_type($value)),
+            is_resource($value) => sprintf('[resource: %s]', get_resource_type($value)),
             default => $value,
         };
     }
 
     public function serializeAssociation(mixed $value): mixed
     {
-        if (null === $value) {
+        if ($value === null) {
             return null;
         }
 
@@ -46,7 +53,7 @@ class ValueSerializer
             return $this->serializeCollection($value, 0, true);
         }
 
-        if (\is_object($value)) {
+        if (is_object($value)) {
             return $this->extractEntityIdentifier($value);
         }
 

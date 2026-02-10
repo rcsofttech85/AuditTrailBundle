@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Query;
 
+use ArrayIterator;
+use Countable;
+use IteratorAggregate;
+use Traversable;
+
+use function count;
+
 /**
  * Iterable collection of AuditEntry objects with utility methods.
  *
- * @implements \IteratorAggregate<int, AuditEntry>
+ * @implements IteratorAggregate<int, AuditEntry>
  */
-readonly class AuditEntryCollection implements \IteratorAggregate, \Countable
+readonly class AuditEntryCollection implements IteratorAggregate, Countable
 {
     /**
      * @param list<AuditEntry> $entries
@@ -21,12 +28,12 @@ readonly class AuditEntryCollection implements \IteratorAggregate, \Countable
 
     public function count(): int
     {
-        return \count($this->entries);
+        return count($this->entries);
     }
 
     public function isEmpty(): bool
     {
-        return [] === $this->entries;
+        return $this->entries === [];
     }
 
     public function first(): ?AuditEntry
@@ -36,11 +43,11 @@ readonly class AuditEntryCollection implements \IteratorAggregate, \Countable
 
     public function last(): ?AuditEntry
     {
-        if ([] === $this->entries) {
+        if ($this->entries === []) {
             return null;
         }
 
-        return $this->entries[\count($this->entries) - 1];
+        return $this->entries[count($this->entries) - 1];
     }
 
     /**
@@ -114,7 +121,7 @@ readonly class AuditEntryCollection implements \IteratorAggregate, \Countable
     {
         $grouped = [];
         foreach ($this->entries as $entry) {
-            $key = $entry->getEntityClass() . ':' . $entry->getEntityId();
+            $key = $entry->getEntityClass().':'.$entry->getEntityId();
             if (!isset($grouped[$key])) {
                 $grouped[$key] = [];
             }
@@ -189,10 +196,10 @@ readonly class AuditEntryCollection implements \IteratorAggregate, \Countable
     }
 
     /**
-     * @return \Traversable<int, AuditEntry>
+     * @return Traversable<int, AuditEntry>
      */
-    public function getIterator(): \Traversable
+    public function getIterator(): Traversable
     {
-        return new \ArrayIterator($this->entries);
+        return new ArrayIterator($this->entries);
     }
 }

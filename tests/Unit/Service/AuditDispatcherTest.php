@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
+use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -19,9 +20,13 @@ use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 class AuditDispatcherTest extends TestCase
 {
     private AuditTransportInterface&MockObject $transport;
+
     private AuditIntegrityServiceInterface&MockObject $integrityService;
+
     private LoggerInterface&MockObject $logger;
+
     private EntityManagerInterface&MockObject $em;
+
     private AuditLogInterface&MockObject $audit;
 
     protected function setUp(): void
@@ -63,7 +68,7 @@ class AuditDispatcherTest extends TestCase
     public function testDispatchTransportFailureWithFallback(): void
     {
         $dispatcher = new AuditDispatcher($this->transport, $this->integrityService, $this->logger, false, true);
-        $this->transport->method('send')->willThrowException(new \Exception('Transport error'));
+        $this->transport->method('send')->willThrowException(new Exception('Transport error'));
 
         $this->logger->expects($this->once())->method('error');
         $this->em->method('isOpen')->willReturn(true);
@@ -76,9 +81,9 @@ class AuditDispatcherTest extends TestCase
     public function testDispatchTransportFailureWithException(): void
     {
         $dispatcher = new AuditDispatcher($this->transport, $this->integrityService, null, true, true);
-        $this->transport->method('send')->willThrowException(new \Exception('Transport error'));
+        $this->transport->method('send')->willThrowException(new Exception('Transport error'));
 
-        $this->expectException(\Exception::class);
+        $this->expectException(Exception::class);
         $this->expectExceptionMessage('Transport error');
 
         $dispatcher->dispatch($this->audit, $this->em, 'post_flush');
@@ -87,7 +92,7 @@ class AuditDispatcherTest extends TestCase
     public function testDispatchTransportFailureNoFallback(): void
     {
         $dispatcher = new AuditDispatcher($this->transport, $this->integrityService, null, false, false);
-        $this->transport->method('send')->willThrowException(new \Exception('Transport error'));
+        $this->transport->method('send')->willThrowException(new Exception('Transport error'));
 
         $this->em->expects($this->never())->method('persist');
 
@@ -97,7 +102,7 @@ class AuditDispatcherTest extends TestCase
     public function testPersistFallbackOnFlushComputesChangeSet(): void
     {
         $dispatcher = new AuditDispatcher($this->transport, $this->integrityService, null, false, true);
-        $this->transport->method('send')->willThrowException(new \Exception('Transport error'));
+        $this->transport->method('send')->willThrowException(new Exception('Transport error'));
 
         $uow = $this->createMock(UnitOfWork::class);
         $this->em->method('isOpen')->willReturn(true);
@@ -113,7 +118,7 @@ class AuditDispatcherTest extends TestCase
     public function testPersistFallbackEmClosed(): void
     {
         $dispatcher = new AuditDispatcher($this->transport, $this->integrityService, null, false, true);
-        $this->transport->method('send')->willThrowException(new \Exception('Transport error'));
+        $this->transport->method('send')->willThrowException(new Exception('Transport error'));
 
         $this->em->method('isOpen')->willReturn(false);
         $this->em->expects($this->never())->method('persist');
@@ -124,7 +129,7 @@ class AuditDispatcherTest extends TestCase
     public function testPersistFallbackAlreadyContainsAudit(): void
     {
         $dispatcher = new AuditDispatcher($this->transport, $this->integrityService, null, false, true);
-        $this->transport->method('send')->willThrowException(new \Exception('Transport error'));
+        $this->transport->method('send')->willThrowException(new Exception('Transport error'));
 
         $this->em->method('isOpen')->willReturn(true);
         $this->em->method('contains')->with($this->audit)->willReturn(true);

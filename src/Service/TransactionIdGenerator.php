@@ -20,7 +20,7 @@ class TransactionIdGenerator implements ResetInterface
 
     public function getTransactionId(): string
     {
-        if (null === $this->transactionId) {
+        if ($this->transactionId === null) {
             $this->transactionId = Uuid::v7()->toRfc4122();
         }
 

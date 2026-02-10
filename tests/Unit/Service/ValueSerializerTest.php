@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
+use stdClass;
 
 class ValueSerializerTest extends TestCase
 {
@@ -63,7 +65,7 @@ class ValueSerializerTest extends TestCase
     public function testSerializeDateTime(): void
     {
         $serializer = new ValueSerializer();
-        $date = new \DateTimeImmutable('2023-01-01 12:00:00');
+        $date = new DateTimeImmutable('2023-01-01 12:00:00');
 
         self::assertSame('2023-01-01T12:00:00+00:00', $serializer->serialize($date));
     }
@@ -82,7 +84,7 @@ class ValueSerializerTest extends TestCase
     public function testSerializeObjectWithId(): void
     {
         $serializer = new ValueSerializer();
-        $object = new class () {
+        $object = new class {
             public function getId(): int
             {
                 return 1;
@@ -95,7 +97,7 @@ class ValueSerializerTest extends TestCase
     public function testSerializeObjectWithToString(): void
     {
         $serializer = new ValueSerializer();
-        $object = new class () {
+        $object = new class {
             public function __toString(): string
             {
                 return 'string_rep';
@@ -108,7 +110,7 @@ class ValueSerializerTest extends TestCase
     public function testSerializeObjectFallback(): void
     {
         $serializer = new ValueSerializer();
-        $object = new \stdClass();
+        $object = new stdClass();
 
         self::assertSame('stdClass', $serializer->serialize($object));
     }
@@ -119,7 +121,7 @@ class ValueSerializerTest extends TestCase
 
         self::assertNull($serializer->serializeAssociation(null));
 
-        $object = new class () {
+        $object = new class {
             public function getId(): int
             {
                 return 1;
@@ -134,7 +136,7 @@ class ValueSerializerTest extends TestCase
         self::assertEquals([1], $serializer->serializeAssociation($collection));
 
         // Test object without getId
-        $objNoId = new \stdClass();
+        $objNoId = new stdClass();
         self::assertEquals('stdClass', $serializer->serializeAssociation($objNoId));
     }
 

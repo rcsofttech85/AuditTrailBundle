@@ -4,13 +4,20 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Contract;
 
+use DateTimeImmutable;
+
 interface AuditLogInterface
 {
     public const string ACTION_CREATE = 'create';
+
     public const string ACTION_UPDATE = 'update';
+
     public const string ACTION_DELETE = 'delete';
+
     public const string ACTION_SOFT_DELETE = 'soft_delete';
+
     public const string ACTION_RESTORE = 'restore';
+
     public const string ACTION_REVERT = 'revert';
 
     public function getId(): ?int;
@@ -77,9 +84,9 @@ interface AuditLogInterface
 
     public function setTransactionHash(?string $transactionHash): self;
 
-    public function getCreatedAt(): \DateTimeImmutable;
+    public function getCreatedAt(): DateTimeImmutable;
 
-    public function setCreatedAt(\DateTimeImmutable $createdAt): self;
+    public function setCreatedAt(DateTimeImmutable $createdAt): self;
 
     public function getSignature(): ?string;
 

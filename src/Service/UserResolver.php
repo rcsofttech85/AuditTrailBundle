@@ -24,7 +24,7 @@ final readonly class UserResolver implements UserResolverInterface
         $user = $this->security->getUser();
 
         return match (true) {
-            null === $user => null,
+            $user === null => null,
             method_exists($user, 'getId') => (string) $user->getId(),
             default => null,
         };
@@ -51,7 +51,7 @@ final readonly class UserResolver implements UserResolverInterface
         $request = $this->requestStack->getCurrentRequest();
         $ua = $request?->headers->get('User-Agent');
 
-        if (null === $ua || '' === $ua) {
+        if ($ua === null || $ua === '') {
             return null;
         }
 
@@ -69,7 +69,7 @@ final readonly class UserResolver implements UserResolverInterface
         $originalUser = $token->getOriginalToken()->getUser();
 
         return match (true) {
-            null === $originalUser => null,
+            $originalUser === null => null,
             method_exists($originalUser, 'getId') => (string) $originalUser->getId(),
             default => null,
         };

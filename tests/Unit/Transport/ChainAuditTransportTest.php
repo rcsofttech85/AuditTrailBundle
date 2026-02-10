@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
+use DateTimeInterface;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -17,6 +18,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 class AuditPurgeCommandTest extends TestCase
 {
     private AuditLogRepository&MockObject $repository;
+
     private CommandTester $commandTester;
 
     protected function setUp(): void
@@ -69,7 +71,7 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('countOlderThan')
-            ->with(self::isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(DateTimeInterface::class))
             ->willReturn(0);
 
         $this->repository
@@ -89,7 +91,7 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('countOlderThan')
-            ->with(self::isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(DateTimeInterface::class))
             ->willReturn(100);
 
         $this->repository
@@ -114,13 +116,13 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('countOlderThan')
-            ->with(self::isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(DateTimeInterface::class))
             ->willReturn(50);
 
         $this->repository
             ->expects($this->once())
             ->method('deleteOldLogs')
-            ->with(self::isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(DateTimeInterface::class))
             ->willReturn(50);
 
         $this->commandTester->execute([
@@ -140,7 +142,7 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('countOlderThan')
-            ->with(self::isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(DateTimeInterface::class))
             ->willReturn(50);
 
         $this->repository
@@ -184,13 +186,13 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('countOlderThan')
-            ->with(self::isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(DateTimeInterface::class))
             ->willReturn(75);
 
         $this->repository
             ->expects($this->once())
             ->method('deleteOldLogs')
-            ->with(self::isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(DateTimeInterface::class))
             ->willReturn(75);
 
         $this->commandTester->setInputs(['yes']);
@@ -210,7 +212,7 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('countOlderThan')
-            ->with(self::callback(function (\DateTimeInterface $date) {
+            ->with(self::callback(function (DateTimeInterface $date) {
                 return '2024-01-01' === $date->format('Y-m-d');
             }))
             ->willReturn(25);
@@ -218,7 +220,7 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('deleteOldLogs')
-            ->with(self::isInstanceOf(\DateTimeInterface::class))
+            ->with(self::isInstanceOf(DateTimeInterface::class))
             ->willReturn(25);
 
         $this->commandTester->execute([

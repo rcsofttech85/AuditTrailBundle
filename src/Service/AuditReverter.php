@@ -9,7 +9,11 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
+use RuntimeException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
+
+use function count;
+use function sprintf;
 
 class AuditReverter implements AuditReverterInterface
 {
@@ -35,20 +39,13 @@ class AuditReverter implements AuditReverterInterface
         array $context = [],
     ): array {
         if ($this->integrityService->isEnabled() && !$this->integrityService->verifySignature($log)) {
-            throw new \RuntimeException(sprintf(
-                'Audit log #%s has been tampered with and cannot be reverted.',
-                $log->getId() ?? 'unknown'
-            ));
+            throw new RuntimeException(sprintf('Audit log #%s has been tampered with and cannot be reverted.', $log->getId() ?? 'unknown'));
         }
 
         $entity = $this->findEntity($log->getEntityClass(), $log->getEntityId());
 
-        if (null === $entity) {
-            throw new \RuntimeException(sprintf(
-                'Entity %s:%s not found.',
-                $log->getEntityClass(),
-                $log->getEntityId()
-            ));
+        if ($entity === null) {
+            throw new RuntimeException(sprintf('Entity %s:%s not found.', $log->getEntityClass(), $log->getEntityId()));
         }
 
         $changes = $this->determineChanges($log, $entity, $force);
@@ -71,10 +68,7 @@ class AuditReverter implements AuditReverterInterface
             AuditLogInterface::ACTION_CREATE => $this->handleRevertCreate($force),
             AuditLogInterface::ACTION_UPDATE => $this->handleRevertUpdate($log, $entity),
             AuditLogInterface::ACTION_SOFT_DELETE => $this->handleRevertSoftDelete($entity),
-            default => throw new \RuntimeException(sprintf(
-                'Reverting action "%s" is not supported.',
-                $log->getAction()
-            )),
+            default => throw new RuntimeException(sprintf('Reverting action "%s" is not supported.', $log->getAction())),
         };
     }
 
@@ -84,7 +78,7 @@ class AuditReverter implements AuditReverterInterface
      */
     private function applyAndPersist(object $entity, AuditLogInterface $log, array $changes, array $context): void
     {
-        $isDelete = isset($changes['action']) && 'delete' === $changes['action'];
+        $isDelete = isset($changes['action']) && $changes['action'] === 'delete';
 
         $this->em->wrapInTransaction(function () use ($entity, $isDelete, $log, $changes, $context) {
             if ($isDelete) {
@@ -103,7 +97,7 @@ class AuditReverter implements AuditReverterInterface
     {
         $errors = $this->validator->validate($entity);
         if (count($errors) > 0) {
-            throw new \RuntimeException((string) $errors);
+            throw new RuntimeException((string) $errors);
         }
     }
 
@@ -146,7 +140,7 @@ class AuditReverter implements AuditReverterInterface
     private function handleRevertCreate(bool $force): array
     {
         if (!$force) {
-            throw new \RuntimeException('Reverting a creation (deleting the entity) requires --force.');
+            throw new RuntimeException('Reverting a creation (deleting the entity) requires --force.');
         }
 
         return ['action' => 'delete'];
@@ -158,8 +152,8 @@ class AuditReverter implements AuditReverterInterface
     private function handleRevertUpdate(AuditLogInterface $log, object $entity): array
     {
         $oldValues = $log->getOldValues() ?? [];
-        if ([] === $oldValues) {
-            throw new \RuntimeException('No old values found in audit log to revert to.');
+        if ($oldValues === []) {
+            throw new RuntimeException('No old values found in audit log to revert to.');
         }
 
         return $this->applyChanges($entity, $oldValues);
@@ -202,7 +196,7 @@ class AuditReverter implements AuditReverterInterface
      */
     private function applyChanges(object $entity, array $values): array
     {
-        $metadata = $this->em->getClassMetadata(get_class($entity));
+        $metadata = $this->em->getClassMetadata($entity::class);
         $appliedChanges = [];
 
         foreach ($values as $field => $value) {

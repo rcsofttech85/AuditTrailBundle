@@ -4,7 +4,18 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use DateTimeInterface;
+use InvalidArgumentException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use RuntimeException;
+
+use function is_array;
+use function sprintf;
+use function strlen;
+
+use const JSON_PRETTY_PRINT;
+use const JSON_THROW_ON_ERROR;
+use const JSON_UNESCAPED_SLASHES;
 
 readonly class AuditExporter
 {
@@ -18,7 +29,7 @@ readonly class AuditExporter
         return match ($format) {
             'json' => json_encode($rows, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
             'csv' => $this->formatAsCsv($rows),
-            default => throw new \InvalidArgumentException(sprintf('Unsupported format: %s', $format)),
+            default => throw new InvalidArgumentException(sprintf('Unsupported format: %s', $format)),
         };
     }
 
@@ -27,13 +38,13 @@ readonly class AuditExporter
      */
     public function formatAsCsv(array $rows): string
     {
-        if ([] === $rows) {
+        if ($rows === []) {
             return '';
         }
 
         $output = fopen('php://temp', 'r+');
-        if (false === $output) {
-            throw new \RuntimeException('Failed to open temp stream for CSV generation');
+        if ($output === false) {
+            throw new RuntimeException('Failed to open temp stream for CSV generation');
         }
 
         try {
@@ -50,7 +61,7 @@ readonly class AuditExporter
             rewind($output);
             $csv = stream_get_contents($output);
 
-            return false !== $csv ? $csv : '';
+            return $csv !== false ? $csv : '';
         } finally {
             fclose($output);
         }
@@ -73,7 +84,7 @@ readonly class AuditExporter
             'username' => $audit->getUsername(),
             'ip_address' => $audit->getIpAddress(),
             'user_agent' => $audit->getUserAgent(),
-            'created_at' => $audit->getCreatedAt()->format(\DateTimeInterface::ATOM),
+            'created_at' => $audit->getCreatedAt()->format(DateTimeInterface::ATOM),
         ];
     }
 

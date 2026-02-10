@@ -9,18 +9,23 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditRevertCommand;
+use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
-use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
+use RuntimeException;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
+
+use const JSON_PRETTY_PRINT;
 
 #[AllowMockObjectsWithoutExpectations()]
 #[CoversClass(AuditRevertCommand::class)]
 class AuditRevertCommandTest extends TestCase
 {
     private AuditLogRepository&MockObject $repository;
+
     private AuditReverterInterface&MockObject $reverter;
+
     private CommandTester $commandTester;
 
     protected function setUp(): void
@@ -148,7 +153,7 @@ class AuditRevertCommandTest extends TestCase
 
         $this->reverter->expects($this->once())
             ->method('revert')
-            ->willThrowException(new \RuntimeException('Revert failed'));
+            ->willThrowException(new RuntimeException('Revert failed'));
 
         $this->commandTester->execute(['auditId' => 123]);
 

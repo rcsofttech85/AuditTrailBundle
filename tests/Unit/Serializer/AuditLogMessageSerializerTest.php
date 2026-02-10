@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Serializer;
 
+use DateTimeImmutable;
+use DateTimeInterface;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
@@ -22,7 +24,7 @@ class AuditLogMessageSerializerTest extends TestCase
 
     public function testEncodeAuditLogMessage(): void
     {
-        $createdAt = new \DateTimeImmutable('2024-01-01 00:00:00');
+        $createdAt = new DateTimeImmutable('2024-01-01 00:00:00');
         $message = new AuditLogMessage(
             'TestEntity',
             '123',
@@ -65,7 +67,7 @@ class AuditLogMessageSerializerTest extends TestCase
             'transaction_hash' => 'hash123',
             'signature' => null,
             'context' => ['ctx' => 'val'],
-            'created_at' => $createdAt->format(\DateTimeInterface::ATOM),
+            'created_at' => $createdAt->format(DateTimeInterface::ATOM),
         ];
 
         // Strict comparison of the entire array to ensure no extra or missing keys

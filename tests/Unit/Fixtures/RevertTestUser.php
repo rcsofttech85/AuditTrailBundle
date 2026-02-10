@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures;
 
+use DateTimeInterface;
+
 class RevertTestUser
 {
     public function getId(): int
@@ -11,12 +13,12 @@ class RevertTestUser
         return 1;
     }
 
-    public function getDeletedAt(): ?\DateTimeInterface
+    public function getDeletedAt(): ?DateTimeInterface
     {
         return null;
     }
 
-    public function setDeletedAt(?\DateTimeInterface $d): void
+    public function setDeletedAt(?DateTimeInterface $d): void
     {
     }
 }

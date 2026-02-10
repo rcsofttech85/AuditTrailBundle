@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
 use Doctrine\ORM\EntityManagerInterface;
@@ -9,8 +11,11 @@ use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
+use stdClass;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
+
+use function array_key_exists;
 
 #[AllowMockObjectsWithoutExpectations]
 class HttpAuditTransportTest extends TestCase
@@ -35,8 +40,8 @@ class HttpAuditTransportTest extends TestCase
         $client->expects($this->once())
             ->method('request')
             ->with('POST', 'http://example.com', self::callback(function ($options) {
-                return 'value' === $options['headers']['X-Test']
-                    && 10 === $options['timeout']
+                return $options['headers']['X-Test'] === 'value'
+                    && $options['timeout'] === 10
                     && isset($options['body']);
             }))
             ->willReturnCallback(function () {
@@ -57,7 +62,7 @@ class HttpAuditTransportTest extends TestCase
         $log->setEntityId('pending');
         $log->setAction('create');
 
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
         $meta = self::createStub(ClassMetadata::class);
 
@@ -70,7 +75,7 @@ class HttpAuditTransportTest extends TestCase
                 $body = json_decode($options['body'], true);
 
                 return isset($body['entity_id'])
-                    && '100' === $body['entity_id']
+                    && $body['entity_id'] === '100'
                     && array_key_exists('changed_fields', $body);
             }))
             ->willReturn(self::createStub(ResponseInterface::class));

@@ -7,6 +7,10 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Psr\Log\LoggerInterface;
+use Throwable;
+
+use function array_key_exists;
+use function in_array;
 
 class EntityDataExtractor
 {
@@ -35,7 +39,7 @@ class EntityDataExtractor
             $this->applySensitiveMasking($class, $data);
 
             return $data;
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->logger?->error('Failed to extract entity data', [
                 'exception' => $e->getMessage(),
                 'entity' => $class,
@@ -57,12 +61,12 @@ class EntityDataExtractor
     private function processFields(ClassMetadata $meta, object $entity, array $ignored, array &$data): void
     {
         foreach ($meta->getFieldNames() as $field) {
-            if (\in_array($field, $ignored, true)) {
+            if (in_array($field, $ignored, true)) {
                 continue;
             }
 
             $value = $this->getFieldValueSafely($meta, $entity, $field);
-            if (null !== $value) {
+            if ($value !== null) {
                 $data[$field] = $this->serializer->serialize($value);
             }
         }
@@ -76,7 +80,7 @@ class EntityDataExtractor
     private function processAssociations(ClassMetadata $meta, object $entity, array $ignored, array &$data): void
     {
         foreach ($meta->getAssociationNames() as $assoc) {
-            if (\in_array($assoc, $ignored, true)) {
+            if (in_array($assoc, $ignored, true)) {
                 continue;
             }
 
@@ -92,7 +96,7 @@ class EntityDataExtractor
     {
         $sensitiveFields = $this->metadataCache->getSensitiveFields($class);
         foreach ($sensitiveFields as $field => $mask) {
-            if (\array_key_exists($field, $data)) {
+            if (array_key_exists($field, $data)) {
                 $data[$field] = $mask;
             }
         }
@@ -105,7 +109,7 @@ class EntityDataExtractor
     {
         try {
             return $meta->getFieldValue($entity, $field);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return null;
         }
     }

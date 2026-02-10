@@ -6,11 +6,15 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
-use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
-use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
-use Symfony\Component\HttpKernel\KernelInterface;
+use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
+use RuntimeException;
+use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\HttpKernel\KernelInterface;
+
+use function assert;
 
 #[AllowMockObjectsWithoutExpectations]
 class TransactionSafetyTest extends KernelTestCase
@@ -100,7 +104,7 @@ class TransactionSafetyTest extends KernelTestCase
             $exceptionThrown = false;
             try {
                 $em->flush();
-            } catch (\RuntimeException $e) {
+            } catch (RuntimeException $e) {
                 $exceptionThrown = true;
                 self::assertEquals('Transport failed intentionally.', $e->getMessage());
             }
@@ -112,7 +116,7 @@ class TransactionSafetyTest extends KernelTestCase
             $em = $this->getFreshEntityManager($options);
             $savedEntity = $em->getRepository(TestEntity::class)->findOneBy(['name' => 'Atomic Test']);
             self::assertNull($savedEntity, 'Entity should NOT be saved in Atomic mode if transport fails.');
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             throw $e;
         }
     }
@@ -149,7 +153,7 @@ class TransactionSafetyTest extends KernelTestCase
             $em = $this->getFreshEntityManager($options);
             $savedEntity = $em->getRepository(TestEntity::class)->findOneBy(['name' => 'Deferred Test']);
             self::assertNotNull($savedEntity, 'Entity SHOULD be saved in Deferred mode even if transport fails.');
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             throw $e;
         }
     }
@@ -182,7 +186,7 @@ class TransactionSafetyTest extends KernelTestCase
             $exceptionThrown = false;
             try {
                 $em->flush();
-            } catch (\RuntimeException $e) {
+            } catch (RuntimeException $e) {
                 $exceptionThrown = true;
                 self::assertEquals('Transport failed intentionally.', $e->getMessage());
             }
@@ -196,7 +200,7 @@ class TransactionSafetyTest extends KernelTestCase
                 $savedEntity,
                 'Entity SHOULD be saved in Deferred mode even if transport fails and exception is thrown.'
             );
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             throw $e;
         }
     }

@@ -10,6 +10,7 @@ use Rcsofttech\AuditTrailBundle\Attribute\AuditCondition;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Service\ExpressionLanguageVoter;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
+use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class ExpressionLanguageVoterTest extends TestCase
@@ -21,7 +22,7 @@ class ExpressionLanguageVoterTest extends TestCase
         $userResolver = $this->createMock(UserResolverInterface::class);
 
         $voter = new ExpressionLanguageVoter($metadataCache, $userResolver);
-        $entity = new \stdClass();
+        $entity = new stdClass();
 
         self::assertTrue($voter->vote($entity, 'update', []));
     }
@@ -33,7 +34,7 @@ class ExpressionLanguageVoterTest extends TestCase
         $userResolver = $this->createMock(UserResolverInterface::class);
 
         $voter = new ExpressionLanguageVoter($metadataCache, $userResolver);
-        $entity = new \stdClass();
+        $entity = new stdClass();
 
         self::assertTrue($voter->vote($entity, 'update', []));
     }
@@ -45,7 +46,7 @@ class ExpressionLanguageVoterTest extends TestCase
         $userResolver = $this->createMock(UserResolverInterface::class);
 
         $voter = new ExpressionLanguageVoter($metadataCache, $userResolver);
-        $entity = new \stdClass();
+        $entity = new stdClass();
 
         self::assertFalse($voter->vote($entity, 'update', []));
     }
@@ -57,7 +58,7 @@ class ExpressionLanguageVoterTest extends TestCase
         $userResolver = $this->createMock(UserResolverInterface::class);
 
         $voter = new ExpressionLanguageVoter($metadataCache, $userResolver);
-        $entity = new class () {
+        $entity = new class {
             public int $price = 150;
         };
 
@@ -76,7 +77,7 @@ class ExpressionLanguageVoterTest extends TestCase
         $userResolver->method('getUsername')->willReturn('admin');
 
         $voter = new ExpressionLanguageVoter($metadataCache, $userResolver);
-        $entity = new \stdClass();
+        $entity = new stdClass();
 
         self::assertTrue($voter->vote($entity, 'update', []));
 

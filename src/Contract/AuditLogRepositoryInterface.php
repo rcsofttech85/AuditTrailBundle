@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Contract;
 
+use DateTimeImmutable;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
 interface AuditLogRepositoryInterface
@@ -23,7 +24,7 @@ interface AuditLogRepositoryInterface
      */
     public function findByUser(string $userId, int $limit = 30): array;
 
-    public function deleteOldLogs(\DateTimeImmutable $before): int;
+    public function deleteOldLogs(DateTimeImmutable $before): int;
 
     /**
      * @param array<string, mixed> $filters
@@ -32,5 +33,5 @@ interface AuditLogRepositoryInterface
      */
     public function findWithFilters(array $filters = [], int $limit = 30): array;
 
-    public function countOlderThan(\DateTimeImmutable $before): int;
+    public function countOlderThan(DateTimeImmutable $before): int;
 }

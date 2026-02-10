@@ -6,17 +6,21 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Query;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Query\AuditReader;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class AuditReaderTest extends TestCase
 {
     private AuditLogRepository&MockObject $repository;
+
     private EntityManagerInterface&MockObject $entityManager;
+
     private AuditReader $reader;
 
     protected function setUp(): void
@@ -52,15 +56,15 @@ class AuditReaderTest extends TestCase
 
     public function testGetHistoryForWithMetadata(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
 
-        $this->entityManager->method('getClassMetadata')->with(\stdClass::class)->willReturn($metadata);
+        $this->entityManager->method('getClassMetadata')->with(stdClass::class)->willReturn($metadata);
 
         $this->repository->expects($this->once())
             ->method('findWithFilters')
-            ->with(self::callback(fn ($f) => 'stdClass' === $f['entityClass'] && '123' === $f['entityId']), 30)
+            ->with(self::callback(fn ($f) => $f['entityClass'] === 'stdClass' && $f['entityId'] === '123'), 30)
             ->willReturn([]);
 
         $this->reader->getHistoryFor($entity);
@@ -68,15 +72,15 @@ class AuditReaderTest extends TestCase
 
     public function testGetHistoryForWithCompositeId(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id1' => 1, 'id2' => 2]);
 
-        $this->entityManager->method('getClassMetadata')->with(\stdClass::class)->willReturn($metadata);
+        $this->entityManager->method('getClassMetadata')->with(stdClass::class)->willReturn($metadata);
 
         $this->repository->expects($this->once())
             ->method('findWithFilters')
-            ->with(self::callback(fn ($f) => 'stdClass' === $f['entityClass'] && '["1","2"]' === $f['entityId']), 30)
+            ->with(self::callback(fn ($f) => $f['entityClass'] === 'stdClass' && $f['entityId'] === '["1","2"]'), 30)
             ->willReturn([]);
 
         $this->reader->getHistoryFor($entity);
@@ -84,7 +88,7 @@ class AuditReaderTest extends TestCase
 
     public function testGetHistoryForFallbackToGetId(): void
     {
-        $entity = new class () {
+        $entity = new class {
             public function getId(): int
             {
                 return 456;
@@ -92,11 +96,11 @@ class AuditReaderTest extends TestCase
         };
 
         // Simulate metadata failure
-        $this->entityManager->method('getClassMetadata')->willThrowException(new \Exception());
+        $this->entityManager->method('getClassMetadata')->willThrowException(new Exception());
 
         $this->repository->expects($this->once())
             ->method('findWithFilters')
-            ->with(self::callback(fn ($f) => '456' === $f['entityId']), 30)
+            ->with(self::callback(fn ($f) => $f['entityId'] === '456'), 30)
             ->willReturn([]);
 
         $this->reader->getHistoryFor($entity);
@@ -104,8 +108,8 @@ class AuditReaderTest extends TestCase
 
     public function testGetHistoryForNoId(): void
     {
-        $entity = new \stdClass();
-        $this->entityManager->method('getClassMetadata')->willThrowException(new \Exception());
+        $entity = new stdClass();
+        $this->entityManager->method('getClassMetadata')->willThrowException(new Exception());
 
         $this->repository->expects($this->never())->method('findWithFilters');
 
@@ -115,7 +119,7 @@ class AuditReaderTest extends TestCase
 
     public function testGetTimelineFor(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
         $this->entityManager->method('getClassMetadata')->willReturn($metadata);
@@ -132,7 +136,7 @@ class AuditReaderTest extends TestCase
 
     public function testGetLatestFor(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
         $this->entityManager->method('getClassMetadata')->willReturn($metadata);
@@ -146,7 +150,7 @@ class AuditReaderTest extends TestCase
 
     public function testHasHistoryFor(): void
     {
-        $entity = new \stdClass();
+        $entity = new stdClass();
         $metadata = $this->createMock(ClassMetadata::class);
         $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
         $this->entityManager->method('getClassMetadata')->willReturn($metadata);

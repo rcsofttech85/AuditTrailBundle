@@ -4,8 +4,21 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use DateTimeImmutable;
+use DateTimeInterface;
+use DateTimeZone;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Throwable;
+
+use function is_array;
+use function is_float;
+use function is_int;
+
+use const JSON_PRESERVE_ZERO_FRACTION;
+use const JSON_THROW_ON_ERROR;
+use const JSON_UNESCAPED_SLASHES;
+use const JSON_UNESCAPED_UNICODE;
 
 final readonly class AuditIntegrityService implements AuditIntegrityServiceInterface
 {
@@ -36,7 +49,7 @@ final readonly class AuditIntegrityService implements AuditIntegrityServiceInter
     public function verifySignature(AuditLogInterface $log): bool
     {
         $signature = $log->getSignature();
-        if (null === $signature) {
+        if ($signature === null) {
             return AuditLogInterface::ACTION_REVERT === $log->getAction();
         }
 
@@ -58,7 +71,7 @@ final readonly class AuditIntegrityService implements AuditIntegrityServiceInter
             (string) $log->getIpAddress(),
             (string) $log->getUserAgent(),
             (string) $log->getTransactionHash(),
-            $log->getCreatedAt()->setTimezone(new \DateTimeZone('UTC'))->format(\DateTimeInterface::ATOM),
+            $log->getCreatedAt()->setTimezone(new DateTimeZone('UTC'))->format(DateTimeInterface::ATOM),
         ];
 
         return implode('|', $data);
@@ -77,7 +90,7 @@ final readonly class AuditIntegrityService implements AuditIntegrityServiceInter
             return (string) $data;
         }
 
-        if ($data instanceof \DateTimeInterface) {
+        if ($data instanceof DateTimeInterface) {
             return $this->normalizeDateTime($data);
         }
 
@@ -92,10 +105,10 @@ final readonly class AuditIntegrityService implements AuditIntegrityServiceInter
         // Check if this is a serialized DateTime array
         if (isset($data['date'], $data['timezone'], $data['timezone_type'])) {
             try {
-                $dt = new \DateTimeImmutable($data['date'], new \DateTimeZone($data['timezone']));
+                $dt = new DateTimeImmutable($data['date'], new DateTimeZone($data['timezone']));
 
                 return $this->normalizeDateTime($dt);
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 // Fallback to standard array normalization if it's not a valid date
             }
         }
@@ -109,18 +122,18 @@ final readonly class AuditIntegrityService implements AuditIntegrityServiceInter
         return $normalized;
     }
 
-    private function normalizeDateTime(\DateTimeInterface $dt): string
+    private function normalizeDateTime(DateTimeInterface $dt): string
     {
-        $immutable = $dt instanceof \DateTimeImmutable
+        $immutable = $dt instanceof DateTimeImmutable
             ? $dt
-            : \DateTimeImmutable::createFromInterface($dt);
+            : DateTimeImmutable::createFromInterface($dt);
 
-        return $immutable->setTimezone(new \DateTimeZone('UTC'))->format(\DateTimeInterface::ATOM);
+        return $immutable->setTimezone(new DateTimeZone('UTC'))->format(DateTimeInterface::ATOM);
     }
 
     private function toJson(mixed $data): string
     {
-        if (null === $data) {
+        if ($data === null) {
             return 'null';
         }
 
