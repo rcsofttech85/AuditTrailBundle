@@ -34,9 +34,9 @@ class UserResolverTest extends TestCase
     {
         $resolver = new UserResolver($this->security, $this->requestStack);
 
-        // No User
+        // No User -> Fallback to CLI in this environment
         $this->security->method('getUser')->willReturn(null);
-        self::assertNull($resolver->getUserId());
+        self::assertStringStartsWith('cli:', (string) $resolver->getUserId());
 
         // User with ID
         $this->security = $this->createMock(Security::class);
@@ -44,11 +44,11 @@ class UserResolverTest extends TestCase
         $resolver = new UserResolver($this->security, $this->requestStack);
         self::assertEquals(123, $resolver->getUserId());
 
-        // User without ID
+        // User without ID -> returns identifier
         $this->security = $this->createMock(Security::class);
         $this->security->method('getUser')->willReturn(new StubUserWithoutId());
         $resolver = new UserResolver($this->security, $this->requestStack);
-        self::assertNull($resolver->getUserId());
+        self::assertEquals('user', $resolver->getUserId());
     }
 
     public function testGetUsername(): void
@@ -56,7 +56,7 @@ class UserResolverTest extends TestCase
         $resolver = new UserResolver($this->security, $this->requestStack);
 
         $this->security->method('getUser')->willReturn(null);
-        self::assertNull($resolver->getUsername());
+        self::assertStringStartsWith('cli:', (string) $resolver->getUsername());
 
         $this->security = $this->createMock(Security::class);
         $user = $this->createMock(UserInterface::class);
@@ -81,11 +81,11 @@ class UserResolverTest extends TestCase
         $resolver = new UserResolver($this->security, $this->requestStack, false, true);
         self::assertNull($resolver->getIpAddress());
 
-        // No request
+        // No request -> fallback to machine IP in CLI
         $this->requestStack = $this->createMock(RequestStack::class);
         $this->requestStack->method('getCurrentRequest')->willReturn(null);
         $resolver = new UserResolver($this->security, $this->requestStack, true, true);
-        self::assertNull($resolver->getIpAddress());
+        self::assertEquals(gethostbyname(gethostname()), $resolver->getIpAddress());
     }
 
     public function testGetUserAgent(): void
@@ -113,11 +113,11 @@ class UserResolverTest extends TestCase
         self::assertNotNull($ua);
         self::assertEquals(500, strlen($ua));
 
-        // Empty UA
+        // Empty UA -> fallback to CLI UA in CLI
         $request = new Request([], [], [], [], [], []);
         $this->requestStack = $this->createMock(RequestStack::class);
         $this->requestStack->method('getCurrentRequest')->willReturn($request);
         $resolver = new UserResolver($this->security, $this->requestStack, true, true);
-        self::assertNull($resolver->getUserAgent());
+        self::assertStringContainsString('cli-console', (string) $resolver->getUserAgent());
     }
 }

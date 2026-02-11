@@ -13,10 +13,12 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Stringable;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 use Throwable;
 
 use function in_array;
+use function is_scalar;
 
 class AuditService
 {
@@ -164,12 +166,20 @@ class AuditService
     private function enrichWithUserContext(AuditLog $auditLog, object $entity, array $extraContext = []): void
     {
         try {
-            $auditLog->setUserId($this->userResolver->getUserId());
-            $auditLog->setUsername($this->userResolver->getUsername());
+            $userId = $extraContext[AuditLogInterface::CONTEXT_USER_ID] ?? $this->userResolver->getUserId();
+            $username = $extraContext[AuditLogInterface::CONTEXT_USERNAME] ?? $this->userResolver->getUsername();
+
+            $auditLog->setUserId((is_scalar($userId) || ($userId instanceof Stringable)) ? (string) $userId : null);
+            $auditLog->setUsername((is_scalar($username) || ($username instanceof Stringable)) ? (string) $username : null);
             $auditLog->setIpAddress($this->userResolver->getIpAddress());
             $auditLog->setUserAgent($this->userResolver->getUserAgent());
 
-            $context = [...$auditLog->getContext(), ...$extraContext];
+            // Remove internal "transport" keys so they don't pollute the JSON storage
+            $context = array_diff_key($extraContext, [
+                AuditLogInterface::CONTEXT_USER_ID => true,
+                AuditLogInterface::CONTEXT_USERNAME => true,
+            ]);
+
             $impersonatorId = $this->userResolver->getImpersonatorId();
             if ($impersonatorId !== null) {
                 $context['impersonation'] = [

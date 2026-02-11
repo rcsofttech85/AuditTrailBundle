@@ -20,6 +20,10 @@ interface AuditLogInterface
 
     public const string ACTION_REVERT = 'revert';
 
+    public const string CONTEXT_USER_ID = '_audit_user_id';
+
+    public const string CONTEXT_USERNAME = '_audit_username';
+
     public function getId(): ?int;
 
     public function getEntityClass(): string;
