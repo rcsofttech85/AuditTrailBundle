@@ -64,7 +64,7 @@ class AuditEntryCollectionTest extends TestCase
 
         $collection = new AuditEntryCollection([$create, $update, $delete]);
 
-        $filtered = $collection->filter(fn (AuditEntry $e) => $e->isUpdate());
+        $filtered = $collection->filter(static fn (AuditEntry $e) => $e->isUpdate());
 
         self::assertCount(1, $filtered);
         $first = $filtered->first();
@@ -79,7 +79,7 @@ class AuditEntryCollectionTest extends TestCase
             $this->createEntry(AuditLogInterface::ACTION_UPDATE),
         ]);
 
-        $actions = $collection->map(fn (AuditEntry $e) => $e->getAction());
+        $actions = $collection->map(static fn (AuditEntry $e) => $e->getAction());
 
         self::assertSame([AuditLogInterface::ACTION_CREATE, AuditLogInterface::ACTION_UPDATE], $actions);
     }

@@ -192,6 +192,20 @@ readonly class AuditQuery
             }
         }
 
+        /** @var array{
+         *     repository: AuditLogRepository,
+         *     entityClass: ?string,
+         *     entityId: ?string,
+         *     actions: array<string>,
+         *     userId: ?string,
+         *     transactionHash: ?string,
+         *     since: ?DateTimeInterface,
+         *     until: ?DateTimeInterface,
+         *     changedFields: array<string>,
+         *     limit: int,
+         *     afterId: ?int,
+         *     beforeId: ?int
+         * } $state */
         return new self(...$state);
     }
 
@@ -201,7 +215,7 @@ readonly class AuditQuery
     public function getResults(): AuditEntryCollection
     {
         $logs = $this->fetchLogs($this->limit);
-        $entries = array_map(fn (AuditLogInterface $log) => new AuditEntry($log), $logs);
+        $entries = array_map(static fn (AuditLogInterface $log) => new AuditEntry($log), $logs);
 
         return new AuditEntryCollection(array_values($entries));
     }
@@ -268,7 +282,7 @@ readonly class AuditQuery
             'afterId' => $this->afterId,
             'beforeId' => $this->beforeId,
             'action' => 1 === count($this->actions) ? $this->actions[0] : null,
-        ], fn ($v) => $v !== null);
+        ], static fn ($v) => $v !== null);
 
         if ($this->since !== null) {
             $filters['from'] = DateTimeImmutable::createFromInterface($this->since);

@@ -38,7 +38,7 @@ class AuditQueryTest extends TestCase
         $this->repository->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                self::callback(function (array $filters) {
+                self::callback(static function (array $filters) {
                     return ($filters['entityClass'] ?? null) === 'App\Entity\User'
                         && ($filters['entityId'] ?? null) === '123';
                 }),
@@ -56,7 +56,7 @@ class AuditQueryTest extends TestCase
         $this->repository->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                self::callback(function (array $filters) {
+                self::callback(static function (array $filters) {
                     return ($filters['action'] ?? null) === 'update'
                         && ($filters['userId'] ?? null) === '1';
                 }),
@@ -75,7 +75,7 @@ class AuditQueryTest extends TestCase
         $this->repository->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                self::callback(function (array $filters) {
+                self::callback(static function (array $filters) {
                     return ($filters['transactionHash'] ?? null) === 'hash'
                         && ($filters['afterId'] ?? null) === 10
                         && !isset($filters['beforeId']);
@@ -96,7 +96,7 @@ class AuditQueryTest extends TestCase
         $this->repository->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                self::callback(function (array $filters) {
+                self::callback(static function (array $filters) {
                     return isset($filters['from']) && isset($filters['to']);
                 }),
                 30
@@ -114,7 +114,7 @@ class AuditQueryTest extends TestCase
         $callCount = 0;
         $this->repository->expects($this->exactly(2))
             ->method('findWithFilters')
-            ->with(self::callback(function (array $f) use (&$callCount) {
+            ->with(self::callback(static function (array $f) use (&$callCount) {
                 ++$callCount;
                 if ($callCount === 1) {
                     return ($f['afterId'] ?? null) === 10 && !isset($f['beforeId']);
@@ -217,7 +217,7 @@ class AuditQueryTest extends TestCase
     {
         $this->repository->expects($this->once())
             ->method('findWithFilters')
-            ->with(self::callback(fn ($f) => $f['entityId'] === '123'), 30)
+            ->with(self::callback(static fn ($f) => $f['entityId'] === '123'), 30)
             ->willReturn([]);
 
         $this->query->entityId('123')->getResults();
@@ -227,7 +227,7 @@ class AuditQueryTest extends TestCase
     {
         $this->repository->expects($this->once())
             ->method('findWithFilters')
-            ->with(self::callback(fn ($f) => isset($f['from']) && isset($f['to'])), 30)
+            ->with(self::callback(static fn ($f) => isset($f['from']) && isset($f['to'])), 30)
             ->willReturn([]);
 
         $this->query->between(new DateTimeImmutable(), new DateTimeImmutable())->getResults();

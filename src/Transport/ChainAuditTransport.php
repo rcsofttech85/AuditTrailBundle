@@ -7,6 +7,8 @@ namespace Rcsofttech\AuditTrailBundle\Transport;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 
+use function is_string;
+
 final class ChainAuditTransport implements AuditTransportInterface
 {
     /**
@@ -23,6 +25,9 @@ final class ChainAuditTransport implements AuditTransportInterface
     public function send(AuditLogInterface $log, array $context = []): void
     {
         $phase = $context['phase'] ?? null;
+        if (!is_string($phase)) {
+            $phase = null;
+        }
 
         foreach ($this->transports as $transport) {
             // If phase is specified, only send to transports that support it

@@ -193,7 +193,7 @@ class VerifyIntegrityCommandTest extends TestCase
                 [],
                 ['id' => 'ASC'],
                 100,
-                self::callback(function ($offset) use (&$callCount) {
+                self::callback(static function ($offset) use (&$callCount) {
                     ++$callCount;
                     if ($callCount === 1) {
                         return $offset === 0;

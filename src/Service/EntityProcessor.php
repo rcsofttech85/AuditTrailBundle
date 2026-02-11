@@ -11,6 +11,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
 use function in_array;
+use function is_string;
 
 readonly class EntityProcessor
 {
@@ -85,11 +86,18 @@ readonly class EntityProcessor
             }
 
             $mapping = $collection->getMapping();
-            $fieldName = (string) $mapping['fieldName'];
-            $snapshot = $collection->getSnapshot();
+            $fieldName = $mapping['fieldName'];
+            if (!is_string($fieldName)) {
+                continue;
+            }
             /** @var array<int, object> $snapshot */
+            $snapshot = $collection->getSnapshot();
             $oldIds = $this->extractIdsFromCollection($snapshot, $em);
-            $newIds = $this->computeNewIds($oldIds, array_values($insertDiff), array_values($deleteDiff), $em);
+            /** @var array<int, object> $insertElements */
+            $insertElements = array_values($insertDiff);
+            /** @var array<int, object> $deleteElements */
+            $deleteElements = array_values($deleteDiff);
+            $newIds = $this->computeNewIds($oldIds, $insertElements, $deleteElements, $em);
 
             $oldValues = [$fieldName => $oldIds];
             $newValues = [$fieldName => $newIds];
@@ -188,7 +196,7 @@ readonly class EntityProcessor
         }
 
         $deletedIds = $this->extractIdsFromCollection($deleteDiff, $em);
-        $newIds = array_filter($newIds, fn ($id) => !in_array($id, $deletedIds, true));
+        $newIds = array_filter($newIds, static fn ($id) => !in_array($id, $deletedIds, true));
 
         return array_values($newIds);
     }

@@ -76,9 +76,11 @@ class RevertValueDenormalizer
         }
 
         $isImmutable = str_contains($type, 'immutable');
+        /** @var class-string<DateTime>|class-string<DateTimeImmutable> $dateTimeClass */
         $dateTimeClass = $isImmutable ? DateTimeImmutable::class : DateTime::class;
 
         if (is_array($value) && isset($value['date'])) {
+            /** @var array<string, mixed> $value */
             return $this->denormalizeDateTimeFromArray($value, $dateTimeClass);
         }
 
@@ -90,20 +92,23 @@ class RevertValueDenormalizer
     }
 
     /**
-     * @param array<string, mixed>            $value
-     * @param class-string<DateTimeInterface> $dateTimeClass
+     * @param array<string, mixed>                                   $value
+     * @param class-string<DateTime>|class-string<DateTimeImmutable> $dateTimeClass
      */
     private function denormalizeDateTimeFromArray(array $value, string $dateTimeClass): ?DateTimeInterface
     {
         try {
-            return new $dateTimeClass($value['date'], new DateTimeZone($value['timezone'] ?? 'UTC'));
+            $timezone = isset($value['timezone']) && is_string($value['timezone']) ? $value['timezone'] : 'UTC';
+            $date = isset($value['date']) && is_string($value['date']) ? $value['date'] : 'now';
+
+            return new $dateTimeClass($date, new DateTimeZone($timezone));
         } catch (Exception) {
             return null;
         }
     }
 
     /**
-     * @param class-string<DateTimeInterface> $dateTimeClass
+     * @param class-string<DateTime>|class-string<DateTimeImmutable> $dateTimeClass
      */
     private function denormalizeDateTimeFromString(string $value, string $dateTimeClass): DateTimeInterface
     {

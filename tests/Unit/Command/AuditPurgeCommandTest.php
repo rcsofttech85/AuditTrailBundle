@@ -212,7 +212,7 @@ class AuditPurgeCommandTest extends TestCase
         $this->repository
             ->expects($this->once())
             ->method('countOlderThan')
-            ->with(self::callback(function (DateTimeInterface $date) {
+            ->with(self::callback(static function (DateTimeInterface $date) {
                 return '2024-01-01' === $date->format('Y-m-d');
             }))
             ->willReturn(25);

@@ -6,11 +6,13 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
+use Stringable;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Output\OutputInterface;
 
 use function is_array;
 use function is_bool;
+use function is_scalar;
 use function sprintf;
 use function strlen;
 
@@ -156,11 +158,15 @@ class AuditRenderer
             return $this->formatArrayValue($value);
         }
 
-        return $this->truncateString((string) $value);
+        if (is_scalar($value) || $value instanceof Stringable) {
+            return $this->truncateString((string) $value);
+        }
+
+        return $this->truncateString(get_debug_type($value));
     }
 
     /**
-     * @param array<string, mixed> $value
+     * @param array<mixed> $value
      */
     private function formatArrayValue(array $value): string
     {

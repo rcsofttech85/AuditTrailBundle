@@ -27,6 +27,29 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     public function load(array $configs, ContainerBuilder $container): void
     {
         $configuration = new Configuration();
+        /** @var array{
+         *   enabled: bool,
+         *   ignored_properties: array<string>,
+         *   table_prefix: string,
+         *   table_suffix: string,
+         *   timezone: string,
+         *   ignored_entities: array<string>,
+         *   retention_days: int,
+         *   track_ip_address: bool,
+         *   track_user_agent: bool,
+         *   enable_soft_delete: bool,
+         *   soft_delete_field: string,
+         *   enable_hard_delete: bool,
+         *   defer_transport_until_commit: bool,
+         *   fail_on_transport_error: bool,
+         *   fallback_to_database: bool,
+         *   integrity: array{enabled: bool, secret: ?string, algorithm: string},
+         *   transports: array{
+         *     doctrine: bool,
+         *     http: array{enabled: bool, endpoint: string, headers: array<string, string>, timeout: int},
+         *     queue: array{enabled: bool, api_key: ?string, bus: ?string}
+         *   }
+         * } $config */
         $config = $this->processConfiguration($configuration, $configs);
 
         $container->setParameter('audit_trail.enabled', $config['enabled']);
@@ -45,9 +68,9 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         $container->setParameter('audit_trail.fail_on_transport_error', $config['fail_on_transport_error']);
         $container->setParameter('audit_trail.fallback_to_database', $config['fallback_to_database']);
 
-        $container->setParameter('audit_trail.integrity.enabled', $config['integrity']['enabled'] ?? false);
+        $container->setParameter('audit_trail.integrity.enabled', $config['integrity']['enabled']);
         $container->setParameter('audit_trail.integrity.secret', $config['integrity']['secret'] ?? '');
-        $container->setParameter('audit_trail.integrity.algorithm', $config['integrity']['algorithm'] ?? 'sha256');
+        $container->setParameter('audit_trail.integrity.algorithm', $config['integrity']['algorithm']);
 
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'));
         $loader->load('services.yaml');
@@ -85,7 +108,13 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     }
 
     /**
-     * @param array<string, mixed> $config
+     * @param array{
+     *   transports: array{
+     *     doctrine: bool,
+     *     http: array{enabled: bool, endpoint: string, headers: array<string, string>, timeout: int},
+     *     queue: array{enabled: bool, api_key: ?string, bus: ?string}
+     *   }
+     * } $config
      */
     private function configureTransports(array $config, ContainerBuilder $container): void
     {
@@ -117,7 +146,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     }
 
     /**
-     * @param array<string, mixed> $config
+     * @param array{enabled: bool, endpoint: string, headers: array<string, string>, timeout: int} $config
      */
     private function registerHttpTransport(ContainerBuilder $container, array $config): string
     {
@@ -137,7 +166,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     }
 
     /**
-     * @param array<string, mixed> $config
+     * @param array{enabled: bool, api_key: ?string, bus: ?string} $config
      */
     private function registerQueueTransport(ContainerBuilder $container, array $config): string
     {
@@ -171,7 +200,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
 
         if (count($transports) > 1) {
             $id = 'rcsofttech_audit_trail.transport.chain';
-            $references = array_map(fn ($id) => new Reference($id), $transports);
+            $references = array_map(static fn ($id) => new Reference($id), $transports);
 
             $container->register($id, ChainAuditTransport::class)
                 ->setArgument('$transports', $references);

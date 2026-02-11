@@ -9,6 +9,14 @@ use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Security\Core\Authentication\Token\SwitchUserToken;
 
+use function function_exists;
+use function is_object;
+use function is_scalar;
+use function is_string;
+use function sprintf;
+
+use const PHP_SAPI;
+
 final readonly class UserResolver implements UserResolverInterface
 {
     public function __construct(
@@ -23,23 +31,41 @@ final readonly class UserResolver implements UserResolverInterface
     {
         $user = $this->security->getUser();
 
-        return match (true) {
-            $user === null => null,
-            method_exists($user, 'getId') => (string) $user->getId(),
-            default => null,
-        };
+        if ($user !== null) {
+            if (method_exists($user, 'getId')) {
+                $id = $user->getId();
+                if (is_scalar($id) || (is_object($id) && method_exists($id, '__toString'))) {
+                    return (string) $id;
+                }
+            }
+
+            return $user->getUserIdentifier();
+        }
+
+        return $this->resolveCliUser();
     }
 
     public function getUsername(): ?string
     {
-        return $this->security->getUser()?->getUserIdentifier();
+        return $this->security->getUser()?->getUserIdentifier() ?? $this->resolveCliUser();
     }
 
     public function getIpAddress(): ?string
     {
         $request = $this->requestStack->getCurrentRequest();
 
-        return $this->trackIpAddress ? $request?->getClientIp() : null;
+        if ($request !== null) {
+            return $this->trackIpAddress ? $request->getClientIp() : null;
+        }
+
+        if ($this->trackIpAddress && PHP_SAPI === 'cli') {
+            $hostname = gethostname();
+            if ($hostname !== false) {
+                return gethostbyname($hostname);
+            }
+        }
+
+        return null;
     }
 
     public function getUserAgent(): ?string
@@ -49,14 +75,21 @@ final readonly class UserResolver implements UserResolverInterface
         }
 
         $request = $this->requestStack->getCurrentRequest();
-        $ua = $request?->headers->get('User-Agent');
 
-        if ($ua === null || $ua === '') {
-            return null;
+        if ($request !== null) {
+            $ua = (string) $request->headers->get('User-Agent');
+            if ($ua !== '') {
+                return mb_substr($ua, 0, 500);
+            }
         }
 
-        // Return full UA for better security forensics, truncated to 500 chars
-        return mb_substr($ua, 0, 500);
+        if (PHP_SAPI === 'cli') {
+            $hostname = gethostname();
+
+            return sprintf('cli-console (%s)', $hostname !== false ? $hostname : 'unknown');
+        }
+
+        return null;
     }
 
     public function getImpersonatorId(): ?string
@@ -68,11 +101,14 @@ final readonly class UserResolver implements UserResolverInterface
 
         $originalUser = $token->getOriginalToken()->getUser();
 
-        return match (true) {
-            $originalUser === null => null,
-            method_exists($originalUser, 'getId') => (string) $originalUser->getId(),
-            default => null,
-        };
+        if ($originalUser !== null && method_exists($originalUser, 'getId')) {
+            $id = $originalUser->getId();
+            if (is_scalar($id) || (is_object($id) && method_exists($id, '__toString'))) {
+                return (string) $id;
+            }
+        }
+
+        return null;
     }
 
     public function getImpersonatorUsername(): ?string
@@ -83,5 +119,36 @@ final readonly class UserResolver implements UserResolverInterface
         }
 
         return $token->getOriginalToken()->getUser()?->getUserIdentifier();
+    }
+
+    private function resolveCliUser(): ?string
+    {
+        if (PHP_SAPI !== 'cli') {
+            return null;
+        }
+
+        return $this->getPosixUser() ?? $this->getServerUser() ?? 'cli:system';
+    }
+
+    private function getPosixUser(): ?string
+    {
+        if (function_exists('posix_getpwuid') && function_exists('posix_getuid')) {
+            $info = posix_getpwuid(posix_getuid());
+            if ($info !== false && $info['name'] !== '') {
+                return 'cli:'.$info['name'];
+            }
+        }
+
+        return null;
+    }
+
+    private function getServerUser(): ?string
+    {
+        $user = $_SERVER['USER'] ?? $_SERVER['USERNAME'] ?? null;
+        if (is_string($user) && $user !== '') {
+            return 'cli:'.$user;
+        }
+
+        return null;
     }
 }

@@ -51,7 +51,7 @@ final class VerifyIntegrityCommand extends Command
         }
 
         $logId = $input->getOption('id');
-        if ($logId !== null) {
+        if (is_numeric($logId)) {
             return $this->verifySingleLog((int) $logId, $io);
         }
 

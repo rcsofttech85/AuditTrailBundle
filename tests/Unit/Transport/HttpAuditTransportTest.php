@@ -39,12 +39,12 @@ class HttpAuditTransportTest extends TestCase
 
         $client->expects($this->once())
             ->method('request')
-            ->with('POST', 'http://example.com', self::callback(function ($options) {
+            ->with('POST', 'http://example.com', self::callback(static function ($options) {
                 return $options['headers']['X-Test'] === 'value'
                     && $options['timeout'] === 10
                     && isset($options['body']);
             }))
-            ->willReturnCallback(function () {
+            ->willReturnCallback(static function () {
                 return self::createStub(ResponseInterface::class);
             });
 
@@ -71,7 +71,7 @@ class HttpAuditTransportTest extends TestCase
 
         $client->expects($this->once())
             ->method('request')
-            ->with('POST', 'http://example.com', self::callback(function ($options) {
+            ->with('POST', 'http://example.com', self::callback(static function ($options) {
                 $body = json_decode($options['body'], true);
 
                 return isset($body['entity_id'])

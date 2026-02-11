@@ -41,8 +41,6 @@ final class DoctrineAuditTransport implements AuditTransportInterface
         /** @var UnitOfWork $uow */
         $uow = $context['uow']; // This is now guaranteed to exist by the Subscriber fix
 
-        $uow = $context['uow'];
-
         $em->persist($log);
         $uow->computeChangeSet($em->getClassMetadata(AuditLog::class), $log);
     }

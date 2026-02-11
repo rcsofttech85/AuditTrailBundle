@@ -45,7 +45,8 @@
         "symfony/var-exporter": "^7.4|^8.0",
         "symfony/uid": "^7.4|^8.0",
         "symfony/validator": "^7.4|^8.0",
-        "symfony/expression-language": "^7.4|^8.0"
+        "symfony/expression-language": "^7.4|^8.0",
+        "ext-mbstring": "*"
     },
     "require-dev": {
         "phpunit/phpunit": "^12.5",

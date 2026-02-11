@@ -136,7 +136,7 @@ readonly class AuditEntryCollection implements IteratorAggregate, Countable
      */
     public function getCreates(): self
     {
-        return $this->filter(fn (AuditEntry $e) => $e->isCreate());
+        return $this->filter(static fn (AuditEntry $e) => $e->isCreate());
     }
 
     /**
@@ -144,7 +144,7 @@ readonly class AuditEntryCollection implements IteratorAggregate, Countable
      */
     public function getUpdates(): self
     {
-        return $this->filter(fn (AuditEntry $e) => $e->isUpdate());
+        return $this->filter(static fn (AuditEntry $e) => $e->isUpdate());
     }
 
     /**
@@ -152,7 +152,7 @@ readonly class AuditEntryCollection implements IteratorAggregate, Countable
      */
     public function getDeletes(): self
     {
-        return $this->filter(fn (AuditEntry $e) => $e->isDelete() || $e->isSoftDelete());
+        return $this->filter(static fn (AuditEntry $e) => $e->isDelete() || $e->isSoftDelete());
     }
 
     /**

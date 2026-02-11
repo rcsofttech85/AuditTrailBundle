@@ -11,6 +11,8 @@ use Doctrine\Persistence\ManagerRegistry;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
+use function is_string;
+
 /**
  * @extends ServiceEntityRepository<AuditLog>
  */
@@ -118,7 +120,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
      */
     private function applyEntityClassFilter(QueryBuilder $qb, array $filters): void
     {
-        if (!isset($filters['entityClass'])) {
+        if (!isset($filters['entityClass']) || !is_string($filters['entityClass'])) {
             return;
         }
 

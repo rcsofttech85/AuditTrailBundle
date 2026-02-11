@@ -95,7 +95,7 @@ class AuditListCommandTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                self::callback(function (array $filters) {
+                self::callback(static function (array $filters) {
                     return $filters['entityClass'] === 'TestEntity'
                         && $filters['action'] === 'update'
                         && $filters['userId'] === '123';
@@ -137,7 +137,7 @@ class AuditListCommandTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                self::callback(function (array $filters) {
+                self::callback(static function (array $filters) {
                     return $filters['transactionHash'] === 'abc-123';
                 }),
                 50
@@ -188,7 +188,7 @@ class AuditListCommandTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                self::callback(function (array $filters) {
+                self::callback(static function (array $filters) {
                     return isset($filters['from'])
                         && $filters['from'] instanceof DateTimeInterface
                         && isset($filters['to'])

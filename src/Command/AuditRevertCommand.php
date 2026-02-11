@@ -17,6 +17,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 use function is_scalar;
+use function is_string;
 use function sprintf;
 
 use const JSON_PRETTY_PRINT;
@@ -44,6 +45,12 @@ class AuditRevertCommand extends BaseAuditCommand
                 null,
                 InputOption::VALUE_NONE,
                 'Allow destructive operations (e.g. reverting a creation)'
+            )
+            ->addOption(
+                'user',
+                'u',
+                InputOption::VALUE_REQUIRED,
+                'The user performing the revert action'
             )
             ->addOption('raw', null, InputOption::VALUE_NONE, 'Output raw result data (skip formatting)')
             ->addOption(
@@ -95,6 +102,12 @@ class AuditRevertCommand extends BaseAuditCommand
         $dryRun = (bool) $input->getOption('dry-run');
         $force = (bool) $input->getOption('force');
         $raw = (bool) $input->getOption('raw');
+        $user = $input->getOption('user');
+
+        if (is_string($user) && $user !== '') {
+            $context[AuditLogInterface::CONTEXT_USERNAME] = $user;
+            $context[AuditLogInterface::CONTEXT_USER_ID] = $user;
+        }
 
         try {
             $changes = $this->auditReverter->revert($log, $dryRun, $force, $context);

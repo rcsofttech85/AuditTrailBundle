@@ -8,8 +8,10 @@ use DateTimeInterface;
 use InvalidArgumentException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use RuntimeException;
+use Stringable;
 
 use function is_array;
+use function is_scalar;
 use function sprintf;
 use function strlen;
 
@@ -52,7 +54,7 @@ readonly class AuditExporter
 
             foreach ($rows as $row) {
                 $csvRow = array_map(
-                    fn ($value) => is_array($value) ? json_encode($value, JSON_THROW_ON_ERROR) : (string) $value,
+                    static fn ($value) => is_array($value) ? json_encode($value, JSON_THROW_ON_ERROR) : (string) (is_scalar($value) || $value instanceof Stringable ? $value : ''),
                     $row
                 );
                 fputcsv($output, $csvRow, ',', '"', '\\');
