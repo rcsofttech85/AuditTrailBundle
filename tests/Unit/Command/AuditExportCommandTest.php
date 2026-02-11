@@ -155,7 +155,7 @@ class AuditExportCommandTest extends TestCase
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
-                self::callback(function (array $filters) {
+                self::callback(static function (array $filters) {
                     return $filters['entityClass'] === 'User'
                         && $filters['action'] === 'create'
                         && $filters['from'] instanceof DateTimeImmutable

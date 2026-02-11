@@ -90,7 +90,8 @@ abstract class BaseAuditCommand extends Command
      */
     protected function parseContext(InputInterface $input, SymfonyStyle $io): ?array
     {
-        $contextString = (string) $input->getOption('context');
+        $contextOption = $input->getOption('context');
+        $contextString = is_string($contextOption) ? $contextOption : '';
 
         if ($contextString === '{}' || $contextString === '') {
             return [];
@@ -103,6 +104,7 @@ abstract class BaseAuditCommand extends Command
                 throw new InvalidArgumentException('Context must be a valid JSON object (array).');
             }
 
+            /** @var array<string, mixed> $context */
             return $context;
         } catch (JsonException $e) {
             $io->error(sprintf('Invalid JSON context: %s', $e->getMessage()));

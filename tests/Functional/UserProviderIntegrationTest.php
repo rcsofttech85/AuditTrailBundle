@@ -117,7 +117,7 @@ class UserProviderIntegrationTest extends KernelTestCase
         ]);
 
         self::assertNotNull($auditLog);
-        self::assertNull($auditLog->getUserId());
-        self::assertNull($auditLog->getUsername());
+        self::assertStringStartsWith('cli:', (string) $auditLog->getUserId());
+        self::assertStringStartsWith('cli:', (string) $auditLog->getUsername());
     }
 }

@@ -85,7 +85,8 @@ class UserResolverTest extends TestCase
         $this->requestStack = $this->createMock(RequestStack::class);
         $this->requestStack->method('getCurrentRequest')->willReturn(null);
         $resolver = new UserResolver($this->security, $this->requestStack, true, true);
-        self::assertEquals(gethostbyname(gethostname()), $resolver->getIpAddress());
+
+        self::assertEquals(gethostbyname((string) gethostname()), $resolver->getIpAddress());
     }
 
     public function testGetUserAgent(): void

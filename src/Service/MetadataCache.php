@@ -57,9 +57,6 @@ class MetadataCache
     /**
      * @return array<string, string>
      */
-    /**
-     * @return array<string, string>
-     */
     public function getSensitiveFields(string $class): array
     {
         if (array_key_exists($class, $this->sensitiveFieldsCache)) {
@@ -74,10 +71,9 @@ class MetadataCache
     }
 
     /**
-     * @param array<string, mixed> $cache
-     */
-    /**
-     * @param array<string, mixed> $cache
+     * @template T
+     *
+     * @param array<string, T> $cache
      */
     private function ensureCacheSize(array &$cache): void
     {

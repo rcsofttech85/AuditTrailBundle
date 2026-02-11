@@ -8,6 +8,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
+use EasyCorp\Bundle\EasyAdminBundle\Contracts\Field\FieldInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\CodeEditorField;
@@ -20,8 +21,10 @@ use EasyCorp\Bundle\EasyAdminBundle\Filter\TextFilter;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
+use Stringable;
 
 use function is_array;
+use function is_scalar;
 
 use const JSON_PRETTY_PRINT;
 use const JSON_UNESCAPED_SLASHES;
@@ -68,7 +71,7 @@ class AuditLogCrudController extends AbstractCrudController
     }
 
     /**
-     * @return iterable<int, mixed>
+     * @return iterable<FieldInterface>
      */
     private function configureIndexFields(): iterable
     {
@@ -94,11 +97,11 @@ class AuditLogCrudController extends AbstractCrudController
             ->onlyOnIndex();
 
         yield TextField::new('entityClass', 'Entity')
-            ->formatValue(fn ($value): string => $this->shortenClass((string) $value))
+            ->formatValue(fn ($value): string => $this->shortenClass((string) (is_scalar($value) || $value instanceof Stringable ? $value : '')))
             ->setHelp('The PHP class of the modified entity')
             ->onlyOnIndex();
 
-        yield TextField::new('entityId', 'ID')->onlyOnIndex();
+        yield TextField::new('entityId', 'Entity ID')->onlyOnIndex();
         yield TextField::new('username', 'User')->onlyOnIndex();
         yield DateTimeField::new('createdAt', 'Occurred At')
             ->setFormat('dd MMM yyyy | HH:mm:ss')
@@ -106,7 +109,7 @@ class AuditLogCrudController extends AbstractCrudController
     }
 
     /**
-     * @return iterable<int, mixed>
+     * @return iterable<FieldInterface>
      */
     private function configureOverviewTabFields(): iterable
     {
@@ -127,7 +130,7 @@ class AuditLogCrudController extends AbstractCrudController
 
         yield FormField::addRow();
         yield TextField::new('ipAddress', 'IP Address')
-            ->formatValue(static fn ($value): string => ($value !== null && $value !== '') ? $value : 'N/A')
+            ->formatValue(static fn ($value): string => ($value !== null && $value !== '') ? (string) (is_scalar($value) || $value instanceof Stringable ? $value : '') : 'N/A')
             ->renderAsHtml()
             ->onlyOnDetail()
             ->setColumns(6);
@@ -136,7 +139,7 @@ class AuditLogCrudController extends AbstractCrudController
     }
 
     /**
-     * @return iterable<int, mixed>
+     * @return iterable<FieldInterface>
      */
     private function configureChangesTabFields(): iterable
     {
@@ -159,7 +162,7 @@ class AuditLogCrudController extends AbstractCrudController
     }
 
     /**
-     * @return iterable<int, mixed>
+     * @return iterable<FieldInterface>
      */
     private function configureTechnicalContextTabFields(): iterable
     {
@@ -200,7 +203,7 @@ class AuditLogCrudController extends AbstractCrudController
                 $value,
                 JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
             )) !== false ? $json : ''),
-            default => (string) $value,
+            default => (string) (is_scalar($value) || $value instanceof Stringable ? $value : ''),
         };
     }
 }

@@ -64,7 +64,7 @@ class QueueAuditTransportTest extends TestCase
             ->method('dispatch')
             ->with(
                 self::isInstanceOf(AuditLogMessage::class),
-                self::callback(function ($stamps) {
+                self::callback(static function ($stamps) {
                     $hasApiKeyStamp = false;
                     $hasSignatureStamp = false;
                     foreach ($stamps as $stamp) {
@@ -125,7 +125,7 @@ class QueueAuditTransportTest extends TestCase
 
         $this->bus->expects($this->once())
             ->method('dispatch')
-            ->with(self::callback(function (AuditLogMessage $message) {
+            ->with(self::callback(static function (AuditLogMessage $message) {
                 return $message->entityId === '123';
             }))
             ->willReturn(new Envelope(new stdClass()));

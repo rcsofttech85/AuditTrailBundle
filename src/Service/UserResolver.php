@@ -127,7 +127,11 @@ final readonly class UserResolver implements UserResolverInterface
             return null;
         }
 
-        // on Unix/Linux
+        return $this->getPosixUser() ?? $this->getServerUser() ?? 'cli:system';
+    }
+
+    private function getPosixUser(): ?string
+    {
         if (function_exists('posix_getpwuid') && function_exists('posix_getuid')) {
             $info = posix_getpwuid(posix_getuid());
             if ($info !== false && $info['name'] !== '') {
@@ -135,12 +139,16 @@ final readonly class UserResolver implements UserResolverInterface
             }
         }
 
-        // Windows / CI
+        return null;
+    }
+
+    private function getServerUser(): ?string
+    {
         $user = $_SERVER['USER'] ?? $_SERVER['USERNAME'] ?? null;
         if (is_string($user) && $user !== '') {
             return 'cli:'.$user;
         }
 
-        return 'cli:system';
+        return null;
     }
 }

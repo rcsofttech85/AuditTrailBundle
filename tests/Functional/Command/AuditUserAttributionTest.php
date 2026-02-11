@@ -105,10 +105,10 @@ class AuditUserAttributionTest extends KernelTestCase
         self::assertNotNull($revertLog);
 
         // Should have cli: prefix and machine defaults
-        self::assertStringStartsWith('cli:', $revertLog->getUsername());
-        self::assertStringStartsWith('cli:', $revertLog->getUserId());
-        self::assertEquals(gethostbyname(gethostname()), $revertLog->getIpAddress());
-        self::assertStringContainsString('cli-console', $revertLog->getUserAgent());
-        self::assertStringContainsString(gethostname(), $revertLog->getUserAgent());
+        self::assertStringStartsWith('cli:', (string) $revertLog->getUsername());
+        self::assertStringStartsWith('cli:', (string) $revertLog->getUserId());
+        self::assertEquals(gethostbyname((string) gethostname()), $revertLog->getIpAddress());
+        self::assertStringContainsString('cli-console', (string) $revertLog->getUserAgent());
+        self::assertStringContainsString((string) gethostname(), (string) $revertLog->getUserAgent());
     }
 }

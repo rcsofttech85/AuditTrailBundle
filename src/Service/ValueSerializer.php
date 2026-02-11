@@ -77,7 +77,7 @@ class ValueSerializer
                 '_truncated' => true,
                 '_total_count' => $count,
                 '_sample' => array_map(
-                    fn ($item) => $onlyIdentifiers
+                    fn ($item) => $onlyIdentifiers && is_object($item)
                     ? $this->extractEntityIdentifier($item)
                     : $this->serialize($item, $depth + 1),
                     $value->slice(0, self::MAX_COLLECTION_ITEMS)
@@ -85,8 +85,12 @@ class ValueSerializer
             ];
         }
 
-        return $value->map(function ($item) use ($depth, $onlyIdentifiers) {
-            return $onlyIdentifiers ? $this->extractEntityIdentifier($item) : $this->serialize($item, $depth + 1);
+        return $value->map(function (mixed $item) use ($depth, $onlyIdentifiers) {
+            if ($onlyIdentifiers && is_object($item)) {
+                return $this->extractEntityIdentifier($item);
+            }
+
+            return $this->serialize($item, $depth + 1);
         })->toArray();
     }
 

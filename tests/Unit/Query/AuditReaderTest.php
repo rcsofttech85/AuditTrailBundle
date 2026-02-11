@@ -64,7 +64,7 @@ class AuditReaderTest extends TestCase
 
         $this->repository->expects($this->once())
             ->method('findWithFilters')
-            ->with(self::callback(fn ($f) => $f['entityClass'] === 'stdClass' && $f['entityId'] === '123'), 30)
+            ->with(self::callback(static fn ($f) => $f['entityClass'] === 'stdClass' && $f['entityId'] === '123'), 30)
             ->willReturn([]);
 
         $this->reader->getHistoryFor($entity);
@@ -80,7 +80,7 @@ class AuditReaderTest extends TestCase
 
         $this->repository->expects($this->once())
             ->method('findWithFilters')
-            ->with(self::callback(fn ($f) => $f['entityClass'] === 'stdClass' && $f['entityId'] === '["1","2"]'), 30)
+            ->with(self::callback(static fn ($f) => $f['entityClass'] === 'stdClass' && $f['entityId'] === '["1","2"]'), 30)
             ->willReturn([]);
 
         $this->reader->getHistoryFor($entity);
@@ -100,7 +100,7 @@ class AuditReaderTest extends TestCase
 
         $this->repository->expects($this->once())
             ->method('findWithFilters')
-            ->with(self::callback(fn ($f) => $f['entityId'] === '456'), 30)
+            ->with(self::callback(static fn ($f) => $f['entityId'] === '456'), 30)
             ->willReturn([]);
 
         $this->reader->getHistoryFor($entity);

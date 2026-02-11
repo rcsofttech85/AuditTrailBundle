@@ -147,7 +147,8 @@ final class AuditExportCommand extends Command
 
     private function parseFormat(InputInterface $input, SymfonyStyle $io): ?string
     {
-        $format = strtolower((string) $input->getOption('format'));
+        $formatOption = $input->getOption('format');
+        $format = is_string($formatOption) ? strtolower($formatOption) : self::FORMAT_JSON;
 
         if (!in_array($format, self::VALID_FORMATS, true)) {
             $io->error(sprintf('Invalid format "%s". Valid: %s', $format, implode(', ', self::VALID_FORMATS)));
@@ -160,7 +161,8 @@ final class AuditExportCommand extends Command
 
     private function parseLimit(InputInterface $input, SymfonyStyle $io): ?int
     {
-        $limit = (int) $input->getOption('limit');
+        $limitOption = $input->getOption('limit');
+        $limit = is_numeric($limitOption) ? (int) $limitOption : self::DEFAULT_LIMIT;
 
         if ($limit < 1 || $limit > self::MAX_LIMIT) {
             $io->error(sprintf('Limit must be between 1 and %d', self::MAX_LIMIT));

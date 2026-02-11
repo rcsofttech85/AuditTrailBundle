@@ -9,11 +9,14 @@ use DateTimeInterface;
 use DateTimeZone;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Stringable;
 use Throwable;
 
 use function is_array;
 use function is_float;
 use function is_int;
+use function is_scalar;
+use function is_string;
 
 use const JSON_PRESERVE_ZERO_FRACTION;
 use const JSON_THROW_ON_ERROR;
@@ -62,15 +65,15 @@ final readonly class AuditIntegrityService implements AuditIntegrityServiceInter
     {
         $data = [
             $log->getEntityClass(),
-            (string) $this->normalize($log->getEntityId()),
+            (string) (is_scalar($id = $this->normalize($log->getEntityId())) || $id instanceof Stringable ? $id : ''),
             $log->getAction(),
             $this->toJson($log->getOldValues()),
             $this->toJson($log->getNewValues()),
-            (string) $this->normalize($log->getUserId()),
-            (string) $log->getUsername(),
-            (string) $log->getIpAddress(),
-            (string) $log->getUserAgent(),
-            (string) $log->getTransactionHash(),
+            (string) (is_scalar($userId = $this->normalize($log->getUserId())) || $userId instanceof Stringable ? $userId : ''),
+            $log->getUsername() ?? '',
+            $log->getIpAddress() ?? '',
+            $log->getUserAgent() ?? '',
+            $log->getTransactionHash() ?? '',
             $log->getCreatedAt()->setTimezone(new DateTimeZone('UTC'))->format(DateTimeInterface::ATOM),
         ];
 
@@ -103,7 +106,7 @@ final readonly class AuditIntegrityService implements AuditIntegrityServiceInter
     private function normalizeArray(array $data): mixed
     {
         // Check if this is a serialized DateTime array
-        if (isset($data['date'], $data['timezone'], $data['timezone_type'])) {
+        if (isset($data['date'], $data['timezone']) && is_string($data['date']) && is_string($data['timezone'])) {
             try {
                 $dt = new DateTimeImmutable($data['date'], new DateTimeZone($data['timezone']));
 
