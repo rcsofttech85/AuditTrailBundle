@@ -51,6 +51,7 @@ final class Configuration implements ConfigurationInterface
             ->booleanNode('defer_transport_until_commit')->defaultTrue()->end()
             ->booleanNode('fail_on_transport_error')->defaultFalse()->end()
             ->booleanNode('fallback_to_database')->defaultTrue()->end()
+            ->scalarNode('cache_pool')->defaultNull()->end()
             ->end();
     }
 

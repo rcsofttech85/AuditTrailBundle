@@ -77,6 +77,11 @@ class AuditService
         );
     }
 
+    public function getAccessAttribute(string $class): ?\Rcsofttech\AuditTrailBundle\Attribute\AuditAccess
+    {
+        return $this->metadataCache->getAuditAccessAttribute($class);
+    }
+
     /**
      * Extract entity data for auditing.
      *

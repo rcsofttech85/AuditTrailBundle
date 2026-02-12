@@ -13,7 +13,9 @@ use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
@@ -41,6 +43,10 @@ class AuditSubscriberTest extends TestCase
 
     private LoggerInterface&MockObject $logger;
 
+    private UserResolverInterface&MockObject $userResolver;
+
+    private CacheItemPoolInterface&MockObject $cache;
+
     private AuditSubscriber $subscriber;
 
     protected function setUp(): void
@@ -52,6 +58,8 @@ class AuditSubscriberTest extends TestCase
         $this->entityProcessor = $this->createMock(EntityProcessor::class);
         $this->transactionIdGenerator = $this->createMock(TransactionIdGenerator::class);
         $this->logger = $this->createMock(LoggerInterface::class);
+        $this->userResolver = $this->createMock(UserResolverInterface::class);
+        $this->cache = $this->createMock(CacheItemPoolInterface::class);
 
         $this->subscriber = new AuditSubscriber(
             $this->auditService,
@@ -60,6 +68,8 @@ class AuditSubscriberTest extends TestCase
             $this->auditManager,
             $this->entityProcessor,
             $this->transactionIdGenerator,
+            $this->userResolver,
+            $this->cache,
             true,
             $this->logger,
             true
@@ -80,6 +90,8 @@ class AuditSubscriberTest extends TestCase
             $this->auditManager,
             $this->entityProcessor,
             $this->transactionIdGenerator,
+            $this->userResolver,
+            null,
             true,
             null,
             false // Disabled

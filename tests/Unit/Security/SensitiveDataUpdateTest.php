@@ -9,6 +9,7 @@ use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
@@ -79,7 +80,8 @@ class SensitiveDataUpdateTest extends AbstractAuditTestCase
             $dispatcher,
             $auditManager,
             $entityProcessor,
-            $this->transactionIdGenerator
+            $this->transactionIdGenerator,
+            self::createStub(UserResolverInterface::class)
         );
     }
 

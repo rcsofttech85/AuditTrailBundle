@@ -85,6 +85,7 @@ class AuditLogCrudController extends AbstractCrudController
                 'Soft Delete' => AuditLogInterface::ACTION_SOFT_DELETE,
                 'Restore' => AuditLogInterface::ACTION_RESTORE,
                 'Revert' => AuditLogInterface::ACTION_REVERT,
+                'Access' => AuditLogInterface::ACTION_ACCESS,
             ])
             ->renderAsBadges([
                 AuditLogInterface::ACTION_CREATE => 'success',
@@ -93,6 +94,7 @@ class AuditLogCrudController extends AbstractCrudController
                 AuditLogInterface::ACTION_SOFT_DELETE => 'danger',
                 AuditLogInterface::ACTION_RESTORE => 'info',
                 AuditLogInterface::ACTION_REVERT => 'primary',
+                AuditLogInterface::ACTION_ACCESS => 'secondary',
             ])
             ->onlyOnIndex();
 

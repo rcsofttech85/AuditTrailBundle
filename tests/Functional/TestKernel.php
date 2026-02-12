@@ -87,6 +87,11 @@ class TestKernel extends Kernel implements CompilerPassInterface
             'secret' => 'test',
             'php_errors' => ['log' => false, 'throw' => false],
             'validation' => ['email_validation_mode' => 'html5'],
+            'cache' => [
+                'pools' => [
+                    'audit_test.cache' => ['adapter' => 'cache.adapter.filesystem'],
+                ],
+            ],
         ]);
 
         $c->loadFromExtension('security', [
@@ -128,6 +133,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
             'transports' => [
                 'doctrine' => true,
             ],
+            'cache_pool' => 'audit_test.cache',
             'defer_transport_until_commit' => true, // Default
         ], $this->auditConfig);
 

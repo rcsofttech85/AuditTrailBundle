@@ -24,7 +24,7 @@ final class DoctrineAuditTransport implements AuditTransportInterface
 
         if ($phase === 'on_flush') {
             $this->handleOnFlush($log, $context);
-        } elseif ($phase === 'post_flush') {
+        } elseif ($phase === 'post_flush' || $phase === 'post_load') {
             $this->handlePostFlush($log, $context);
         }
     }
@@ -51,7 +51,7 @@ final class DoctrineAuditTransport implements AuditTransportInterface
         /** @var EntityManagerInterface $em */
         $em = $context['em'];
 
-        // 1. Persist if not managed
+        // Persist if not managed
         if (!$em->contains($log)) {
             $em->persist($log);
         }
