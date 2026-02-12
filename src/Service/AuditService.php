@@ -16,6 +16,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Stringable;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 use Throwable;
+use Traversable;
 
 use function in_array;
 use function is_scalar;
@@ -70,13 +71,10 @@ class AuditService
             return false;
         }
 
-        foreach ($this->voters as $voter) {
-            if (!$voter->vote($entity, $action, $changeSet)) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_all(
+            $this->voters instanceof Traversable ? iterator_to_array($this->voters) : $this->voters,
+            static fn (AuditVoterInterface $voter) => $voter->vote($entity, $action, $changeSet)
+        );
     }
 
     /**

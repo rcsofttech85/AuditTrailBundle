@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use DateTimeInterface;
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
@@ -30,6 +31,7 @@ final class HttpAuditTransport implements AuditTransportInterface
     /**
      * @param array<string, mixed> $context
      */
+    #[Override]
     public function send(AuditLogInterface $log, array $context = []): void
     {
         $entityId = EntityIdResolver::resolve($log, $context) ?? $log->getEntityId();
@@ -65,6 +67,7 @@ final class HttpAuditTransport implements AuditTransportInterface
         ]);
     }
 
+    #[Override]
     public function supports(string $phase, array $context = []): bool
     {
         return $phase === 'post_flush';

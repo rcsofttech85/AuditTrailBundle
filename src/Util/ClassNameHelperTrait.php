@@ -14,8 +14,8 @@ trait ClassNameHelperTrait
      */
     protected function shortenClass(string $className): string
     {
-        $lastBackslash = strrpos($className, '\\');
+        $lastBackslash = mb_strrpos($className, '\\');
 
-        return $lastBackslash === false ? $className : substr($className, $lastBackslash + 1);
+        return $lastBackslash === false ? $className : mb_substr($className, $lastBackslash + 1);
     }
 }

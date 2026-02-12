@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Message;
 use DateTimeImmutable;
 use DateTimeInterface;
 use JsonSerializable;
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Symfony\Component\Messenger\Attribute\AsMessage;
 
@@ -60,6 +61,7 @@ final readonly class AuditLogMessage implements JsonSerializable
     /**
      * @return array<string, mixed>
      */
+    #[Override]
     public function jsonSerialize(): array
     {
         return [

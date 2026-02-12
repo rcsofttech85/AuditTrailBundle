@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Transport;
 
+use Override;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
@@ -33,6 +34,7 @@ final class QueueAuditTransport implements AuditTransportInterface
     /**
      * @param array<string, mixed> $context
      */
+    #[Override]
     public function send(AuditLogInterface $log, array $context = []): void
     {
         $entityId = EntityIdResolver::resolve($log, $context) ?? $log->getEntityId();
@@ -70,6 +72,7 @@ final class QueueAuditTransport implements AuditTransportInterface
         }
     }
 
+    #[Override]
     public function supports(string $phase, array $context = []): bool
     {
         return $phase === 'post_flush';

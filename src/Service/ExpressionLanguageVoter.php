@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 use Symfony\Component\ExpressionLanguage\ParsedExpression;
 
-class ExpressionLanguageVoter implements AuditVoterInterface
+final class ExpressionLanguageVoter implements AuditVoterInterface
 {
     private ?ExpressionLanguage $expressionLanguage = null;
 
@@ -22,6 +23,7 @@ class ExpressionLanguageVoter implements AuditVoterInterface
     ) {
     }
 
+    #[Override]
     public function vote(object $entity, string $action, array $changeSet): bool
     {
         $condition = $this->metadataCache->getAuditCondition($entity::class);
@@ -29,9 +31,7 @@ class ExpressionLanguageVoter implements AuditVoterInterface
             return true;
         }
 
-        if ($this->expressionLanguage === null) {
-            $this->expressionLanguage = new ExpressionLanguage();
-        }
+        $this->expressionLanguage ??= new ExpressionLanguage();
 
         $expression = $condition->expression;
         if (!isset($this->cache[$expression])) {
