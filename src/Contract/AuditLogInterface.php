@@ -6,6 +6,23 @@ namespace Rcsofttech\AuditTrailBundle\Contract;
 
 use DateTimeImmutable;
 
+/**
+ * @property int|null                  $id
+ * @property string                    $entityClass
+ * @property string                    $entityId
+ * @property string                    $action
+ * @property array<string, mixed>|null $oldValues
+ * @property array<string, mixed>|null $newValues
+ * @property array<int, string>|null   $changedFields
+ * @property string|null               $userId
+ * @property string|null               $username
+ * @property string|null               $ipAddress
+ * @property string|null               $userAgent
+ * @property string|null               $transactionHash
+ * @property DateTimeImmutable         $createdAt
+ * @property string|null               $signature
+ * @property array<string, mixed>      $context
+ */
 interface AuditLogInterface
 {
     public const string ACTION_CREATE = 'create';

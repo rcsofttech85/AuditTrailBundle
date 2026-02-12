@@ -39,7 +39,7 @@ class AuditLog implements AuditLogInterface
     public private(set) string $entityClass {
         get => $this->entityClass;
         set {
-            $trimmed = trim($value);
+            $trimmed = mb_trim($value);
             if ($trimmed === '') {
                 throw new InvalidArgumentException('Entity class cannot be empty');
             }
@@ -51,7 +51,7 @@ class AuditLog implements AuditLogInterface
     public private(set) string $entityId {
         get => $this->entityId;
         set {
-            $trimmed = trim($value);
+            $trimmed = mb_trim($value);
             if ($trimmed === '') {
                 throw new InvalidArgumentException('Entity ID cannot be empty');
             }

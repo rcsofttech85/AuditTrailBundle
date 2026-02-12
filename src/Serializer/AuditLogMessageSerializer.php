@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Serializer;
 
 use InvalidArgumentException;
+use Override;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
@@ -35,6 +36,7 @@ final readonly class AuditLogMessageSerializer implements SerializerInterface
     /**
      * @return array{body: string, headers: array<string, string>}
      */
+    #[Override]
     public function encode(Envelope $envelope): array
     {
         $message = $envelope->getMessage();
@@ -49,6 +51,7 @@ final readonly class AuditLogMessageSerializer implements SerializerInterface
         ];
     }
 
+    #[Override]
     public function decode(array $encodedEnvelope): Envelope
     {
         throw new MessageDecodingFailedException('Decoding is not supported. This serializer is designed for publishing audit logs only.');

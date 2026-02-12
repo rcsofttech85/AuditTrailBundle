@@ -13,13 +13,14 @@ use Symfony\Component\Console\Output\OutputInterface;
 use function is_array;
 use function is_bool;
 use function is_scalar;
+use function mb_strlen;
+use function mb_substr;
 use function sprintf;
-use function strlen;
 
 use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
 
-class AuditRenderer
+final class AuditRenderer
 {
     use ClassNameHelperTrait;
 
@@ -177,7 +178,7 @@ class AuditRenderer
 
     private function truncateString(string $str): string
     {
-        return strlen($str) > 50 ? substr($str, 0, 47).'...' : $str;
+        return mb_strlen($str) > 50 ? mb_substr($str, 0, 47).'...' : $str;
     }
 
     public function shortenHash(?string $hash): string

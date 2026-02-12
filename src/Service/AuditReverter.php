@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
@@ -15,15 +16,15 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 use function count;
 use function sprintf;
 
-class AuditReverter implements AuditReverterInterface
+final readonly class AuditReverter implements AuditReverterInterface
 {
     public function __construct(
-        private readonly EntityManagerInterface $em,
-        private readonly ValidatorInterface $validator,
-        private readonly AuditService $auditService,
-        private readonly RevertValueDenormalizer $denormalizer,
-        private readonly SoftDeleteHandler $softDeleteHandler,
-        private readonly AuditIntegrityServiceInterface $integrityService,
+        private EntityManagerInterface $em,
+        private ValidatorInterface $validator,
+        private AuditService $auditService,
+        private RevertValueDenormalizer $denormalizer,
+        private SoftDeleteHandler $softDeleteHandler,
+        private AuditIntegrityServiceInterface $integrityService,
     ) {
     }
 
@@ -32,6 +33,7 @@ class AuditReverter implements AuditReverterInterface
      *
      * @return array<string, mixed>
      */
+    #[Override]
     public function revert(
         AuditLogInterface $log,
         bool $dryRun = false,

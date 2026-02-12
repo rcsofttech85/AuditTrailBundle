@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -16,6 +17,7 @@ final class DoctrineAuditTransport implements AuditTransportInterface
     /**
      * @param array<string, mixed> $context
      */
+    #[Override]
     public function send(AuditLogInterface $log, array $context = []): void
     {
         $phase = $context['phase'] ?? null;
@@ -25,10 +27,6 @@ final class DoctrineAuditTransport implements AuditTransportInterface
         } elseif ($phase === 'post_flush') {
             $this->handlePostFlush($log, $context);
         }
-    }
-
-    public function __construct()
-    {
     }
 
     /**
@@ -64,12 +62,9 @@ final class DoctrineAuditTransport implements AuditTransportInterface
         if ($entityId !== null) {
             $log->setEntityId($entityId);
         }
-
-        if ($entityId !== null) {
-            $log->setEntityId($entityId);
-        }
     }
 
+    #[Override]
     public function supports(string $phase, array $context = []): bool
     {
         // Doctrine transport supports both phases

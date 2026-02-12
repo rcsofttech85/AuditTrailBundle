@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Query;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReaderInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
@@ -31,6 +32,7 @@ readonly class AuditReader implements AuditReaderInterface
     /**
      * Create a new query builder.
      */
+    #[Override]
     public function createQuery(): AuditQuery
     {
         return new AuditQuery($this->repository);
@@ -39,6 +41,7 @@ readonly class AuditReader implements AuditReaderInterface
     /**
      * Create a query pre-filtered for a specific entity class and optional ID.
      */
+    #[Override]
     public function forEntity(string $entityClass, ?string $entityId = null): AuditQuery
     {
         return $this->createQuery()->entity($entityClass, $entityId);
@@ -47,6 +50,7 @@ readonly class AuditReader implements AuditReaderInterface
     /**
      * Create a query pre-filtered for a specific user.
      */
+    #[Override]
     public function byUser(string $userId): AuditQuery
     {
         return $this->createQuery()->user($userId);
@@ -55,6 +59,7 @@ readonly class AuditReader implements AuditReaderInterface
     /**
      * Create a query pre-filtered for a specific transaction.
      */
+    #[Override]
     public function byTransaction(string $transactionHash): AuditQuery
     {
         return $this->createQuery()->transaction($transactionHash);

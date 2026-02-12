@@ -16,11 +16,11 @@ use Throwable;
 readonly class AuditDispatcher
 {
     public function __construct(
-        private readonly AuditTransportInterface $transport,
-        private readonly AuditIntegrityServiceInterface $integrityService,
-        private readonly ?LoggerInterface $logger = null,
-        private readonly bool $failOnTransportError = false,
-        private readonly bool $fallbackToDatabase = true,
+        private AuditTransportInterface $transport,
+        private AuditIntegrityServiceInterface $integrityService,
+        private ?LoggerInterface $logger = null,
+        private bool $failOnTransportError = false,
+        private bool $fallbackToDatabase = true,
     ) {
     }
 

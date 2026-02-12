@@ -12,14 +12,14 @@ use Stringable;
 
 use function is_array;
 use function is_scalar;
+use function mb_strlen;
 use function sprintf;
-use function strlen;
 
 use const JSON_PRETTY_PRINT;
 use const JSON_THROW_ON_ERROR;
 use const JSON_UNESCAPED_SLASHES;
 
-readonly class AuditExporter
+final readonly class AuditExporter
 {
     /**
      * @param array<AuditLogInterface> $audits
@@ -93,7 +93,7 @@ readonly class AuditExporter
     public function formatFileSize(int $bytes): string
     {
         $units = ['B', 'KB', 'MB', 'GB'];
-        $factor = (int) floor((strlen((string) $bytes) - 1) / 3);
+        $factor = (int) floor((mb_strlen((string) $bytes) - 1) / 3);
 
         return sprintf('%.2f %s', $bytes / (1024 ** $factor), $units[$factor]);
     }

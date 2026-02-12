@@ -18,7 +18,7 @@ use function is_object;
 use function is_scalar;
 use function is_string;
 
-class RevertValueDenormalizer
+final class RevertValueDenormalizer
 {
     public function __construct(
         private readonly EntityManagerInterface $em,

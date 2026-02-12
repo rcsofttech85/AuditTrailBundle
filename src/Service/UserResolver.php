@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -27,6 +28,7 @@ final readonly class UserResolver implements UserResolverInterface
     ) {
     }
 
+    #[Override]
     public function getUserId(): ?string
     {
         $user = $this->security->getUser();
@@ -45,11 +47,13 @@ final readonly class UserResolver implements UserResolverInterface
         return $this->resolveCliUser();
     }
 
+    #[Override]
     public function getUsername(): ?string
     {
         return $this->security->getUser()?->getUserIdentifier() ?? $this->resolveCliUser();
     }
 
+    #[Override]
     public function getIpAddress(): ?string
     {
         $request = $this->requestStack->getCurrentRequest();
@@ -68,6 +72,7 @@ final readonly class UserResolver implements UserResolverInterface
         return null;
     }
 
+    #[Override]
     public function getUserAgent(): ?string
     {
         if (!$this->trackUserAgent) {
@@ -92,6 +97,7 @@ final readonly class UserResolver implements UserResolverInterface
         return null;
     }
 
+    #[Override]
     public function getImpersonatorId(): ?string
     {
         $token = $this->security->getToken();
@@ -111,6 +117,7 @@ final readonly class UserResolver implements UserResolverInterface
         return null;
     }
 
+    #[Override]
     public function getImpersonatorUsername(): ?string
     {
         $token = $this->security->getToken();

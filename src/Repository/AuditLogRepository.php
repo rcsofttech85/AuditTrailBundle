@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
@@ -26,6 +27,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
     /**
      * @return array<AuditLog>
      */
+    #[Override]
     public function findByEntity(string $entityClass, string $entityId): array
     {
         /** @var array<AuditLog> $result */
@@ -44,6 +46,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
     /**
      * @return array<AuditLog>
      */
+    #[Override]
     public function findByTransactionHash(string $transactionHash): array
     {
         /** @var array<AuditLog> $result */
@@ -60,6 +63,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
     /**
      * @return array<AuditLog>
      */
+    #[Override]
     public function findByUser(string $userId, int $limit = 30): array
     {
         /** @var array<AuditLog> $result */
@@ -74,6 +78,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
         return $result;
     }
 
+    #[Override]
     public function deleteOldLogs(DateTimeImmutable $before): int
     {
         /** @var int $count */
@@ -94,6 +99,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
      *
      * @return array<int, AuditLog>
      */
+    #[Override]
     public function findWithFilters(array $filters = [], int $limit = 30): array
     {
         $qb = $this->createQueryBuilder('a')
@@ -203,6 +209,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
     /**
      * Count audit logs older than a given date.
      */
+    #[Override]
     public function countOlderThan(DateTimeImmutable $before): int
     {
         return (int) $this->createQueryBuilder('a')

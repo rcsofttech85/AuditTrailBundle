@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\DependencyInjection;
 
 use LogicException;
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessageSerializer;
 use Rcsofttech\AuditTrailBundle\Transport\ChainAuditTransport;
@@ -24,6 +25,7 @@ use function count;
 
 final class AuditTrailExtension extends Extension implements PrependExtensionInterface
 {
+    #[Override]
     public function load(array $configs, ContainerBuilder $container): void
     {
         $configuration = new Configuration();
@@ -79,6 +81,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         $this->registerSerializer($container);
     }
 
+    #[Override]
     public function prepend(ContainerBuilder $container): void
     {
         if (!$container->hasExtension('doctrine')) {
@@ -209,6 +212,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         }
     }
 
+    #[Override]
     public function getAlias(): string
     {
         return 'audit_trail';

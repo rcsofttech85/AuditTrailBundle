@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Stringable;
@@ -26,17 +27,19 @@ use const JSON_UNESCAPED_UNICODE;
 final readonly class AuditIntegrityService implements AuditIntegrityServiceInterface
 {
     public function __construct(
-        private readonly string $secret,
-        private readonly string $algorithm = 'sha256',
-        private readonly bool $enabled = false,
+        private string $secret,
+        private string $algorithm = 'sha256',
+        private bool $enabled = false,
     ) {
     }
 
+    #[Override]
     public function isEnabled(): bool
     {
         return $this->enabled;
     }
 
+    #[Override]
     public function generateSignature(AuditLogInterface $log): string
     {
         $data = $this->getLogData($log);
@@ -44,11 +47,13 @@ final readonly class AuditIntegrityService implements AuditIntegrityServiceInter
         return hash_hmac($this->algorithm, $data, $this->secret);
     }
 
+    #[Override]
     public function signPayload(string $payload): string
     {
         return hash_hmac($this->algorithm, $payload, $this->secret);
     }
 
+    #[Override]
     public function verifySignature(AuditLogInterface $log): bool
     {
         $signature = $log->getSignature();

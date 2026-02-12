@@ -12,6 +12,7 @@ return (new PhpCsFixer\Config())
         '@Symfony:risky' => true,
         '@PHP8x4Migration' => true,
         'declare_strict_types' => true,
+        'no_redundant_readonly_property' => true,
         'modernize_types_casting' => true,
         'no_superfluous_phpdoc_tags' => [
             'allow_mixed' => true,

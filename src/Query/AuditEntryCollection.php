@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Query;
 use ArrayIterator;
 use Countable;
 use IteratorAggregate;
+use Override;
 use Traversable;
 
 use function count;
@@ -26,6 +27,7 @@ readonly class AuditEntryCollection implements IteratorAggregate, Countable
     ) {
     }
 
+    #[Override]
     public function count(): int
     {
         return count($this->entries);
@@ -198,6 +200,7 @@ readonly class AuditEntryCollection implements IteratorAggregate, Countable
     /**
      * @return Traversable<int, AuditEntry>
      */
+    #[Override]
     public function getIterator(): Traversable
     {
         return new ArrayIterator($this->entries);
