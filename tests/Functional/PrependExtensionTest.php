@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
 use Doctrine\ORM\EntityManagerInterface;
-use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpKernel\KernelInterface;
@@ -36,7 +35,6 @@ class PrependExtensionTest extends KernelTestCase
         return $kernel;
     }
 
-    #[RunInSeparateProcess]
     public function testAuditLogIsMappedWithAutoMappingFalse(): void
     {
         self::bootKernel();

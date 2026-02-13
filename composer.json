@@ -60,7 +60,8 @@
         "spaze/phpstan-disallowed-calls": "^4.7",
         "phpstan/phpstan-symfony": "*",
         "phpstan/phpstan-strict-rules": "^2.0",
-        "infection/infection": "^0.32.0"
+        "infection/infection": "^0.32.0",
+        "dama/doctrine-test-bundle": "^8.6"
     },
     "autoload-dev": {
         "psr-4": {

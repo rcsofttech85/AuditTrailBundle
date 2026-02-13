@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
+use DAMA\DoctrineTestBundle\DAMADoctrineTestBundle;
 use Doctrine\Bundle\DoctrineBundle\DoctrineBundle;
 use Rcsofttech\AuditTrailBundle\AuditTrailBundle;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
@@ -18,6 +19,11 @@ use Symfony\Component\HttpKernel\Kernel;
 class TestKernel extends Kernel implements CompilerPassInterface
 {
     use MicroKernelTrait;
+
+    public function __construct(string $environment, bool $debug)
+    {
+        parent::__construct($environment, $debug);
+    }
 
     /** @var array<string, mixed> */
     private array $auditConfig = [];
@@ -77,6 +83,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
             new DoctrineBundle(),
             new SecurityBundle(),
             new AuditTrailBundle(),
+            new DAMADoctrineTestBundle(),
         ];
     }
 
@@ -106,7 +113,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
         $defaultDoctrineConfig = [
             'dbal' => [
                 'driver' => 'pdo_sqlite',
-                'url' => 'sqlite:///%kernel.cache_dir%/test.db',
+                'url' => 'sqlite:///:memory:',
             ],
             'orm' => [
                 'naming_strategy' => 'doctrine.orm.naming_strategy.underscore_number_aware',
