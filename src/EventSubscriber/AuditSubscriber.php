@@ -190,6 +190,8 @@ final class AuditSubscriber implements ResetInterface
 
             $this->dispatcher->dispatch($audit, $em, 'post_flush');
 
+            $this->markAsAudited($pending['entity'], $em);
+
             if ($em->contains($audit)) {
                 $hasNewAudits = true;
             }
@@ -211,6 +213,8 @@ final class AuditSubscriber implements ResetInterface
 
             $this->dispatcher->dispatch($scheduled['audit'], $em, 'post_flush');
 
+            $this->markAsAudited($scheduled['entity'], $em);
+
             if ($em->contains($scheduled['audit'])) {
                 $hasNewAudits = true;
             }
@@ -231,6 +235,16 @@ final class AuditSubscriber implements ResetInterface
         $this->isFlushing = false;
         $this->recursionDepth = 0;
         $this->auditedEntities = [];
+    }
+
+    private function markAsAudited(object $entity, EntityManagerInterface $em): void
+    {
+        $id = EntityIdResolver::resolveFromEntity($entity, $em);
+        if ($id !== EntityIdResolver::PENDING_ID) {
+            $class = $entity::class;
+            $requestKey = sprintf('%s:%s', $class, $id);
+            $this->auditedEntities[$requestKey] = true;
+        }
     }
 
     private function handleBatchFlushIfNeeded(EntityManagerInterface $em): void
