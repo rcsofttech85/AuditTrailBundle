@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Attribute\AuditAccess;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -52,7 +53,6 @@ class AuditAccessHandler implements ResetInterface
             return;
         }
 
-        // Check for Shadow Read Access - DO THIS BEFORE ID RESOLUTION
         $accessAttr = $this->auditService->getAccessAttribute($class);
         if ($accessAttr === null) {
             $this->skipAccessCheck[$class] = true;
@@ -69,8 +69,8 @@ class AuditAccessHandler implements ResetInterface
             return;
         }
 
-        $id = EntityIdResolver::resolveFromEntity($entity, $om);
-        if ($id === EntityIdResolver::PENDING_ID) {
+        $id = $this->resolveEntityId($entity, $om);
+        if ($id === null) {
             return;
         }
 
@@ -79,28 +79,7 @@ class AuditAccessHandler implements ResetInterface
             return;
         }
 
-        try {
-            $context = [];
-            if ($accessAttr->message !== null) {
-                $context['message'] = $accessAttr->message;
-            }
-            $context['level'] = $accessAttr->level;
-
-            $audit = $this->auditService->createAuditLog(
-                $entity,
-                AuditLogInterface::ACTION_ACCESS,
-                null,
-                null,
-                $context
-            );
-
-            $this->dispatcher->dispatch($audit, $om, 'post_load');
-        } catch (Throwable $e) {
-            $this->logger?->error('Failed to log audit access', [
-                'entity' => $class,
-                'exception' => $e->getMessage(),
-            ]);
-        }
+        $this->dispatchAccessAudit($entity, $om, $accessAttr);
     }
 
     public function markAsAudited(string $requestKey): void
@@ -117,6 +96,38 @@ class AuditAccessHandler implements ResetInterface
         $this->auditedEntities = [];
         $this->isGetRequest = null;
         $this->skipAccessCheck = [];
+    }
+
+    private function resolveEntityId(object $entity, EntityManagerInterface $om): ?string
+    {
+        $id = EntityIdResolver::resolveFromEntity($entity, $om);
+
+        return $id === EntityIdResolver::PENDING_ID ? null : $id;
+    }
+
+    private function dispatchAccessAudit(object $entity, EntityManagerInterface $om, AuditAccess $accessAttr): void
+    {
+        try {
+            $context = ['level' => $accessAttr->level];
+            if ($accessAttr->message !== null) {
+                $context['message'] = $accessAttr->message;
+            }
+
+            $audit = $this->auditService->createAuditLog(
+                $entity,
+                AuditLogInterface::ACTION_ACCESS,
+                null,
+                null,
+                $context
+            );
+
+            $this->dispatcher->dispatch($audit, $om, 'post_load');
+        } catch (Throwable $e) {
+            $this->logger?->error('Failed to log audit access', [
+                'entity' => $entity::class,
+                'exception' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function isGetRequest(): bool
