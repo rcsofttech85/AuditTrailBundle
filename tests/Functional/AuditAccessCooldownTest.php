@@ -7,6 +7,8 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\CooldownPost;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 class AuditAccessCooldownTest extends AbstractFunctionalTestCase
 {
@@ -14,14 +16,19 @@ class AuditAccessCooldownTest extends AbstractFunctionalTestCase
     {
         $this->bootTestKernel();
         $em = $this->getEntityManager();
-
         $this->clearTestCache();
+
+        // Simulate a GET request to allow access logs
+        /** @var RequestStack $requestStack */
+        $requestStack = self::getContainer()->get(RequestStack::class);
+        $requestStack->push(Request::create('/', 'GET'));
 
         $post = new CooldownPost();
         $post->setTitle('Deduplication Test');
         $em->persist($post);
         $em->flush();
         $em->clear();
+        $this->clearTestCache(); // Clear cache after creation to test fresh access logging
 
         $postId = $post->getId();
 
@@ -47,14 +54,19 @@ class AuditAccessCooldownTest extends AbstractFunctionalTestCase
         // Persistent cooldown test
         $this->bootTestKernel();
         $em = $this->getEntityManager();
-
         $this->clearTestCache();
+
+        // Simulate a GET request to allow access logs
+        /** @var RequestStack $requestStack */
+        $requestStack = self::getContainer()->get(RequestStack::class);
+        $requestStack->push(Request::create('/', 'GET'));
 
         $post = new CooldownPost();
         $post->setTitle('Cooldown Test');
         $em->persist($post);
         $em->flush();
         $em->clear();
+        $this->clearTestCache(); // Clear cache after creation to test fresh access logging
 
         $postId = $post->getId();
 

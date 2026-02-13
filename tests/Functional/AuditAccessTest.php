@@ -7,6 +7,8 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\Post;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 class AuditAccessTest extends AbstractFunctionalTestCase
 {
@@ -14,6 +16,11 @@ class AuditAccessTest extends AbstractFunctionalTestCase
     {
         $this->bootTestKernel();
         $em = $this->getEntityManager();
+
+        // Simulate a GET request to allow access logs
+        /** @var RequestStack $requestStack */
+        $requestStack = self::getContainer()->get(RequestStack::class);
+        $requestStack->push(Request::create('/', 'GET'));
 
         // Persist a test entity
         $post = new Post();

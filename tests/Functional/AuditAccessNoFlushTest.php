@@ -9,6 +9,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditKernelSubscriber;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\Post;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\TerminateEvent;
 use Symfony\Component\HttpKernel\KernelInterface;
@@ -21,6 +22,12 @@ class AuditAccessNoFlushTest extends AbstractFunctionalTestCase
     {
         $this->bootTestKernel();
         $em = $this->getEntityManager();
+
+        // Simulate a GET request to allow access logs
+        $request = Request::create('/', 'GET');
+        /** @var RequestStack $requestStack */
+        $requestStack = self::getContainer()->get(RequestStack::class);
+        $requestStack->push($request);
 
         // Persist a test entity
         $post = new Post();
@@ -42,7 +49,7 @@ class AuditAccessNoFlushTest extends AbstractFunctionalTestCase
 
         $subscriber->onKernelTerminate(new TerminateEvent(
             $kernel,
-            new Request(),
+            $request,
             new Response()
         ));
 

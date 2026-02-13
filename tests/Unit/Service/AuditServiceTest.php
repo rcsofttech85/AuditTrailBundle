@@ -287,4 +287,55 @@ class AuditServiceTest extends TestCase
         $this->metadataCache->method('getSensitiveFields')->willReturn(['field' => 'mask']);
         self::assertEquals(['field' => 'mask'], $this->service->getSensitiveFields(new stdClass()));
     }
+
+    public function testPassesVotersWithNoVoters(): void
+    {
+        self::assertTrue($this->service->passesVoters(new stdClass(), AuditLogInterface::ACTION_ACCESS));
+    }
+
+    public function testPassesVotersWithApprovingVoter(): void
+    {
+        $voter = $this->createMock(AuditVoterInterface::class);
+        $voter->expects($this->once())->method('vote')
+            ->with(self::isInstanceOf(stdClass::class), AuditLogInterface::ACTION_ACCESS, [])
+            ->willReturn(true);
+
+        $service = new AuditService(
+            $this->entityManager,
+            $this->userResolver,
+            $this->clock,
+            $this->transactionIdGenerator,
+            $this->dataExtractor,
+            $this->metadataCache,
+            [],
+            [],
+            null,
+            'UTC',
+            [$voter]
+        );
+
+        self::assertTrue($service->passesVoters(new stdClass(), AuditLogInterface::ACTION_ACCESS));
+    }
+
+    public function testPassesVotersWithVetoingVoter(): void
+    {
+        $voter = $this->createMock(AuditVoterInterface::class);
+        $voter->method('vote')->willReturn(false);
+
+        $service = new AuditService(
+            $this->entityManager,
+            $this->userResolver,
+            $this->clock,
+            $this->transactionIdGenerator,
+            $this->dataExtractor,
+            $this->metadataCache,
+            [],
+            [],
+            null,
+            'UTC',
+            [$voter]
+        );
+
+        self::assertFalse($service->passesVoters(new stdClass(), AuditLogInterface::ACTION_ACCESS));
+    }
 }

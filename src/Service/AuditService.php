@@ -71,6 +71,16 @@ class AuditService
             return false;
         }
 
+        return $this->passesVoters($entity, $action, $changeSet);
+    }
+
+    /**
+     * Evaluate all registered voters for the given entity and action.
+     *
+     * @param array<string, mixed> $changeSet
+     */
+    public function passesVoters(object $entity, string $action, array $changeSet = []): bool
+    {
         return array_all(
             $this->voters instanceof Traversable ? iterator_to_array($this->voters) : $this->voters,
             static fn (AuditVoterInterface $voter) => $voter->vote($entity, $action, $changeSet)
