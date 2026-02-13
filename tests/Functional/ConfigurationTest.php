@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Tools\SchemaTool;
-use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -36,15 +34,6 @@ class ConfigurationTest extends KernelTestCase
         return $kernel;
     }
 
-    private function setupDatabase(EntityManagerInterface $em): void
-    {
-        $schemaTool = new SchemaTool($em);
-        $metadata = $em->getMetadataFactory()->getAllMetadata();
-        $schemaTool->dropSchema($metadata);
-        $schemaTool->createSchema($metadata);
-    }
-
-    #[RunInSeparateProcess]
     public function testBundleDisabled(): void
     {
         $options = [
@@ -54,10 +43,8 @@ class ConfigurationTest extends KernelTestCase
         ];
 
         self::bootKernel($options);
-        $container = self::getContainer();
-        $em = $container->get('doctrine.orm.entity_manager');
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
         assert($em instanceof EntityManagerInterface);
-        $this->setupDatabase($em);
 
         $entity = new TestEntity('Disabled Test');
         $em->persist($entity);
@@ -67,7 +54,6 @@ class ConfigurationTest extends KernelTestCase
         self::assertCount(0, $auditLogs, 'No audit logs should be created when bundle is disabled.');
     }
 
-    #[RunInSeparateProcess]
     public function testIgnoredEntities(): void
     {
         $options = [
@@ -77,10 +63,8 @@ class ConfigurationTest extends KernelTestCase
         ];
 
         self::bootKernel($options);
-        $container = self::getContainer();
-        $em = $container->get('doctrine.orm.entity_manager');
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
         assert($em instanceof EntityManagerInterface);
-        $this->setupDatabase($em);
 
         $entity = new TestEntity('Ignored Test');
         $em->persist($entity);
@@ -90,7 +74,6 @@ class ConfigurationTest extends KernelTestCase
         self::assertCount(0, $auditLogs, 'No audit logs should be created for ignored entities.');
     }
 
-    #[RunInSeparateProcess]
     public function testIgnoredProperties(): void
     {
         $options = [
@@ -100,10 +83,8 @@ class ConfigurationTest extends KernelTestCase
         ];
 
         self::bootKernel($options);
-        $container = self::getContainer();
-        $em = $container->get('doctrine.orm.entity_manager');
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
         assert($em instanceof EntityManagerInterface);
-        $this->setupDatabase($em);
 
         $entity = new TestEntity('Initial');
         $em->persist($entity);

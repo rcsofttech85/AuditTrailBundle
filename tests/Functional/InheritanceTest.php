@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Tools\SchemaTool;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\Car;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\Dog;
@@ -46,23 +44,13 @@ class InheritanceTest extends KernelTestCase
         return $kernel;
     }
 
-    private function setupDatabase(EntityManagerInterface $em): void
-    {
-        $schemaTool = new SchemaTool($em);
-        $metadata = $em->getMetadataFactory()->getAllMetadata();
-        $schemaTool->dropSchema($metadata);
-        $schemaTool->createSchema($metadata);
-    }
-
     #[AllowMockObjectsWithoutExpectations]
-    #[RunInSeparateProcess]
     public function testSTIInheritanceAudit(): void
     {
         self::bootKernel();
         $container = self::getContainer();
         /** @var EntityManagerInterface $em */
         $em = $container->get('doctrine.orm.entity_manager');
-        $this->setupDatabase($em);
 
         $car = new Car('Tesla Model S');
         $car->setDoors(4);
@@ -81,14 +69,12 @@ class InheritanceTest extends KernelTestCase
     }
 
     #[AllowMockObjectsWithoutExpectations]
-    #[RunInSeparateProcess]
     public function testJTIInheritanceAudit(): void
     {
         self::bootKernel();
         $container = self::getContainer();
         /** @var EntityManagerInterface $em */
         $em = $container->get('doctrine.orm.entity_manager');
-        $this->setupDatabase($em);
 
         $dog = new Dog('Buddy');
         $dog->setBreed('Golden Retriever');

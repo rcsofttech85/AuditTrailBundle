@@ -5,65 +5,28 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional\Command;
 
 use DateTimeImmutable;
-use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Tools\SchemaTool;
-use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Tests\Functional\AbstractFunctionalTestCase;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
-use Rcsofttech\AuditTrailBundle\Tests\Functional\TestKernel;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
-use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
-use Symfony\Component\HttpKernel\KernelInterface;
 
 use function assert;
-use function is_array;
 use function is_string;
 
-class AuditCommandTest extends KernelTestCase
+class AuditCommandTest extends AbstractFunctionalTestCase
 {
-    protected static function getKernelClass(): string
-    {
-        return TestKernel::class;
-    }
-
-    /**
-     * @param array<mixed> $options
-     */
-    protected static function createKernel(array $options = []): KernelInterface
-    {
-        $kernel = parent::createKernel($options);
-        if ($kernel instanceof TestKernel && isset($options['audit_config'])) {
-            assert(is_array($options['audit_config']));
-            $kernel->setAuditConfig($options['audit_config']);
-        }
-
-        return $kernel;
-    }
-
-    private function setupDatabase(EntityManagerInterface $em): void
-    {
-        $schemaTool = new SchemaTool($em);
-        $metadata = $em->getMetadataFactory()->getAllMetadata();
-        $schemaTool->dropSchema($metadata);
-        $schemaTool->createSchema($metadata);
-    }
-
-    #[RunInSeparateProcess]
     public function testAuditListCommand(): void
     {
-        self::bootKernel();
-        $container = self::getContainer();
-        $em = $container->get('doctrine.orm.entity_manager');
-        assert($em instanceof EntityManagerInterface);
-        $this->setupDatabase($em);
+        $this->bootTestKernel();
+        $em = $this->getEntityManager();
 
         // Create some audit logs
         $entity = new TestEntity('Test 1');
         $em->persist($entity);
         $em->flush();
 
-        assert(self::$kernel !== null);
+        assert(self::$kernel instanceof \Symfony\Component\HttpKernel\KernelInterface);
         $application = new Application(self::$kernel);
         $command = $application->find('audit:list');
         $commandTester = new CommandTester($command);
@@ -76,14 +39,10 @@ class AuditCommandTest extends KernelTestCase
         self::assertStringContainsString('TestEntity', $output);
     }
 
-    #[RunInSeparateProcess]
     public function testAuditDiffCommand(): void
     {
-        self::bootKernel();
-        $container = self::getContainer();
-        $em = $container->get('doctrine.orm.entity_manager');
-        assert($em instanceof EntityManagerInterface);
-        $this->setupDatabase($em);
+        $this->bootTestKernel();
+        $em = $this->getEntityManager();
 
         $entity = new TestEntity('Initial Name');
         $em->persist($entity);
@@ -95,7 +54,7 @@ class AuditCommandTest extends KernelTestCase
         $auditLog = $em->getRepository(AuditLog::class)->findOneBy(['action' => 'update']);
         self::assertNotNull($auditLog);
 
-        assert(self::$kernel !== null);
+        assert(self::$kernel instanceof \Symfony\Component\HttpKernel\KernelInterface);
         $application = new Application(self::$kernel);
         $command = $application->find('audit:diff');
         $commandTester = new CommandTester($command);
@@ -108,14 +67,10 @@ class AuditCommandTest extends KernelTestCase
         self::assertStringContainsString('Updated Name', $output);
     }
 
-    #[RunInSeparateProcess]
     public function testAuditRevertCommand(): void
     {
-        self::bootKernel();
-        $container = self::getContainer();
-        $em = $container->get('doctrine.orm.entity_manager');
-        assert($em instanceof EntityManagerInterface);
-        $this->setupDatabase($em);
+        $this->bootTestKernel();
+        $em = $this->getEntityManager();
 
         $entity = new TestEntity('Original');
         $em->persist($entity);
@@ -127,7 +82,7 @@ class AuditCommandTest extends KernelTestCase
         $auditLog = $em->getRepository(AuditLog::class)->findOneBy(['action' => 'update']);
         self::assertNotNull($auditLog);
 
-        assert(self::$kernel !== null);
+        assert(self::$kernel instanceof \Symfony\Component\HttpKernel\KernelInterface);
         $application = new Application(self::$kernel);
         $command = $application->find('audit:revert');
         $commandTester = new CommandTester($command);
@@ -143,6 +98,7 @@ class AuditCommandTest extends KernelTestCase
         self::assertSame('Changed', $reloaded->getName());
 
         // Test Actual Revert
+        $commandTester->setInputs(['yes']);
         $commandTester->execute(['auditId' => (string) $auditLog->getId()]);
         self::assertSame(0, $commandTester->getStatusCode());
 
@@ -152,25 +108,24 @@ class AuditCommandTest extends KernelTestCase
         self::assertSame('Original', $reloaded->getName());
     }
 
-    #[RunInSeparateProcess]
     public function testAuditExportCommand(): void
     {
-        self::bootKernel();
-        $container = self::getContainer();
-        $em = $container->get('doctrine.orm.entity_manager');
-        assert($em instanceof EntityManagerInterface);
-        $this->setupDatabase($em);
+        $this->bootTestKernel();
+        $em = $this->getEntityManager();
 
         $entity = new TestEntity('Export Test');
         $em->persist($entity);
         $em->flush();
 
-        assert(self::$kernel !== null);
+        assert(self::$kernel instanceof \Symfony\Component\HttpKernel\KernelInterface);
         $application = new Application(self::$kernel);
         $command = $application->find('audit:export');
         $commandTester = new CommandTester($command);
 
         $tempFile = sys_get_temp_dir().'/audit_export.json';
+        if (file_exists($tempFile)) {
+            unlink($tempFile);
+        }
         $commandTester->execute(['--output' => $tempFile, '--format' => 'json']);
 
         self::assertSame(0, $commandTester->getStatusCode());
@@ -181,14 +136,10 @@ class AuditCommandTest extends KernelTestCase
         unlink($tempFile);
     }
 
-    #[RunInSeparateProcess]
     public function testAuditPurgeCommand(): void
     {
-        self::bootKernel();
-        $container = self::getContainer();
-        $em = $container->get('doctrine.orm.entity_manager');
-        assert($em instanceof EntityManagerInterface);
-        $this->setupDatabase($em);
+        $this->bootTestKernel();
+        $em = $this->getEntityManager();
 
         $entity = new TestEntity('Purge Test');
         $em->persist($entity);
@@ -196,7 +147,7 @@ class AuditCommandTest extends KernelTestCase
 
         self::assertCount(1, $em->getRepository(AuditLog::class)->findAll());
 
-        assert(self::$kernel !== null);
+        assert(self::$kernel instanceof \Symfony\Component\HttpKernel\KernelInterface);
         $application = new Application(self::$kernel);
         $command = $application->find('audit:purge');
         $commandTester = new CommandTester($command);

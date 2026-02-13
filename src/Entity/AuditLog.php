@@ -30,6 +30,7 @@ class AuditLog implements AuditLogInterface
         AuditLogInterface::ACTION_SOFT_DELETE,
         AuditLogInterface::ACTION_RESTORE,
         AuditLogInterface::ACTION_REVERT,
+        AuditLogInterface::ACTION_ACCESS,
     ];
 
     #[ORM\Id, ORM\GeneratedValue, ORM\Column]

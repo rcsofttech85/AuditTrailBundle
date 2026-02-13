@@ -70,6 +70,6 @@ final class HttpAuditTransport implements AuditTransportInterface
     #[Override]
     public function supports(string $phase, array $context = []): bool
     {
-        return $phase === 'post_flush';
+        return $phase === 'post_flush' || $phase === 'post_load';
     }
 }

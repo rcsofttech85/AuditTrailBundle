@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Tools\SchemaTool;
-use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -36,15 +34,6 @@ class ConfigurationInteractionTest extends KernelTestCase
         return $kernel;
     }
 
-    private function setupDatabase(EntityManagerInterface $em): void
-    {
-        $schemaTool = new SchemaTool($em);
-        $metadata = $em->getMetadataFactory()->getAllMetadata();
-        $schemaTool->dropSchema($metadata);
-        $schemaTool->createSchema($metadata);
-    }
-
-    #[RunInSeparateProcess]
     public function testIgnoredEntityTakesPrecedenceOverAuditableAttribute(): void
     {
         $options = [
@@ -54,10 +43,8 @@ class ConfigurationInteractionTest extends KernelTestCase
         ];
 
         self::bootKernel($options);
-        $container = self::getContainer();
-        $em = $container->get('doctrine.orm.entity_manager');
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
         assert($em instanceof EntityManagerInterface);
-        $this->setupDatabase($em);
 
         // TestEntity has #[Auditable(enabled: true)]
         $entity = new TestEntity('Should be ignored');
@@ -68,7 +55,6 @@ class ConfigurationInteractionTest extends KernelTestCase
         self::assertCount(0, $auditLogs, 'Audit log should NOT be created because entity is in ignored_entities');
     }
 
-    #[RunInSeparateProcess]
     public function testGlobalIgnoredPropertiesApplyToAllEntities(): void
     {
         $options = [
@@ -78,10 +64,8 @@ class ConfigurationInteractionTest extends KernelTestCase
         ];
 
         self::bootKernel($options);
-        $container = self::getContainer();
-        $em = $container->get('doctrine.orm.entity_manager');
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
         assert($em instanceof EntityManagerInterface);
-        $this->setupDatabase($em);
 
         $entity = new TestEntity('Initial');
         $em->persist($entity);
@@ -97,14 +81,11 @@ class ConfigurationInteractionTest extends KernelTestCase
         self::assertCount(0, $auditLogs, 'Update log should NOT be created because "name" is globally ignored');
     }
 
-    #[RunInSeparateProcess]
     public function testAttributeIgnoredPropertiesAreRespectedDuringUpdate(): void
     {
         self::bootKernel();
-        $container = self::getContainer();
-        $em = $container->get('doctrine.orm.entity_manager');
+        $em = self::getContainer()->get('doctrine.orm.entity_manager');
         assert($em instanceof EntityManagerInterface);
-        $this->setupDatabase($em);
 
         $entity = new Entity\TestEntityWithIgnored('Initial');
         $entity->setIgnoredProp('secret');

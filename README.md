@@ -40,6 +40,7 @@ AuditTrailBundle is a modern, lightweight bundle that automatically tracks and s
 - **Sensitive Data Masking**: Native support for `#[SensitiveParameter]` and custom `#[Sensitive]` attributes.
 - **Safe Revert Support**: Easily roll back entities to any point in history.
 - **Conditional Auditing**: Skip logs based on runtime conditions.
+- **Access Auditing**: Track entity read operations (GET requests) with high-performance caching and configurable cooldowns.
 - **Rich Context**: Tracks IP, User Agent, Impersonation, and custom metadata.
 
 ## Quick Start
@@ -76,6 +77,44 @@ class Product
     #[ORM\Column]
     private string $name;
 }
+```
+
+### 4. Access Auditing (Read Tracking)
+
+To track when an entity is accessed (read), use the `#[AuditAccess]` attribute. This feature is strictly optimized for **GET requests** to minimize overhead.
+
+```php
+use Rcsofttech\AuditTrailBundle\Attribute\AuditAccess;
+
+#[ORM\Entity]
+#[AuditAccess(cooldown: 3600, level: 'info', message: 'User accessed sensitive record')]
+class SensitiveDocument
+{
+    // ...
+}
+```
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `cooldown` | `int` | `0` | Prevent duplicate logs for the same user/entity within X seconds (requires PSR-6 cache). |
+| `level` | `string` | `'info'` | The log level for the access audit. |
+| `message` | `string?` | `null` | A custom message to include in the audit log. |
+
+> [!NOTE]
+> `#[AuditAccess]` does not require `#[Auditable]` — they are independent attributes.
+> However, if `#[AuditCondition]` is present on the same entity, it **is** respected for access logs.
+> The expression receives `action = "access"` for fine-grained control.
+
+#### Cache Configuration
+
+To use the `cooldown` feature, you must specify a PSR-6 cache pool in your configuration:
+
+```yaml
+# config/packages/audit_trail.yaml
+audit_trail:
+    cache_pool: 'cache.app' # Use any available PSR-6 cache pool
 ```
 
 ---

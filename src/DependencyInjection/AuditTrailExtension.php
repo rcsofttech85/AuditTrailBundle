@@ -46,6 +46,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
          *   fail_on_transport_error: bool,
          *   fallback_to_database: bool,
          *   integrity: array{enabled: bool, secret: ?string, algorithm: string},
+         *   cache_pool: ?string,
          *   transports: array{
          *     doctrine: bool,
          *     http: array{enabled: bool, endpoint: string, headers: array<string, string>, timeout: int},
@@ -69,6 +70,11 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         $container->setParameter('audit_trail.defer_transport_until_commit', $config['defer_transport_until_commit']);
         $container->setParameter('audit_trail.fail_on_transport_error', $config['fail_on_transport_error']);
         $container->setParameter('audit_trail.fallback_to_database', $config['fallback_to_database']);
+        $container->setParameter('audit_trail.cache_pool', $config['cache_pool']);
+
+        if ($config['cache_pool'] !== null) {
+            $container->setAlias('rcsofttech_audit_trail.cache', $config['cache_pool']);
+        }
 
         $container->setParameter('audit_trail.integrity.enabled', $config['integrity']['enabled']);
         $container->setParameter('audit_trail.integrity.secret', $config['integrity']['secret'] ?? '');

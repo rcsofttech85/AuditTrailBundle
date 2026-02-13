@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
+use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
@@ -79,7 +80,8 @@ class SensitiveDataUpdateTest extends AbstractAuditTestCase
             $dispatcher,
             $auditManager,
             $entityProcessor,
-            $this->transactionIdGenerator
+            $this->transactionIdGenerator,
+            self::createStub(AuditAccessHandler::class)
         );
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
+use Rcsofttech\AuditTrailBundle\Attribute\AuditAccess;
 use Rcsofttech\AuditTrailBundle\Attribute\AuditCondition;
 use Rcsofttech\AuditTrailBundle\Attribute\Sensitive;
 use ReflectionAttribute;
@@ -28,6 +29,9 @@ class MetadataCache
     /** @var array<string, array<string, string>> */
     private array $sensitiveFieldsCache = [];
 
+    /** @var array<string, AuditAccess|null> */
+    private array $accessCache = [];
+
     public function getAuditableAttribute(string $class): ?Auditable
     {
         if (array_key_exists($class, $this->auditableCache)) {
@@ -37,6 +41,19 @@ class MetadataCache
         $this->ensureCacheSize($this->auditableCache);
         $attribute = $this->resolveAttribute($class, Auditable::class);
         $this->auditableCache[$class] = $attribute;
+
+        return $attribute;
+    }
+
+    public function getAuditAccessAttribute(string $class): ?AuditAccess
+    {
+        if (array_key_exists($class, $this->accessCache)) {
+            return $this->accessCache[$class];
+        }
+
+        $this->ensureCacheSize($this->accessCache);
+        $attribute = $this->resolveAttribute($class, AuditAccess::class);
+        $this->accessCache[$class] = $attribute;
 
         return $attribute;
     }

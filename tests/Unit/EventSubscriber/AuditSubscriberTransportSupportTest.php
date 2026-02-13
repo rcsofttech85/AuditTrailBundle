@@ -15,6 +15,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
+use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
@@ -76,7 +77,8 @@ class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
             $dispatcher,
             $auditManager,
             $entityProcessor,
-            self::createStub(TransactionIdGenerator::class)
+            self::createStub(TransactionIdGenerator::class),
+            self::createStub(AuditAccessHandler::class)
         );
     }
 

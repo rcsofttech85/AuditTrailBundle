@@ -16,6 +16,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
+use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
@@ -41,6 +42,8 @@ class AuditSubscriberTest extends TestCase
 
     private LoggerInterface&MockObject $logger;
 
+    private AuditAccessHandler&MockObject $accessHandler;
+
     private AuditSubscriber $subscriber;
 
     protected function setUp(): void
@@ -52,6 +55,7 @@ class AuditSubscriberTest extends TestCase
         $this->entityProcessor = $this->createMock(EntityProcessor::class);
         $this->transactionIdGenerator = $this->createMock(TransactionIdGenerator::class);
         $this->logger = $this->createMock(LoggerInterface::class);
+        $this->accessHandler = $this->createMock(AuditAccessHandler::class);
 
         $this->subscriber = new AuditSubscriber(
             $this->auditService,
@@ -60,9 +64,8 @@ class AuditSubscriberTest extends TestCase
             $this->auditManager,
             $this->entityProcessor,
             $this->transactionIdGenerator,
-            true,
-            $this->logger,
-            true
+            $this->accessHandler,
+            $this->logger
         );
     }
 
@@ -80,8 +83,9 @@ class AuditSubscriberTest extends TestCase
             $this->auditManager,
             $this->entityProcessor,
             $this->transactionIdGenerator,
-            true,
+            $this->accessHandler,
             null,
+            true,
             false // Disabled
         );
 

@@ -8,9 +8,11 @@ use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
+use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Events;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
@@ -21,8 +23,11 @@ use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Symfony\Contracts\Service\ResetInterface;
 use Throwable;
 
+use function sprintf;
+
 #[AsDoctrineListener(event: Events::onFlush, priority: 1000)]
 #[AsDoctrineListener(event: Events::postFlush, priority: 1000)]
+#[AsDoctrineListener(event: Events::postLoad)]
 #[AsDoctrineListener(event: Events::onClear)]
 final class AuditSubscriber implements ResetInterface
 {
@@ -39,8 +44,9 @@ final class AuditSubscriber implements ResetInterface
         private readonly ScheduledAuditManager $auditManager,
         private readonly EntityProcessor $entityProcessor,
         private readonly TransactionIdGenerator $transactionIdGenerator,
-        private readonly bool $enableHardDelete = true,
+        private readonly AuditAccessHandler $accessHandler,
         private readonly ?LoggerInterface $logger = null,
+        private readonly bool $enableHardDelete = true,
         private readonly bool $enabled = true,
     ) {
     }
@@ -71,6 +77,15 @@ final class AuditSubscriber implements ResetInterface
         } finally {
             --$this->recursionDepth;
         }
+    }
+
+    public function postLoad(PostLoadEventArgs $args): void
+    {
+        if (!$this->enabled) {
+            return;
+        }
+
+        $this->accessHandler->handleAccess($args->getObject(), $args->getObjectManager());
     }
 
     public function postFlush(PostFlushEventArgs $args): void
@@ -110,6 +125,8 @@ final class AuditSubscriber implements ResetInterface
 
             $this->dispatcher->dispatch($audit, $em, 'post_flush');
 
+            $this->markAsAudited($pending['entity'], $em);
+
             if ($em->contains($audit)) {
                 $hasNewAudits = true;
             }
@@ -131,6 +148,8 @@ final class AuditSubscriber implements ResetInterface
 
             $this->dispatcher->dispatch($scheduled['audit'], $em, 'post_flush');
 
+            $this->markAsAudited($scheduled['entity'], $em);
+
             if ($em->contains($scheduled['audit'])) {
                 $hasNewAudits = true;
             }
@@ -150,6 +169,15 @@ final class AuditSubscriber implements ResetInterface
         $this->transactionIdGenerator->reset();
         $this->isFlushing = false;
         $this->recursionDepth = 0;
+        $this->accessHandler->reset();
+    }
+
+    private function markAsAudited(object $entity, EntityManagerInterface $em): void
+    {
+        $id = EntityIdResolver::resolveFromEntity($entity, $em);
+        if ($id !== EntityIdResolver::PENDING_ID) {
+            $this->accessHandler->markAsAudited(sprintf('%s:%s', $entity::class, $id));
+        }
     }
 
     private function handleBatchFlushIfNeeded(EntityManagerInterface $em): void

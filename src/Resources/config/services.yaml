@@ -15,6 +15,7 @@ services:
       $timezone: '%audit_trail.timezone%'
       $ignoredEntities: '%audit_trail.ignored_entities%'
       $ignoredProperties: '%audit_trail.ignored_properties%'
+      $cache: '@?rcsofttech_audit_trail.cache'
 
   Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService:
     bind:
