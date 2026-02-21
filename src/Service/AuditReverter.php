@@ -7,9 +7,13 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Override;
+use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use RuntimeException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
@@ -21,10 +25,11 @@ final readonly class AuditReverter implements AuditReverterInterface
     public function __construct(
         private EntityManagerInterface $em,
         private ValidatorInterface $validator,
-        private AuditService $auditService,
+        private AuditServiceInterface $auditService,
         private RevertValueDenormalizer $denormalizer,
-        private SoftDeleteHandler $softDeleteHandler,
+        private SoftDeleteHandlerInterface $softDeleteHandler,
         private AuditIntegrityServiceInterface $integrityService,
+        private AuditDispatcherInterface $dispatcher,
     ) {
     }
 
@@ -35,19 +40,19 @@ final readonly class AuditReverter implements AuditReverterInterface
      */
     #[Override]
     public function revert(
-        AuditLogInterface $log,
+        AuditLog $log,
         bool $dryRun = false,
         bool $force = false,
         array $context = [],
     ): array {
         if ($this->integrityService->isEnabled() && !$this->integrityService->verifySignature($log)) {
-            throw new RuntimeException(sprintf('Audit log #%s has been tampered with and cannot be reverted.', $log->getId() ?? 'unknown'));
+            throw new RuntimeException(sprintf('Audit log #%s has been tampered with and cannot be reverted.', $log->id?->toRfc4122() ?? 'unknown'));
         }
 
-        $entity = $this->findEntity($log->getEntityClass(), $log->getEntityId());
+        $entity = $this->findEntity($log->entityClass, $log->entityId);
 
         if ($entity === null) {
-            throw new RuntimeException(sprintf('Entity %s:%s not found.', $log->getEntityClass(), $log->getEntityId()));
+            throw new RuntimeException(sprintf('Entity %s:%s not found.', $log->entityClass, $log->entityId));
         }
 
         $changes = $this->determineChanges($log, $entity, $force);
@@ -64,13 +69,13 @@ final readonly class AuditReverter implements AuditReverterInterface
     /**
      * @return array<string, mixed>
      */
-    private function determineChanges(AuditLogInterface $log, object $entity, bool $force): array
+    private function determineChanges(AuditLog $log, object $entity, bool $force): array
     {
-        return match ($log->getAction()) {
+        return match ($log->action) {
             AuditLogInterface::ACTION_CREATE => $this->handleRevertCreate($force),
             AuditLogInterface::ACTION_UPDATE => $this->handleRevertUpdate($log, $entity),
             AuditLogInterface::ACTION_SOFT_DELETE => $this->handleRevertSoftDelete($entity),
-            default => throw new RuntimeException(sprintf('Reverting action "%s" is not supported.', $log->getAction())),
+            default => throw new RuntimeException(sprintf('Reverting action "%s" is not supported.', $log->action)),
         };
     }
 
@@ -78,7 +83,7 @@ final readonly class AuditReverter implements AuditReverterInterface
      * @param array<string, mixed> $changes
      * @param array<string, mixed> $context
      */
-    private function applyAndPersist(object $entity, AuditLogInterface $log, array $changes, array $context): void
+    private function applyAndPersist(object $entity, AuditLog $log, array $changes, array $context): void
     {
         $isDelete = isset($changes['action']) && $changes['action'] === 'delete';
 
@@ -109,14 +114,14 @@ final readonly class AuditReverter implements AuditReverterInterface
      */
     private function createRevertAuditLog(
         object $entity,
-        AuditLogInterface $log,
+        AuditLog $log,
         array $changes,
         bool $isDelete,
         array $context,
     ): void {
         $revertContext = [
             ...$context,
-            'reverted_log_id' => $log->getId(),
+            'reverted_log_id' => $log->id?->toRfc4122(),
         ];
 
         $revertLog = $this->auditService->createAuditLog(
@@ -127,13 +132,7 @@ final readonly class AuditReverter implements AuditReverterInterface
             $revertContext
         );
 
-        $revertLog->setOldValues($isDelete ? null : $changes);
-        $revertLog->setNewValues(null);
-        $revertLog->setEntityId($log->getEntityId());
-        $revertLog->setEntityClass($log->getEntityClass());
-
-        $this->em->persist($revertLog);
-        $this->em->flush();
+        $this->dispatcher->dispatch($revertLog, $this->em, 'post_flush');
     }
 
     /**
@@ -151,9 +150,9 @@ final readonly class AuditReverter implements AuditReverterInterface
     /**
      * @return array<string, mixed>
      */
-    private function handleRevertUpdate(AuditLogInterface $log, object $entity): array
+    private function handleRevertUpdate(AuditLog $log, object $entity): array
     {
-        $oldValues = $log->getOldValues() ?? [];
+        $oldValues = $log->oldValues ?? [];
         if ($oldValues === []) {
             throw new RuntimeException('No old values found in audit log to revert to.');
         }

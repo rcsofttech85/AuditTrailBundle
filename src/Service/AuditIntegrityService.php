@@ -9,145 +9,198 @@ use DateTimeInterface;
 use DateTimeZone;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
-use Stringable;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use RuntimeException;
 use Throwable;
 
+use function hash_hmac;
 use function is_array;
+use function is_bool;
 use function is_float;
 use function is_int;
-use function is_scalar;
 use function is_string;
+use function json_encode;
+use function ksort;
+use function strlen;
 
-use const JSON_PRESERVE_ZERO_FRACTION;
 use const JSON_THROW_ON_ERROR;
 use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
+use const SORT_STRING;
 
-final readonly class AuditIntegrityService implements AuditIntegrityServiceInterface
+final class AuditIntegrityService implements AuditIntegrityServiceInterface
 {
+    private readonly DateTimeZone $utc;
+
     public function __construct(
-        private string $secret,
-        private string $algorithm = 'sha256',
-        private bool $enabled = false,
+        private readonly ?string $secret = null,
+        private readonly bool $enabled = false,
+        private readonly string $algorithm = 'sha256',
     ) {
+        $this->utc = new DateTimeZone('UTC');
     }
+
+    private const int MAX_NORMALIZATION_DEPTH = 5;
 
     #[Override]
     public function isEnabled(): bool
     {
-        return $this->enabled;
+        return $this->enabled && $this->secret !== null;
     }
 
     #[Override]
-    public function generateSignature(AuditLogInterface $log): string
+    public function generateSignature(AuditLog $log): string
     {
-        $data = $this->getLogData($log);
+        if ($this->secret === null) {
+            throw new RuntimeException('Cannot generate signature: secret key is not configured.');
+        }
 
-        return hash_hmac($this->algorithm, $data, $this->secret);
+        $data = $this->normalizeData($log);
+        $payload = json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return hash_hmac($this->algorithm, $payload, $this->secret);
+    }
+
+    #[Override]
+    public function verifySignature(AuditLog $log): bool
+    {
+        if (!$this->isEnabled()) {
+            return true;
+        }
+
+        $storedSignature = $log->signature;
+
+        if ($storedSignature === null) {
+            return false;
+        }
+
+        $expectedSignature = $this->generateSignature($log);
+
+        return hash_equals($expectedSignature, $storedSignature);
     }
 
     #[Override]
     public function signPayload(string $payload): string
     {
+        if ($this->secret === null) {
+            throw new RuntimeException('Cannot sign payload: secret key is not configured.');
+        }
+
         return hash_hmac($this->algorithm, $payload, $this->secret);
     }
 
-    #[Override]
-    public function verifySignature(AuditLogInterface $log): bool
-    {
-        $signature = $log->getSignature();
-        if ($signature === null) {
-            return AuditLogInterface::ACTION_REVERT === $log->getAction();
-        }
-
-        $expectedSignature = $this->generateSignature($log);
-
-        return hash_equals($expectedSignature, $signature);
-    }
-
-    private function getLogData(AuditLogInterface $log): string
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizeData(AuditLog $log): array
     {
         $data = [
-            $log->getEntityClass(),
-            (string) (is_scalar($id = $this->normalize($log->getEntityId())) || $id instanceof Stringable ? $id : ''),
-            $log->getAction(),
-            $this->toJson($log->getOldValues()),
-            $this->toJson($log->getNewValues()),
-            (string) (is_scalar($userId = $this->normalize($log->getUserId())) || $userId instanceof Stringable ? $userId : ''),
-            $log->getUsername() ?? '',
-            $log->getIpAddress() ?? '',
-            $log->getUserAgent() ?? '',
-            $log->getTransactionHash() ?? '',
-            $log->getCreatedAt()->setTimezone(new DateTimeZone('UTC'))->format(DateTimeInterface::ATOM),
+            'entity_class' => $log->entityClass,
+            'entity_id' => $log->entityId,
+            'action' => $log->action,
+            'old_values' => $this->normalizeValues($log->oldValues),
+            'new_values' => $this->normalizeValues($log->newValues),
+            'user_id' => $log->userId,
+            'username' => $log->username,
+            'context' => $this->normalizeValues($log->context),
+            'ip_address' => $log->ipAddress,
+            'user_agent' => $log->userAgent,
+            'transaction_hash' => $log->transactionHash,
+            'created_at' => $log->createdAt->setTimezone($this->utc)->format('Y-m-d H:i:s'),
         ];
 
-        return implode('|', $data);
-    }
-
-    /**
-     * Normalizes data for hashing to ensure stability across type changes (e.g., int to string IDs).
-     */
-    private function normalize(mixed $data): mixed
-    {
-        if (is_array($data)) {
-            return $this->normalizeArray($data);
-        }
-
-        if (is_int($data) || is_float($data)) {
-            return (string) $data;
-        }
-
-        if ($data instanceof DateTimeInterface) {
-            return $this->normalizeDateTime($data);
-        }
+        ksort($data, SORT_STRING);
 
         return $data;
     }
 
     /**
-     * @param array<mixed> $data
+     * @param array<string, mixed>|null $values
+     *
+     * @return array<string, mixed>|null
      */
-    private function normalizeArray(array $data): mixed
+    private function normalizeValues(?array $values, int $depth = 0): ?array
     {
-        // Check if this is a serialized DateTime array
-        if (isset($data['date'], $data['timezone']) && is_string($data['date']) && is_string($data['timezone'])) {
-            try {
-                $dt = new DateTimeImmutable($data['date'], new DateTimeZone($data['timezone']));
+        if ($values === null) {
+            return null;
+        }
 
-                return $this->normalizeDateTime($dt);
-            } catch (Throwable) {
-                // Fallback to standard array normalization if it's not a valid date
-            }
+        if ($depth >= self::MAX_NORMALIZATION_DEPTH) {
+            return ['_error' => 'max_depth_reached'];
         }
 
         $normalized = [];
-        foreach ($data as $key => $value) {
-            $normalized[$key] = $this->normalize($value);
+        foreach ($values as $key => $value) {
+            $normalized[$key] = $this->normalizeValue($value, $depth + 1);
         }
-        ksort($normalized);
+
+        ksort($normalized, SORT_STRING);
 
         return $normalized;
     }
 
-    private function normalizeDateTime(DateTimeInterface $dt): string
+    private function normalizeValue(mixed $value, int $depth = 0): mixed
     {
-        $immutable = $dt instanceof DateTimeImmutable
-            ? $dt
-            : DateTimeImmutable::createFromInterface($dt);
-
-        return $immutable->setTimezone(new DateTimeZone('UTC'))->format(DateTimeInterface::ATOM);
-    }
-
-    private function toJson(mixed $data): string
-    {
-        if ($data === null) {
-            return 'null';
+        if ($value === null) {
+            return 'n:';
         }
 
-        return json_encode(
-            $this->normalize($data),
-            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION
-        );
+        if (is_bool($value)) {
+            return 'b:'.($value ? '1' : '0');
+        }
+
+        if (is_int($value)) {
+            return 'i:'.$value;
+        }
+
+        if (is_float($value)) {
+            return 'f:'.$value;
+        }
+
+        if (is_string($value)) {
+            return $this->normalizeString($value);
+        }
+
+        if (is_array($value)) {
+            return $this->normalizeArray($value, $depth);
+        }
+
+        return 's:'.(string) $value;
+    }
+
+    private function normalizeString(string $value): string
+    {
+        if (strlen($value) >= 10 && preg_match('/^\d{4}-\d{2}-\d{2}/', $value) === 1) {
+            try {
+                $dt = new DateTimeImmutable($value);
+
+                return 'd:'.$dt->setTimezone($this->utc)->format(DateTimeInterface::ATOM);
+            } catch (Throwable) {
+                // Not a date
+            }
+        }
+
+        return 's:'.$value;
+    }
+
+    /**
+     * @param array<string, mixed>|array{date?: string, timezone?: string} $value
+     */
+    private function normalizeArray(array $value, int $depth): mixed
+    {
+        if ($depth >= self::MAX_NORMALIZATION_DEPTH) {
+            return 's:[max_depth]';
+        }
+
+        if (isset($value['date'], $value['timezone'])) {
+            try {
+                $dt = new DateTimeImmutable($value['date'], new DateTimeZone($value['timezone']));
+
+                return 'd:'.$dt->setTimezone($this->utc)->format(DateTimeInterface::ATOM);
+            } catch (Throwable) {
+            }
+        }
+
+        return $this->normalizeValues($value, $depth);
     }
 }

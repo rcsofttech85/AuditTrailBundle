@@ -6,24 +6,28 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use DateTimeInterface;
 use Doctrine\Common\Collections\Collection;
+use Doctrine\ORM\PersistentCollection;
+use Override;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 
 use function is_array;
 use function is_object;
 use function is_resource;
 use function sprintf;
 
-class ValueSerializer
+final readonly class ValueSerializer implements ValueSerializerInterface
 {
     private const int MAX_SERIALIZATION_DEPTH = 5;
 
     private const int MAX_COLLECTION_ITEMS = 100;
 
     public function __construct(
-        private readonly ?LoggerInterface $logger = null,
+        private ?LoggerInterface $logger = null,
     ) {
     }
 
+    #[Override]
     public function serialize(mixed $value, int $depth = 0): mixed
     {
         if ($depth >= self::MAX_SERIALIZATION_DEPTH) {
@@ -43,6 +47,7 @@ class ValueSerializer
         };
     }
 
+    #[Override]
     public function serializeAssociation(mixed $value): mixed
     {
         if ($value === null) {
@@ -65,6 +70,14 @@ class ValueSerializer
      */
     private function serializeCollection(Collection $value, int $depth, bool $onlyIdentifiers = false): mixed
     {
+        // Optimization: Prevent N+1 queries by checking if the collection is initialized.
+        if ($value instanceof PersistentCollection && !$value->isInitialized()) {
+            return [
+                '_state' => 'uninitialized',
+                '_total_count' => 'unknown',
+            ];
+        }
+
         $count = $value->count();
 
         if ($count > self::MAX_COLLECTION_ITEMS) {
@@ -73,6 +86,8 @@ class ValueSerializer
                 'max' => self::MAX_COLLECTION_ITEMS,
             ]);
 
+            $sample = $value->slice(0, self::MAX_COLLECTION_ITEMS);
+
             return [
                 '_truncated' => true,
                 '_total_count' => $count,
@@ -80,18 +95,19 @@ class ValueSerializer
                     fn ($item) => $onlyIdentifiers && is_object($item)
                     ? $this->extractEntityIdentifier($item)
                     : $this->serialize($item, $depth + 1),
-                    $value->slice(0, self::MAX_COLLECTION_ITEMS)
+                    $sample
                 ),
             ];
         }
 
-        return $value->map(function (mixed $item) use ($depth, $onlyIdentifiers) {
-            if ($onlyIdentifiers && is_object($item)) {
-                return $this->extractEntityIdentifier($item);
-            }
+        $items = $value->toArray();
 
-            return $this->serialize($item, $depth + 1);
-        })->toArray();
+        return array_map(
+            fn ($item) => $onlyIdentifiers && is_object($item)
+            ? $this->extractEntityIdentifier($item)
+            : $this->serialize($item, $depth + 1),
+            $items
+        );
     }
 
     private function serializeObject(object $value): mixed

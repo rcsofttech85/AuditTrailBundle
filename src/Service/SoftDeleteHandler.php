@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
 
-class SoftDeleteHandler
+final readonly class SoftDeleteHandler implements SoftDeleteHandlerInterface
 {
     public function __construct(
-        private readonly EntityManagerInterface $em,
+        private EntityManagerInterface $em,
     ) {
     }
 
@@ -31,14 +32,13 @@ class SoftDeleteHandler
     public function disableSoftDeleteFilters(): array
     {
         $filters = $this->em->getFilters();
-        $disabled = [];
 
-        foreach ($filters->getEnabledFilters() as $name => $filter) {
-            if (str_contains($filter::class, 'SoftDeleteableFilter')) {
-                $filters->disable($name);
-                $disabled[] = $name;
-            }
-        }
+        $disabled = array_keys(array_filter(
+            $filters->getEnabledFilters(),
+            static fn ($filter) => str_contains($filter::class, 'SoftDeleteableFilter')
+        ));
+
+        array_walk($disabled, $filters->disable(...));
 
         return $disabled;
     }
@@ -48,9 +48,6 @@ class SoftDeleteHandler
      */
     public function enableFilters(array $names): void
     {
-        $filters = $this->em->getFilters();
-        foreach ($names as $name) {
-            $filters->enable($name);
-        }
+        array_walk($names, $this->em->getFilters()->enable(...));
     }
 }

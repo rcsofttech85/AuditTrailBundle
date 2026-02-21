@@ -7,24 +7,28 @@ namespace Rcsofttech\AuditTrailBundle\Transport;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
 use Override;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
 
 final class DoctrineAuditTransport implements AuditTransportInterface
 {
+    public function __construct(
+        private readonly EntityIdResolverInterface $idResolver,
+    ) {
+    }
+
     /**
      * @param array<string, mixed> $context
      */
     #[Override]
-    public function send(AuditLogInterface $log, array $context = []): void
+    public function send(AuditLog $log, array $context = []): void
     {
         $phase = $context['phase'] ?? null;
 
         if ($phase === 'on_flush') {
             $this->handleOnFlush($log, $context);
-        } elseif ($phase === 'post_flush' || $phase === 'post_load') {
+        } elseif ($phase === 'post_flush' || $phase === 'post_load' || $phase === 'batch_flush') {
             $this->handlePostFlush($log, $context);
         }
     }
@@ -32,12 +36,12 @@ final class DoctrineAuditTransport implements AuditTransportInterface
     /**
      * @param array<string, mixed> $context
      */
-    private function handleOnFlush(AuditLogInterface $log, array $context): void
+    private function handleOnFlush(AuditLog $log, array $context): void
     {
         /** @var EntityManagerInterface $em */
         $em = $context['em'];
         /** @var UnitOfWork $uow */
-        $uow = $context['uow']; // This is now guaranteed to exist by the Subscriber fix
+        $uow = $context['uow'];
 
         $em->persist($log);
         $uow->computeChangeSet($em->getClassMetadata(AuditLog::class), $log);
@@ -46,28 +50,25 @@ final class DoctrineAuditTransport implements AuditTransportInterface
     /**
      * @param array<string, mixed> $context
      */
-    private function handlePostFlush(AuditLogInterface $log, array $context): void
+    private function handlePostFlush(AuditLog $log, array $context): void
     {
         /** @var EntityManagerInterface $em */
         $em = $context['em'];
 
-        // Persist if not managed
         if (!$em->contains($log)) {
             $em->persist($log);
         }
 
-        // Doctrine will pick this change up when the subscriber does the final flush.
-        $entityId = EntityIdResolver::resolve($log, $context);
+        $entityId = $this->idResolver->resolve($log, $context);
 
         if ($entityId !== null) {
-            $log->setEntityId($entityId);
+            $log->entityId = $entityId;
         }
     }
 
     #[Override]
     public function supports(string $phase, array $context = []): bool
     {
-        // Doctrine transport supports both phases
         return true;
     }
 }

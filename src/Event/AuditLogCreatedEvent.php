@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Event;
 
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Symfony\Contracts\EventDispatcher\Event;
 
 /**
@@ -21,31 +21,8 @@ final class AuditLogCreatedEvent extends Event
     public const string NAME = 'audit_trail.audit_log_created';
 
     public function __construct(
-        public private(set) AuditLogInterface $auditLog,
-        public readonly object $entity,
+        public private(set) AuditLog $auditLog,
+        public readonly ?object $entity = null,
     ) {
-    }
-
-    public function getAuditLog(): AuditLogInterface
-    {
-        return $this->auditLog;
-    }
-
-    /**
-     * Get the entity class name.
-     */
-    public string $entityClass {
-        get {
-            return $this->auditLog->getEntityClass();
-        }
-    }
-
-    /**
-     * Get the action performed (create, update, delete, soft_delete, restore).
-     */
-    public string $action {
-        get {
-            return $this->auditLog->getAction();
-        }
     }
 }

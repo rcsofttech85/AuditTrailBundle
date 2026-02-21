@@ -53,10 +53,10 @@ class UserProviderIntegrationTest extends AbstractFunctionalTestCase
         ]);
 
         self::assertNotNull($auditLog);
-        self::assertEquals($user->getId(), $auditLog->getUserId());
-        self::assertSame('test_user', $auditLog->getUsername());
-        self::assertSame('127.0.0.1', $auditLog->getIpAddress());
-        self::assertSame('TestAgent', $auditLog->getUserAgent());
+        self::assertEquals($user->getId(), $auditLog->userId);
+        self::assertSame('test_user', $auditLog->username);
+        self::assertSame('127.0.0.1', $auditLog->ipAddress);
+        self::assertSame('TestAgent', $auditLog->userAgent);
     }
 
     public function testAuditLogWithNoUser(): void
@@ -76,7 +76,7 @@ class UserProviderIntegrationTest extends AbstractFunctionalTestCase
         ]);
 
         self::assertNotNull($auditLog);
-        self::assertStringStartsWith('cli:', (string) $auditLog->getUserId());
-        self::assertStringStartsWith('cli:', (string) $auditLog->getUsername());
+        self::assertStringStartsWith('cli:', (string) $auditLog->userId);
+        self::assertStringStartsWith('cli:', (string) $auditLog->username);
     }
 }

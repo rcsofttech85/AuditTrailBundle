@@ -7,108 +7,95 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 use Throwable;
 
-readonly class AuditDispatcher
+use function sprintf;
+
+final class AuditDispatcher implements AuditDispatcherInterface
 {
     public function __construct(
-        private AuditTransportInterface $transport,
-        private AuditIntegrityServiceInterface $integrityService,
-        private ?LoggerInterface $logger = null,
-        private bool $failOnTransportError = false,
-        private bool $fallbackToDatabase = true,
+        private readonly AuditTransportInterface $transport,
+        private readonly ?EventDispatcherInterface $eventDispatcher = null,
+        private readonly ?AuditIntegrityServiceInterface $integrityService = null,
+        private readonly ?LoggerInterface $logger = null,
+        private readonly bool $failOnTransportError = false,
+        private readonly bool $fallbackToDatabase = true,
     ) {
     }
 
-    /**
-     * @param array<string, mixed> $context
-     */
-    public function supports(string $phase, array $context = []): bool
-    {
-        return $this->transport->supports($phase, $context);
-    }
-
     public function dispatch(
-        AuditLogInterface $audit,
+        AuditLog $audit,
         EntityManagerInterface $em,
         string $phase,
         ?UnitOfWork $uow = null,
     ): bool {
+        if (!$this->transport->supports($phase)) {
+            return false;
+        }
+
+        $this->eventDispatcher?->dispatch(new AuditLogCreatedEvent($audit));
+
+        if ($this->integrityService?->isEnabled() === true) {
+            $audit->signature = $this->integrityService->generateSignature($audit);
+        }
+
         $context = [
             'phase' => $phase,
             'em' => $em,
         ];
 
-        if ($uow instanceof UnitOfWork) {
+        if ($uow !== null) {
             $context['uow'] = $uow;
         }
 
-        if ($this->integrityService->isEnabled()) {
-            $audit->setSignature($this->integrityService->generateSignature($audit));
-        }
-
-        if ($this->safeSend($audit, $context)) {
-            return true;
-        }
-
-        $this->persistFallback($audit, $em, $phase);
-
-        return false;
-    }
-
-    /**
-     * @param array<string, mixed> $context
-     */
-    public function safeSend(AuditLogInterface $audit, array $context): bool
-    {
         try {
             $this->transport->send($audit, $context);
-
-            return true;
+            $audit->seal();
         } catch (Throwable $e) {
-            $this->logger?->error('Failed to send audit to transport', [
-                'exception' => $e->getMessage(),
-                'audit_action' => $audit->getAction(),
-            ]);
+            $this->logger?->error(
+                sprintf('Audit transport failed for %s#%s: %s', $audit->entityClass, $audit->entityId, $e->getMessage()),
+                ['exception' => $e]
+            );
 
             if ($this->failOnTransportError) {
                 throw $e;
             }
 
+            if ($this->fallbackToDatabase) {
+                $this->persistFallback($audit, $em);
+
+                return true;
+            }
+
             return false;
         }
+
+        return true;
     }
 
-    private function persistFallback(
-        AuditLogInterface $audit,
-        EntityManagerInterface $em,
-        string $phase,
-    ): void {
-        if (!$this->fallbackToDatabase || !$em->isOpen()) {
-            return;
-        }
-
+    private function persistFallback(AuditLog $audit, EntityManagerInterface $em): void
+    {
         try {
-            if ($em->contains($audit)) {
-                return;
+            if (!$em->contains($audit)) {
+                $em->persist($audit);
             }
+            $em->flush();
+            $audit->seal();
 
-            $em->persist($audit);
-
-            if ($phase === 'on_flush') {
-                $em->getUnitOfWork()->computeChangeSet(
-                    $em->getClassMetadata(AuditLog::class),
-                    $audit
-                );
-            }
-        } catch (Throwable $e) {
-            $this->logger?->critical('Failed to persist audit log to database fallback', [
-                'exception' => $e->getMessage(),
-            ]);
+            $this->logger?->warning(
+                sprintf('Audit log for %s#%s saved via database fallback.', $audit->entityClass, $audit->entityId),
+            );
+        } catch (Throwable $fallbackError) {
+            $this->logger?->critical(
+                sprintf('AUDIT LOSS: Failed to persist fallback for %s#%s: %s', $audit->entityClass, $audit->entityId, $fallbackError->getMessage()),
+                ['exception' => $fallbackError],
+            );
         }
     }
 }

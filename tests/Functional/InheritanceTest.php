@@ -61,8 +61,8 @@ class InheritanceTest extends KernelTestCase
         $logs = $auditRepo->findAll();
 
         self::assertCount(1, $logs, 'Should have 1 audit log for Car (STI)');
-        self::assertSame(Car::class, $logs[0]->getEntityClass());
-        $newValues = $logs[0]->getNewValues();
+        self::assertSame(Car::class, $logs[0]->entityClass);
+        $newValues = $logs[0]->newValues;
         self::assertNotNull($newValues);
         self::assertSame('Tesla Model S', $newValues['model']);
         self::assertSame(4, $newValues['doors']);
@@ -85,8 +85,8 @@ class InheritanceTest extends KernelTestCase
         $logs = $auditRepo->findAll();
 
         self::assertCount(1, $logs, 'Should have 1 audit log for Dog (JTI)');
-        self::assertSame(Dog::class, $logs[0]->getEntityClass());
-        $newValues = $logs[0]->getNewValues();
+        self::assertSame(Dog::class, $logs[0]->entityClass);
+        $newValues = $logs[0]->newValues;
         self::assertNotNull($newValues);
         self::assertSame('Buddy', $newValues['name']);
         self::assertSame('Golden Retriever', $newValues['breed']);

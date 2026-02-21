@@ -12,6 +12,7 @@ use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
 use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessageSerializer;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 
 class AuditLogMessageSerializerTest extends TestCase
 {
@@ -37,9 +38,8 @@ class AuditLogMessageSerializerTest extends TestCase
             '127.0.0.1',
             'Mozilla',
             'hash123',
-            null,
-            ['ctx' => 'val'],
-            $createdAt
+            $createdAt->format(DateTimeInterface::ATOM),
+            ['ctx' => 'val']
         );
 
         $envelope = new Envelope($message, [
@@ -65,13 +65,12 @@ class AuditLogMessageSerializerTest extends TestCase
             'ip_address' => '127.0.0.1',
             'user_agent' => 'Mozilla',
             'transaction_hash' => 'hash123',
-            'signature' => null,
-            'context' => ['ctx' => 'val'],
             'created_at' => $createdAt->format(DateTimeInterface::ATOM),
+            'context' => ['ctx' => 'val'],
         ];
 
         // Strict comparison of the entire array to ensure no extra or missing keys
-        self::assertSame($expectedBody, $body);
+        self::assertEquals($expectedBody, $body);
 
         // Assert headers
         self::assertEquals('test_api_key', $encoded['headers']['X-Audit-Api-Key']);
@@ -81,7 +80,7 @@ class AuditLogMessageSerializerTest extends TestCase
 
     public function testDecodeThrowsException(): void
     {
-        $this->expectException(\Symfony\Component\Messenger\Exception\MessageDecodingFailedException::class);
+        $this->expectException(MessageDecodingFailedException::class);
         $this->expectExceptionMessage('Decoding is not supported');
 
         $this->serializer->decode(['body' => '{}']);

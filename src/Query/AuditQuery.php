@@ -6,11 +6,12 @@ namespace Rcsofttech\AuditTrailBundle\Query;
 
 use DateTimeImmutable;
 use DateTimeInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
-use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
 use function array_key_exists;
 use function count;
+use function in_array;
 
 use const PHP_INT_MAX;
 
@@ -31,7 +32,7 @@ readonly class AuditQuery
      * @param array<string> $changedFields
      */
     public function __construct(
-        private AuditLogRepository $repository,
+        private AuditLogRepositoryInterface $repository,
         private ?string $entityClass = null,
         private ?string $entityId = null,
         private array $actions = [],
@@ -41,8 +42,8 @@ readonly class AuditQuery
         private ?DateTimeInterface $until = null,
         private array $changedFields = [],
         private int $limit = self::DEFAULT_LIMIT,
-        private ?int $afterId = null,
-        private ?int $beforeId = null,
+        private ?string $afterId = null,
+        private ?string $beforeId = null,
     ) {
     }
 
@@ -75,7 +76,7 @@ readonly class AuditQuery
      */
     public function creates(): self
     {
-        return $this->action(AuditLogInterface::ACTION_CREATE);
+        return $this->action('create');
     }
 
     /**
@@ -83,7 +84,7 @@ readonly class AuditQuery
      */
     public function updates(): self
     {
-        return $this->action(AuditLogInterface::ACTION_UPDATE);
+        return $this->action('update');
     }
 
     /**
@@ -91,7 +92,7 @@ readonly class AuditQuery
      */
     public function deletes(): self
     {
-        return $this->action(AuditLogInterface::ACTION_DELETE, AuditLogInterface::ACTION_SOFT_DELETE);
+        return $this->action('delete', 'soft_delete');
     }
 
     /**
@@ -151,17 +152,17 @@ readonly class AuditQuery
     }
 
     /**
-     * Keyset pagination: Get results after a specific audit log ID.
+     * Keyset pagination: Get results after a specific audit log ID (UUID string).
      */
-    public function after(int $id): self
+    public function after(string $id): self
     {
         return $this->with(['afterId' => $id, 'beforeId' => null]);
     }
 
     /**
-     * Keyset pagination: Get results before a specific audit log ID.
+     * Keyset pagination: Get results before a specific audit log ID (UUID string).
      */
-    public function before(int $id): self
+    public function before(string $id): self
     {
         return $this->with(['afterId' => null, 'beforeId' => $id]);
     }
@@ -193,8 +194,9 @@ readonly class AuditQuery
         }
 
         /** @var array{
-         *     repository: AuditLogRepository,
+         *     repository: AuditLogRepositoryInterface,
          *     entityClass: ?string,
+         *
          *     entityId: ?string,
          *     actions: array<string>,
          *     userId: ?string,
@@ -203,8 +205,8 @@ readonly class AuditQuery
          *     until: ?DateTimeInterface,
          *     changedFields: array<string>,
          *     limit: int,
-         *     afterId: ?int,
-         *     beforeId: ?int
+         *     afterId: ?string,
+         *     beforeId: ?string
          * } $state */
         return new self(...$state);
     }
@@ -215,7 +217,7 @@ readonly class AuditQuery
     public function getResults(): AuditEntryCollection
     {
         $logs = $this->fetchLogs($this->limit);
-        $entries = array_map(static fn (AuditLogInterface $log) => new AuditEntry($log), $logs);
+        $entries = array_map(static fn (AuditLog $log) => new AuditEntry($log), $logs);
 
         return new AuditEntryCollection(array_values($entries));
     }
@@ -236,7 +238,7 @@ readonly class AuditQuery
     }
 
     /**
-     * @return array<AuditLogInterface>
+     * @return array<AuditLog>
      */
     private function fetchLogs(int $limit): array
     {
@@ -264,9 +266,9 @@ readonly class AuditQuery
     /**
      * Get the cursor (last ID) for pagination.
      */
-    public function getNextCursor(): ?int
+    public function getNextCursor(): ?string
     {
-        return $this->getResults()->last()?->getId();
+        return $this->getResults()->last()?->id?->toRfc4122();
     }
 
     /**
@@ -298,16 +300,15 @@ readonly class AuditQuery
     /**
      * Filter logs by changed fields (post-fetch).
      *
-     * @param array<AuditLogInterface> $logs
+     * @param array<AuditLog> $logs
      *
-     * @return array<AuditLogInterface>
+     * @return array<AuditLog>
      */
     private function filterByChangedFields(array $logs): array
     {
-        return array_values(array_filter($logs, function (AuditLogInterface $log) {
-            $logChangedFields = $log->getChangedFields() ?? [];
-
-            return [] !== array_intersect($this->changedFields, $logChangedFields);
-        }));
+        return array_values(array_filter($logs, fn (AuditLog $log) => array_any(
+            $this->changedFields,
+            static fn ($f) => in_array($f, $log->changedFields ?? [], true)
+        )));
     }
 }

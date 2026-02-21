@@ -6,16 +6,19 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 
 use function array_key_exists;
 use function in_array;
 use function is_array;
 
-class ChangeProcessor
+final class ChangeProcessor implements ChangeProcessorInterface
 {
     public function __construct(
-        private readonly AuditService $auditService,
-        private readonly ValueSerializer $serializer,
+        private readonly AuditMetadataManagerInterface $metadataManager,
+        private readonly ValueSerializerInterface $serializer,
         private readonly bool $enableSoftDelete = true,
         private readonly string $softDeleteField = 'deletedAt',
     ) {
@@ -30,8 +33,8 @@ class ChangeProcessor
     {
         $old = [];
         $new = [];
-        $sensitiveFields = $this->auditService->getSensitiveFields($entity);
-        $ignored = $this->auditService->getIgnoredProperties($entity);
+        $sensitiveFields = $this->metadataManager->getSensitiveFields($entity::class);
+        $ignored = $this->metadataManager->getIgnoredProperties($entity);
 
         foreach ($changeSet as $field => $change) {
             if (in_array($field, $ignored, true)) {

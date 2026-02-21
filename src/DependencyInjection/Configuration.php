@@ -52,6 +52,10 @@ final class Configuration implements ConfigurationInterface
             ->booleanNode('fail_on_transport_error')->defaultFalse()->end()
             ->booleanNode('fallback_to_database')->defaultTrue()->end()
             ->scalarNode('cache_pool')->defaultNull()->end()
+            ->arrayNode('audited_methods')
+            ->scalarPrototype()->end()
+            ->defaultValue(['GET'])
+            ->end()
             ->end();
     }
 
@@ -66,7 +70,14 @@ final class Configuration implements ConfigurationInterface
             ->arrayNode('http')
             ->canBeEnabled()
             ->children()
-            ->scalarNode('endpoint')->isRequired()->cannotBeEmpty()->end()
+            ->scalarNode('endpoint')
+            ->isRequired()
+            ->cannotBeEmpty()
+            ->validate()
+            ->ifTrue(static fn ($v): bool => !str_starts_with($v, 'http://') && !str_starts_with($v, 'https://'))
+            ->thenInvalid('The endpoint must start with http:// or https://')
+            ->end()
+            ->end()
             ->arrayNode('headers')
             ->scalarPrototype()->end()
             ->defaultValue([])

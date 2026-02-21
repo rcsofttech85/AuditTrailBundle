@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Command;
 use Exception;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -38,7 +39,7 @@ class AuditRevertCommand extends BaseAuditCommand
     protected function configure(): void
     {
         $this
-            ->addArgument('auditId', InputArgument::REQUIRED, 'The ID of the audit log entry to revert')
+            ->addArgument('auditId', InputArgument::REQUIRED, 'The UUID of the audit log entry to revert')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview changes without executing them')
             ->addOption(
                 'force',
@@ -84,10 +85,10 @@ class AuditRevertCommand extends BaseAuditCommand
         return $this->performRevert($io, $input, $log, $context);
     }
 
-    private function displayRevertHeader(SymfonyStyle $io, int $auditId, AuditLogInterface $log, bool $dryRun): void
+    private function displayRevertHeader(SymfonyStyle $io, string $auditId, AuditLog $log, bool $dryRun): void
     {
-        $io->title(sprintf('Reverting Audit Log #%d (%s)', $auditId, $log->getAction()));
-        $io->text(sprintf('Entity: %s:%s', $log->getEntityClass(), $log->getEntityId()));
+        $io->title(sprintf('Reverting Audit Log #%s (%s)', $auditId, $log->action));
+        $io->text(sprintf('Entity: %s:%s', $log->entityClass, $log->entityId));
 
         if ($dryRun) {
             $io->note('Running in DRY-RUN mode. No changes will be persisted.');
@@ -97,7 +98,7 @@ class AuditRevertCommand extends BaseAuditCommand
     /**
      * @param array<string, mixed> $context
      */
-    private function performRevert(SymfonyStyle $io, InputInterface $input, AuditLogInterface $log, array $context): int
+    private function performRevert(SymfonyStyle $io, InputInterface $input, AuditLog $log, array $context): int
     {
         $dryRun = (bool) $input->getOption('dry-run');
         $force = (bool) $input->getOption('force');

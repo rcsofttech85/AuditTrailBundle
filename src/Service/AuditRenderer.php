@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Override;
+use Rcsofttech\AuditTrailBundle\Contract\AuditRendererInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
 use Stringable;
 use Symfony\Component\Console\Helper\Table;
@@ -20,12 +22,12 @@ use function sprintf;
 use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
 
-final class AuditRenderer
+final readonly class AuditRenderer implements AuditRendererInterface
 {
     use ClassNameHelperTrait;
 
     /**
-     * @param array<AuditLogInterface> $audits
+     * @param array<AuditLog> $audits
      */
     public function renderTable(OutputInterface $output, array $audits, bool $showDetails): void
     {
@@ -46,19 +48,20 @@ final class AuditRenderer
     /**
      * @return array<int, mixed>
      */
-    public function buildRow(AuditLogInterface $audit, bool $showDetails): array
+    #[Override]
+    public function buildRow(AuditLog $audit, bool $showDetails): array
     {
-        $user = $audit->getUsername() ?? (string) $audit->getUserId();
+        $user = $audit->username ?? (string) $audit->userId;
         if ($user === '') {
             $user = '-';
         }
-        $hash = $this->shortenHash($audit->getTransactionHash());
-        $date = $audit->getCreatedAt()->format('Y-m-d H:i:s');
+        $hash = $this->shortenHash($audit->transactionHash);
+        $date = $audit->createdAt->format('Y-m-d H:i:s');
 
         if ($showDetails) {
             return [
-                $audit->getEntityId(),
-                $audit->getAction(),
+                $audit->entityId,
+                $audit->action,
                 $user,
                 $hash,
                 $this->formatChangedDetails($audit),
@@ -67,21 +70,22 @@ final class AuditRenderer
         }
 
         return [
-            $audit->getId(),
-            $this->shortenClass($audit->getEntityClass()),
-            $audit->getEntityId(),
-            $audit->getAction(),
+            $audit->id?->toRfc4122(),
+            $this->shortenClass($audit->entityClass),
+            $audit->entityId,
+            $audit->action,
             $user,
             $hash,
             $date,
         ];
     }
 
-    public function formatChangedDetails(AuditLogInterface $audit): string
+    #[Override]
+    public function formatChangedDetails(AuditLog $audit): string
     {
-        $old = (array) $audit->getOldValues();
-        $new = (array) $audit->getNewValues();
-        $changed = (array) $audit->getChangedFields();
+        $old = (array) $audit->oldValues;
+        $new = (array) $audit->newValues;
+        $changed = (array) $audit->changedFields;
 
         if ($this->isEmptyAudit($old, $new, $changed)) {
             return '-';
@@ -145,6 +149,7 @@ final class AuditRenderer
         return array_unique([...array_keys($oldValues), ...array_keys($newValues)]);
     }
 
+    #[Override]
     public function formatValue(mixed $value): string
     {
         if ($value === null) {
@@ -178,6 +183,9 @@ final class AuditRenderer
 
     private function truncateString(string $str): string
     {
+        // Strip ANSI escape sequences to prevent terminal injection
+        $str = preg_replace('/\x1b\[[0-9;]*[a-zA-Z]/', '', $str) ?? $str;
+
         return mb_strlen($str) > 50 ? mb_substr($str, 0, 47).'...' : $str;
     }
 

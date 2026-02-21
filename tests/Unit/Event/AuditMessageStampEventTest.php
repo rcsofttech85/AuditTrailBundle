@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Event;
 
 use DateTimeImmutable;
+use DateTimeInterface;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
@@ -49,17 +50,6 @@ class AuditMessageStampEventTest extends TestCase
         self::assertSame($transportStamp, $stamps[1]);
     }
 
-    public function testCancelEvent(): void
-    {
-        $event = new AuditMessageStampEvent($this->createMessage());
-
-        self::assertFalse($event->isCancelled());
-
-        $event->cancel();
-
-        self::assertTrue($event->isCancelled());
-    }
-
     public function testInitialStampsViaConstructor(): void
     {
         $delayStamp = new DelayStamp(1000);
@@ -84,9 +74,8 @@ class AuditMessageStampEventTest extends TestCase
             '127.0.0.1',
             'PHPUnit',
             null,
-            null,
-            [],
-            new DateTimeImmutable()
+            new DateTimeImmutable()->format(DateTimeInterface::ATOM),
+            []
         );
     }
 }

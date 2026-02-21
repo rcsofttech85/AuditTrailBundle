@@ -41,7 +41,7 @@ class ChainAuditTransportTest extends TestCase
 
     public function testSendOnlyCallsTransportsThatSupportThePhase(): void
     {
-        $log = new AuditLog();
+        $log = new AuditLog('Class', '1', 'create');
         $context = ['phase' => 'on_flush'];
 
         $t1 = $this->createMock(AuditTransportInterface::class);

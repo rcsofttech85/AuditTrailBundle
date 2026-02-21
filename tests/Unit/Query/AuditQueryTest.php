@@ -12,6 +12,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditQuery;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use ReflectionClass;
+use Symfony\Component\Uid\Uuid;
 
 #[AllowMockObjectsWithoutExpectations]
 class AuditQueryTest extends TestCase
@@ -77,7 +78,7 @@ class AuditQueryTest extends TestCase
             ->with(
                 self::callback(static function (array $filters) {
                     return ($filters['transactionHash'] ?? null) === 'hash'
-                        && ($filters['afterId'] ?? null) === 10
+                        && ($filters['afterId'] ?? null) === 'uuid-10'
                         && !isset($filters['beforeId']);
                 }),
                 10
@@ -86,7 +87,7 @@ class AuditQueryTest extends TestCase
 
         $this->query
             ->transaction('hash')
-            ->after(10)
+            ->after('uuid-10')
             ->limit(10)
             ->getResults();
     }
@@ -117,22 +118,22 @@ class AuditQueryTest extends TestCase
             ->with(self::callback(static function (array $f) use (&$callCount) {
                 ++$callCount;
                 if ($callCount === 1) {
-                    return ($f['afterId'] ?? null) === 10 && !isset($f['beforeId']);
+                    return ($f['afterId'] ?? null) === 'uuid-10' && !isset($f['beforeId']);
                 }
 
-                return ($f['beforeId'] ?? null) === 20 && !isset($f['afterId']);
+                return ($f['beforeId'] ?? null) === 'uuid-20' && !isset($f['afterId']);
             }), 30)
             ->willReturn([]);
 
-        $this->query->after(10)->getResults();
-        $this->query->before(20)->getResults();
+        $this->query->after('uuid-10')->getResults();
+        $this->query->before('uuid-20')->getResults();
     }
 
-    private function setLogId(AuditLog $log, int $id): void
+    private function setLogId(AuditLog $log, string $id): void
     {
         $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
-        $property->setValue($log, $id);
+        $property->setValue($log, Uuid::fromString($id));
     }
 
     public function testConvenienceMethods(): void
@@ -148,11 +149,8 @@ class AuditQueryTest extends TestCase
 
     public function testCountWithChangedFields(): void
     {
-        $log1 = $this->createMock(AuditLog::class);
-        $log1->method('getChangedFields')->willReturn(['name']);
-
-        $log2 = $this->createMock(AuditLog::class);
-        $log2->method('getChangedFields')->willReturn(['age']);
+        $log1 = new AuditLog('Class', '1', 'create', changedFields: ['name']);
+        $log2 = new AuditLog('Class', '2', 'update', changedFields: ['age']);
 
         $this->repository->method('findWithFilters')->willReturn([$log1, $log2]);
 
@@ -167,10 +165,11 @@ class AuditQueryTest extends TestCase
 
     public function testGetFirstResult(): void
     {
-        $log1 = new AuditLog();
-        $this->setLogId($log1, 1);
-        $log2 = new AuditLog();
-        $this->setLogId($log2, 2);
+        $uuid1 = Uuid::v4()->toString();
+        $log1 = new AuditLog('Class', '1', 'create');
+        $this->setLogId($log1, $uuid1);
+        $log2 = new AuditLog('Class', '2', 'create');
+        $this->setLogId($log2, Uuid::v4()->toString());
 
         // Should call findWithFilters with limit 1
         $this->repository->expects($this->once())
@@ -180,12 +179,13 @@ class AuditQueryTest extends TestCase
 
         $result = $this->query->getFirstResult();
         self::assertNotNull($result);
-        self::assertEquals(1, $result->getId());
+        self::assertNotNull($result->id);
+        self::assertEquals($uuid1, $result->id->toString());
     }
 
     public function testExists(): void
     {
-        $this->repository->method('findWithFilters')->willReturn([new AuditLog()]);
+        $this->repository->method('findWithFilters')->willReturn([new AuditLog('Class', '1', 'create')]);
         self::assertTrue($this->query->exists());
 
         $this->repository = $this->createMock(AuditLogRepository::class);
@@ -196,15 +196,17 @@ class AuditQueryTest extends TestCase
 
     public function testGetNextCursor(): void
     {
-        $log1 = new AuditLog();
-        $this->setLogId($log1, 10);
-        $log2 = new AuditLog();
-        $this->setLogId($log2, 5);
+        $uuid1 = Uuid::v4()->toString();
+        $log1 = new AuditLog('Class', '1', 'create');
+        $this->setLogId($log1, $uuid1);
+        $uuid2 = Uuid::v4()->toString();
+        $log2 = new AuditLog('Class', '2', 'create');
+        $this->setLogId($log2, $uuid2);
 
         $this->repository->method('findWithFilters')->willReturn([$log1, $log2]);
 
         // getNextCursor returns the ID of the LAST result
-        self::assertEquals(5, $this->query->getNextCursor());
+        self::assertEquals($uuid2, $this->query->getNextCursor());
 
         // Empty results should return null
         $this->repository = $this->createMock(AuditLogRepository::class);

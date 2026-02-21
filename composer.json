@@ -4,17 +4,16 @@
     "type": "symfony-bundle",
     "license": "MIT",
     "keywords": [
+        "symfony-audit",
         "symfony",
         "audit",
         "audit-trail",
-        "log",
+        "activity-log",
         "doctrine",
-        "entity-tracking",
-        "history",
+        "envers",
         "compliance",
-        "gdpr",
-        "high-performance",
-        "messenger",
+        "data-integrity",
+        "hmac-signing",
         "async-audit"
     ],
     "support": {

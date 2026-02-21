@@ -11,14 +11,14 @@ use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Events;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
-use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
-use Rcsofttech\AuditTrailBundle\Service\AuditService;
-use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
-use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
-use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
-use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Symfony\Contracts\Service\ResetInterface;
 use Throwable;
@@ -31,20 +31,19 @@ use function sprintf;
 #[AsDoctrineListener(event: Events::onClear)]
 final class AuditSubscriber implements ResetInterface
 {
-    private const int BATCH_FLUSH_THRESHOLD = 500;
-
     private bool $isFlushing = false;
 
     private int $recursionDepth = 0;
 
     public function __construct(
-        private readonly AuditService $auditService,
-        private readonly ChangeProcessor $changeProcessor,
-        private readonly AuditDispatcher $dispatcher,
-        private readonly ScheduledAuditManager $auditManager,
-        private readonly EntityProcessor $entityProcessor,
+        private readonly AuditServiceInterface $auditService,
+        private readonly ChangeProcessorInterface $changeProcessor,
+        private readonly AuditDispatcherInterface $dispatcher,
+        private readonly ScheduledAuditManagerInterface $auditManager,
+        private readonly EntityProcessorInterface $entityProcessor,
         private readonly TransactionIdGenerator $transactionIdGenerator,
         private readonly AuditAccessHandler $accessHandler,
+        private readonly EntityIdResolverInterface $idResolver,
         private readonly ?LoggerInterface $logger = null,
         private readonly bool $enableHardDelete = true,
         private readonly bool $enabled = true,
@@ -67,12 +66,13 @@ final class AuditSubscriber implements ResetInterface
         try {
             $em = $args->getObjectManager();
             $uow = $em->getUnitOfWork();
-            $uow->computeChangeSets();
 
-            $this->handleBatchFlushIfNeeded($em);
+            // rely on the parent flush and computeChangeSet() in the
+            // transport to persist audits, avoiding nested flushes in onFlush.
             $this->entityProcessor->processInsertions($em, $uow);
             $this->entityProcessor->processUpdates($em, $uow);
             $this->entityProcessor->processCollectionUpdates($em, $uow, $uow->getScheduledCollectionUpdates());
+            $this->entityProcessor->processCollectionUpdates($em, $uow, $uow->getScheduledCollectionDeletions());
             $this->entityProcessor->processDeletions($em, $uow);
         } finally {
             --$this->recursionDepth;
@@ -98,12 +98,15 @@ final class AuditSubscriber implements ResetInterface
 
         try {
             $em = $args->getObjectManager();
-            $hasNewAudits = $this->processPendingDeletions($em);
-            $hasNewAudits = $this->processScheduledAudits($em) || $hasNewAudits;
+            $hasDeletions = $this->processPendingDeletions($em);
+            $hasScheduled = $this->processScheduledAudits($em);
 
             $this->auditManager->clear();
             $this->transactionIdGenerator->reset();
-            $this->flushNewAuditsIfNeeded($em, $hasNewAudits);
+
+            if ($hasDeletions || $hasScheduled) {
+                $this->flushNewAuditsIfNeeded($em, true);
+            }
         } finally {
             --$this->recursionDepth;
         }
@@ -112,7 +115,8 @@ final class AuditSubscriber implements ResetInterface
     private function processPendingDeletions(EntityManagerInterface $em): bool
     {
         $hasNewAudits = false;
-        foreach ($this->auditManager->getPendingDeletions() as $pending) {
+        // @phpstan-ignore-next-line
+        foreach ($this->auditManager->pendingDeletions as $pending) {
             $action = $this->changeProcessor->determineDeletionAction($em, $pending['entity'], $this->enableHardDelete);
             if ($action === null) {
                 continue;
@@ -138,11 +142,12 @@ final class AuditSubscriber implements ResetInterface
     private function processScheduledAudits(EntityManagerInterface $em): bool
     {
         $hasNewAudits = false;
-        foreach ($this->auditManager->getScheduledAudits() as $scheduled) {
+        // @phpstan-ignore-next-line
+        foreach ($this->auditManager->scheduledAudits as $scheduled) {
             if ($scheduled['is_insert']) {
-                $id = EntityIdResolver::resolveFromEntity($scheduled['entity'], $em);
-                if ($id !== EntityIdResolver::PENDING_ID) {
-                    $scheduled['audit']->setEntityId($id);
+                $id = $this->idResolver->resolveFromEntity($scheduled['entity'], $em);
+                if ($id !== AuditLogInterface::PENDING_ID) {
+                    $scheduled['audit']->entityId = $id;
                 }
             }
 
@@ -174,26 +179,9 @@ final class AuditSubscriber implements ResetInterface
 
     private function markAsAudited(object $entity, EntityManagerInterface $em): void
     {
-        $id = EntityIdResolver::resolveFromEntity($entity, $em);
-        if ($id !== EntityIdResolver::PENDING_ID) {
+        $id = $this->idResolver->resolveFromEntity($entity, $em);
+        if ($id !== AuditLogInterface::PENDING_ID) {
             $this->accessHandler->markAsAudited(sprintf('%s:%s', $entity::class, $id));
-        }
-    }
-
-    private function handleBatchFlushIfNeeded(EntityManagerInterface $em): void
-    {
-        if ($this->auditManager->countScheduled() < self::BATCH_FLUSH_THRESHOLD) {
-            return;
-        }
-
-        $this->isFlushing = true;
-        try {
-            foreach ($this->auditManager->getScheduledAudits() as $scheduled) {
-                $this->dispatcher->dispatch($scheduled['audit'], $em, 'batch_flush');
-            }
-            $this->auditManager->clear();
-        } finally {
-            $this->isFlushing = false;
         }
     }
 

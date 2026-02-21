@@ -4,30 +4,30 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Query;
 
-use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Mapping\ClassMetadata;
 use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditReader;
-use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class AuditReaderTest extends TestCase
 {
-    private AuditLogRepository&MockObject $repository;
+    private AuditLogRepositoryInterface&MockObject $repository;
 
-    private EntityManagerInterface&MockObject $entityManager;
+    private EntityIdResolverInterface&MockObject $idResolver;
 
     private AuditReader $reader;
 
     protected function setUp(): void
     {
-        $this->repository = $this->createMock(AuditLogRepository::class);
-        $this->entityManager = $this->createMock(EntityManagerInterface::class);
-        $this->reader = new AuditReader($this->repository, $this->entityManager);
+        $this->repository = $this->createMock(AuditLogRepositoryInterface::class);
+        $this->idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $this->reader = new AuditReader($this->repository, $this->idResolver);
     }
 
     public function testCreateQuery(): void
@@ -54,13 +54,10 @@ class AuditReaderTest extends TestCase
         $this->expectNotToPerformAssertions();
     }
 
-    public function testGetHistoryForWithMetadata(): void
+    public function testGetHistoryFor(): void
     {
         $entity = new stdClass();
-        $metadata = $this->createMock(ClassMetadata::class);
-        $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
-
-        $this->entityManager->method('getClassMetadata')->with(stdClass::class)->willReturn($metadata);
+        $this->idResolver->method('resolveFromEntity')->with($entity)->willReturn('123');
 
         $this->repository->expects($this->once())
             ->method('findWithFilters')
@@ -70,46 +67,10 @@ class AuditReaderTest extends TestCase
         $this->reader->getHistoryFor($entity);
     }
 
-    public function testGetHistoryForWithCompositeId(): void
+    public function testGetHistoryForFailure(): void
     {
         $entity = new stdClass();
-        $metadata = $this->createMock(ClassMetadata::class);
-        $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id1' => 1, 'id2' => 2]);
-
-        $this->entityManager->method('getClassMetadata')->with(stdClass::class)->willReturn($metadata);
-
-        $this->repository->expects($this->once())
-            ->method('findWithFilters')
-            ->with(self::callback(static fn ($f) => $f['entityClass'] === 'stdClass' && $f['entityId'] === '["1","2"]'), 30)
-            ->willReturn([]);
-
-        $this->reader->getHistoryFor($entity);
-    }
-
-    public function testGetHistoryForFallbackToGetId(): void
-    {
-        $entity = new class {
-            public function getId(): int
-            {
-                return 456;
-            }
-        };
-
-        // Simulate metadata failure
-        $this->entityManager->method('getClassMetadata')->willThrowException(new Exception());
-
-        $this->repository->expects($this->once())
-            ->method('findWithFilters')
-            ->with(self::callback(static fn ($f) => $f['entityId'] === '456'), 30)
-            ->willReturn([]);
-
-        $this->reader->getHistoryFor($entity);
-    }
-
-    public function testGetHistoryForNoId(): void
-    {
-        $entity = new stdClass();
-        $this->entityManager->method('getClassMetadata')->willThrowException(new Exception());
+        $this->idResolver->method('resolveFromEntity')->willThrowException(new Exception());
 
         $this->repository->expects($this->never())->method('findWithFilters');
 
@@ -120,12 +81,9 @@ class AuditReaderTest extends TestCase
     public function testGetTimelineFor(): void
     {
         $entity = new stdClass();
-        $metadata = $this->createMock(ClassMetadata::class);
-        $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
-        $this->entityManager->method('getClassMetadata')->willReturn($metadata);
+        $this->idResolver->method('resolveFromEntity')->willReturn('123');
 
-        $log = new \Rcsofttech\AuditTrailBundle\Entity\AuditLog();
-        $log->setTransactionHash('tx1');
+        $log = new AuditLog(stdClass::class, '123', 'create', transactionHash: 'tx1');
 
         $this->repository->method('findWithFilters')->willReturn([$log]);
 
@@ -137,11 +95,9 @@ class AuditReaderTest extends TestCase
     public function testGetLatestFor(): void
     {
         $entity = new stdClass();
-        $metadata = $this->createMock(ClassMetadata::class);
-        $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
-        $this->entityManager->method('getClassMetadata')->willReturn($metadata);
+        $this->idResolver->method('resolveFromEntity')->willReturn('123');
 
-        $log = new \Rcsofttech\AuditTrailBundle\Entity\AuditLog();
+        $log = new AuditLog(stdClass::class, '123', 'create');
         $this->repository->method('findWithFilters')->willReturn([$log]);
 
         $result = $this->reader->getLatestFor($entity);
@@ -151,11 +107,9 @@ class AuditReaderTest extends TestCase
     public function testHasHistoryFor(): void
     {
         $entity = new stdClass();
-        $metadata = $this->createMock(ClassMetadata::class);
-        $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
-        $this->entityManager->method('getClassMetadata')->willReturn($metadata);
+        $this->idResolver->method('resolveFromEntity')->willReturn('123');
 
-        $this->repository->method('findWithFilters')->willReturn([new \Rcsofttech\AuditTrailBundle\Entity\AuditLog()]);
+        $this->repository->method('findWithFilters')->willReturn([new AuditLog(stdClass::class, '123', 'create')]);
 
         self::assertTrue($this->reader->hasHistoryFor($entity));
     }

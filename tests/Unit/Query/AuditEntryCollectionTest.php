@@ -64,12 +64,12 @@ class AuditEntryCollectionTest extends TestCase
 
         $collection = new AuditEntryCollection([$create, $update, $delete]);
 
-        $filtered = $collection->filter(static fn (AuditEntry $e) => $e->isUpdate());
+        $filtered = $collection->filter(static fn (AuditEntry $e) => $e->isUpdate);
 
         self::assertCount(1, $filtered);
         $first = $filtered->first();
         self::assertNotNull($first);
-        self::assertTrue($first->isUpdate());
+        self::assertTrue($first->isUpdate);
     }
 
     public function testMap(): void
@@ -79,7 +79,7 @@ class AuditEntryCollectionTest extends TestCase
             $this->createEntry(AuditLogInterface::ACTION_UPDATE),
         ]);
 
-        $actions = $collection->map(static fn (AuditEntry $e) => $e->getAction());
+        $actions = $collection->map(static fn (AuditEntry $e) => $e->action);
 
         self::assertSame([AuditLogInterface::ACTION_CREATE, AuditLogInterface::ACTION_UPDATE], $actions);
     }
@@ -160,10 +160,7 @@ class AuditEntryCollectionTest extends TestCase
 
     private function createEntry(string $action, string $entityClass = 'App\\Entity\\User'): AuditEntry
     {
-        $log = new AuditLog();
-        $log->setEntityClass($entityClass);
-        $log->setEntityId('1');
-        $log->setAction($action);
+        $log = new AuditLog($entityClass, '1', $action);
 
         return new AuditEntry($log);
     }

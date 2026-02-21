@@ -9,6 +9,8 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
 use stdClass;
@@ -16,16 +18,19 @@ use stdClass;
 #[AllowMockObjectsWithoutExpectations]
 class DoctrineAuditTransportTest extends TestCase
 {
+    private EntityIdResolverInterface&\PHPUnit\Framework\MockObject\MockObject $idResolver;
+
     private DoctrineAuditTransport $transport;
 
     protected function setUp(): void
     {
-        $this->transport = new DoctrineAuditTransport();
+        $this->idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $this->transport = new DoctrineAuditTransport($this->idResolver);
     }
 
     public function testSendOnFlushPersistsLog(): void
     {
-        $log = new AuditLog();
+        $log = new AuditLog(stdClass::class, '123', AuditLogInterface::ACTION_CREATE);
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
         $meta = self::createStub(ClassMetadata::class);
@@ -44,8 +49,7 @@ class DoctrineAuditTransportTest extends TestCase
 
     public function testSendPostFlushUpdatesId(): void
     {
-        $log = new AuditLog();
-        $log->setEntityId('pending');
+        $log = new AuditLog(stdClass::class, 'pending', AuditLogInterface::ACTION_CREATE);
 
         $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
@@ -53,7 +57,7 @@ class DoctrineAuditTransportTest extends TestCase
 
         $em->method('getClassMetadata')->willReturn($meta);
         $em->method('contains')->willReturn(false);
-        $meta->method('getIdentifierValues')->willReturn(['id' => 100]);
+        $this->idResolver->method('resolve')->willReturn('100');
 
         $this->transport->send($log, [
             'phase' => 'post_flush',
@@ -62,13 +66,12 @@ class DoctrineAuditTransportTest extends TestCase
         ]);
 
         // The new implementation calls setEntityId instead of executeStatement
-        self::assertEquals('100', $log->getEntityId());
+        self::assertEquals('100', $log->entityId);
     }
 
     public function testSendPostFlushWithIsInsertUpdatesId(): void
     {
-        $log = new AuditLog();
-        $log->setEntityId('pending');
+        $log = new AuditLog(stdClass::class, 'pending', AuditLogInterface::ACTION_CREATE);
 
         $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
@@ -76,7 +79,7 @@ class DoctrineAuditTransportTest extends TestCase
 
         $em->method('getClassMetadata')->willReturn($meta);
         $em->method('contains')->willReturn(true); // Already managed
-        $meta->method('getIdentifierValues')->willReturn(['id' => 456]);
+        $this->idResolver->method('resolve')->willReturn('456');
 
         $this->transport->send($log, [
             'phase' => 'post_flush',
@@ -86,6 +89,6 @@ class DoctrineAuditTransportTest extends TestCase
         ]);
 
         // Verify setEntityId was called with resolved ID
-        self::assertEquals('456', $log->getEntityId());
+        self::assertEquals('456', $log->entityId);
     }
 }

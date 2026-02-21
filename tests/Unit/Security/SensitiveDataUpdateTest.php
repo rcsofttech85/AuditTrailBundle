@@ -8,7 +8,11 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\MockObject\Stub;
+use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
 use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
@@ -23,13 +27,13 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 #[AllowMockObjectsWithoutExpectations]
 class SensitiveDataUpdateTest extends AbstractAuditTestCase
 {
-    /** @var EntityManagerInterface&\PHPUnit\Framework\MockObject\Stub */
+    /** @var EntityManagerInterface&Stub */
     private EntityManagerInterface $entityManager;
 
-    /** @var AuditTransportInterface&\PHPUnit\Framework\MockObject\MockObject */
+    /** @var AuditTransportInterface&MockObject */
     private AuditTransportInterface $transport;
 
-    /** @var TransactionIdGenerator&\PHPUnit\Framework\MockObject\Stub */
+    /** @var TransactionIdGenerator&Stub */
     private TransactionIdGenerator $transactionIdGenerator;
 
     protected function setUp(): void
@@ -51,8 +55,8 @@ class SensitiveDataUpdateTest extends AbstractAuditTestCase
         $this->transport->expects($this->once())
             ->method('send')
             ->with(self::callback(static function (AuditLog $log): bool {
-                $old = $log->getOldValues();
-                $new = $log->getNewValues();
+                $old = $log->oldValues;
+                $new = $log->newValues;
 
                 return ($old['password'] ?? '') === '**REDACTED**' && ($new['password'] ?? '') === '**REDACTED**';
             }));
@@ -65,7 +69,11 @@ class SensitiveDataUpdateTest extends AbstractAuditTestCase
         $auditService = $this->createAuditService($this->entityManager, $this->transactionIdGenerator);
         $dispatcher = $this->createAuditDispatcher($this->transport);
         $auditManager = new ScheduledAuditManager(self::createStub(EventDispatcherInterface::class));
-        $changeProcessor = new ChangeProcessor($auditService, new ValueSerializer(null), true, 'deletedAt');
+
+        $metadataManager = self::createStub(AuditMetadataManagerInterface::class);
+        $metadataManager->method('getSensitiveFields')->willReturn(['password' => '**REDACTED**']);
+
+        $changeProcessor = new ChangeProcessor($metadataManager, new ValueSerializer(null), true, 'deletedAt');
 
         $entityProcessor = $this->createEntityProcessor(
             $auditService,
@@ -81,7 +89,8 @@ class SensitiveDataUpdateTest extends AbstractAuditTestCase
             $auditManager,
             $entityProcessor,
             $this->transactionIdGenerator,
-            self::createStub(AuditAccessHandler::class)
+            self::createStub(AuditAccessHandler::class),
+            self::createStub(EntityIdResolverInterface::class)
         );
     }
 

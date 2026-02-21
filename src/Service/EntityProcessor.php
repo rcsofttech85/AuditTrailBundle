@@ -7,19 +7,26 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\PersistentCollection;
 use Doctrine\ORM\UnitOfWork;
+use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
 use function in_array;
 use function is_string;
 
-readonly class EntityProcessor
+final readonly class EntityProcessor implements EntityProcessorInterface
 {
     public function __construct(
-        private AuditService $auditService,
-        private ChangeProcessor $changeProcessor,
-        private AuditDispatcher $dispatcher,
-        private ScheduledAuditManager $auditManager,
+        private AuditServiceInterface $auditService,
+        private ChangeProcessorInterface $changeProcessor,
+        private AuditDispatcherInterface $dispatcher,
+        private ScheduledAuditManagerInterface $auditManager,
+        private EntityIdResolverInterface $idResolver,
         private bool $deferTransportUntilCommit = true,
     ) {
     }
@@ -66,7 +73,7 @@ readonly class EntityProcessor
     }
 
     /**
-     * @param iterable<int, PersistentCollection<int|string, object>> $collectionUpdates
+     * @param iterable<object> $collectionUpdates
      */
     public function processCollectionUpdates(
         EntityManagerInterface $em,
@@ -74,6 +81,10 @@ readonly class EntityProcessor
         iterable $collectionUpdates,
     ): void {
         foreach ($collectionUpdates as $collection) {
+            if (!method_exists($collection, 'getInsertDiff')) {
+                continue;
+            }
+            /** @var PersistentCollection<int|string, object> $collection */
             $owner = $collection->getOwner();
             if ($owner === null) {
                 continue;
@@ -137,22 +148,21 @@ readonly class EntityProcessor
     }
 
     private function dispatchOrSchedule(
-        AuditLogInterface $audit,
+        AuditLog $audit,
         object $entity,
         EntityManagerInterface $em,
         UnitOfWork $uow,
         bool $isInsert,
     ): void {
-        if (
-            !$this->deferTransportUntilCommit && $this->dispatcher->supports(
-                'on_flush',
-                ['em' => $em, 'uow' => $uow]
-            )
-        ) {
-            $this->dispatcher->dispatch($audit, $em, 'on_flush', $uow);
-        } else {
-            $this->auditManager->schedule($entity, $audit, $isInsert);
+        // Smart flush detection
+        $canDispatchNow = !$this->deferTransportUntilCommit
+            || ($isInsert && $audit->entityId !== AuditLogInterface::PENDING_ID);
+
+        if ($canDispatchNow && $this->dispatcher->dispatch($audit, $em, 'on_flush', $uow)) {
+            return;
         }
+
+        $this->auditManager->schedule($entity, $audit, $isInsert);
     }
 
     /**
@@ -164,8 +174,8 @@ readonly class EntityProcessor
     {
         $ids = [];
         foreach ($items as $item) {
-            $id = EntityIdResolver::resolveFromEntity($item, $em);
-            if ($id !== EntityIdResolver::PENDING_ID) {
+            $id = $this->idResolver->resolveFromEntity($item, $em);
+            if ($id !== AuditLogInterface::PENDING_ID) {
                 $ids[] = $id;
             }
         }
@@ -196,8 +206,7 @@ readonly class EntityProcessor
         }
 
         $deletedIds = $this->extractIdsFromCollection($deleteDiff, $em);
-        $newIds = array_filter($newIds, static fn ($id) => !in_array($id, $deletedIds, true));
 
-        return array_values($newIds);
+        return array_filter($newIds, static fn ($id) => !in_array($id, $deletedIds, true));
     }
 }

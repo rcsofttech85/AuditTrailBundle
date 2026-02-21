@@ -12,9 +12,9 @@ use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
+use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
-use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
@@ -22,7 +22,7 @@ class EntityDataExtractorTest extends TestCase
 {
     private EntityManagerInterface&MockObject $em;
 
-    private ValueSerializer&MockObject $serializer;
+    private ValueSerializerInterface&MockObject $serializer;
 
     private MetadataCache&MockObject $metadataCache;
 
@@ -33,7 +33,7 @@ class EntityDataExtractorTest extends TestCase
     protected function setUp(): void
     {
         $this->em = $this->createMock(EntityManagerInterface::class);
-        $this->serializer = $this->createMock(ValueSerializer::class);
+        $this->serializer = $this->createMock(ValueSerializerInterface::class);
         $this->metadataCache = $this->createMock(MetadataCache::class);
         $this->logger = $this->createMock(LoggerInterface::class);
 

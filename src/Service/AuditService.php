@@ -6,68 +6,58 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
+use Override;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
-use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Stringable;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 use Throwable;
-use Traversable;
 
-use function in_array;
-use function is_scalar;
+use function sprintf;
+use function strlen;
 
-class AuditService
+use const JSON_THROW_ON_ERROR;
+
+final class AuditService implements AuditServiceInterface
 {
     private const string PENDING_ID = 'pending';
 
+    private const int MAX_CONTEXT_BYTES = 65_536;
+
+    private readonly DateTimeZone $tz;
+
     /**
-     * @param array<string>                              $ignoredEntities
-     * @param array<string>                              $ignoredProperties
-     * @param iterable<AuditVoterInterface>              $voters
-     * @param iterable<AuditContextContributorInterface> $contributors
+     * @param iterable<AuditVoterInterface> $voters
      */
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly UserResolverInterface $userResolver,
         private readonly ClockInterface $clock,
         private readonly TransactionIdGenerator $transactionIdGenerator,
         private readonly EntityDataExtractor $dataExtractor,
-        private readonly MetadataCache $metadataCache,
-        private readonly array $ignoredEntities = [],
-        private readonly array $ignoredProperties = [],
+        private readonly AuditMetadataManagerInterface $metadataManager,
+        private readonly ContextResolverInterface $contextResolver,
+        private readonly EntityIdResolverInterface $idResolver,
         private readonly ?LoggerInterface $logger = null,
         private readonly string $timezone = 'UTC',
         #[AutowireIterator('audit_trail.voter')]
         private readonly iterable $voters = [],
-        #[AutowireIterator('audit_trail.context_contributor')]
-        private readonly iterable $contributors = [],
     ) {
+        $this->tz = new DateTimeZone($this->timezone);
     }
 
-    /**
-     * Check if the entity should be audited.
-     *
-     * @param array<string, mixed> $changeSet
-     */
+    #[Override]
     public function shouldAudit(
         object $entity,
         string $action = AuditLogInterface::ACTION_CREATE,
         array $changeSet = [],
     ): bool {
-        $class = $entity::class;
-
-        if (in_array($class, $this->ignoredEntities, true)) {
-            return false;
-        }
-
-        $auditable = $this->metadataCache->getAuditableAttribute($class);
-
-        if ($auditable === null || !$auditable->enabled) {
+        if ($this->metadataManager->isEntityIgnored($entity::class)) {
             return false;
         }
 
@@ -81,137 +71,93 @@ class AuditService
      */
     public function passesVoters(object $entity, string $action, array $changeSet = []): bool
     {
-        return array_all(
-            $this->voters instanceof Traversable ? iterator_to_array($this->voters) : $this->voters,
-            static fn (AuditVoterInterface $voter) => $voter->vote($entity, $action, $changeSet)
-        );
+        foreach ($this->voters as $voter) {
+            if (!$voter->vote($entity, $action, $changeSet)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
+    #[Override]
     public function getAccessAttribute(string $class): ?\Rcsofttech\AuditTrailBundle\Attribute\AuditAccess
     {
-        return $this->metadataCache->getAuditAccessAttribute($class);
+        return $this->metadataManager->getAuditAccessAttribute($class);
     }
 
-    /**
-     * Extract entity data for auditing.
-     *
-     * @param array<string> $additionalIgnored
-     *
-     * @return array<string, mixed>
-     */
+    #[Override]
     public function getEntityData(object $entity, array $additionalIgnored = []): array
     {
-        $ignored = $this->getIgnoredProperties($entity, $additionalIgnored);
+        $ignored = $this->metadataManager->getIgnoredProperties($entity, $additionalIgnored);
 
         return $this->dataExtractor->extract($entity, $ignored);
     }
 
-    /**
-     * @param array<string> $additionalIgnored
-     *
-     * @return array<string>
-     */
-    public function getIgnoredProperties(object $entity, array $additionalIgnored = []): array
-    {
-        $ignored = [...$this->ignoredProperties, ...$additionalIgnored];
-
-        $auditable = $this->metadataCache->getAuditableAttribute($entity::class);
-        if ($auditable !== null) {
-            $ignored = [...$ignored, ...$auditable->ignoredProperties];
-        }
-
-        return array_unique($ignored);
-    }
-
-    /**
-     * Create audit log entry.
-     *
-     * @param array<string, mixed>|null $oldValues
-     * @param array<string, mixed>|null $newValues
-     * @param array<string, mixed>      $context
-     */
+    #[Override]
     public function createAuditLog(
         object $entity,
         string $action,
         ?array $oldValues = null,
         ?array $newValues = null,
         array $context = [],
-    ): AuditLogInterface {
-        $auditLog = new AuditLog();
-        $auditLog->setEntityClass($entity::class);
-
-        $entityId = EntityIdResolver::resolveFromEntity($entity, $this->entityManager);
+    ): AuditLog {
+        $entityId = $this->idResolver->resolveFromEntity($entity, $this->entityManager);
         if ($entityId === self::PENDING_ID && $action === AuditLogInterface::ACTION_DELETE && $oldValues !== null) {
-            $entityId = EntityIdResolver::resolveFromValues(
+            $entityId = $this->idResolver->resolveFromValues(
                 $entity,
                 $oldValues,
                 $this->entityManager
             ) ?? self::PENDING_ID;
         }
-        $auditLog->setEntityId($entityId);
 
-        $auditLog->setAction($action);
-        $auditLog->setOldValues($oldValues);
-        $auditLog->setNewValues($newValues);
+        $changedFields = ($action === AuditLogInterface::ACTION_UPDATE && $newValues !== null)
+            ? array_keys($newValues)
+            : null;
 
-        if ($action === AuditLogInterface::ACTION_UPDATE && $newValues !== null) {
-            $auditLog->setChangedFields(array_keys($newValues));
+        try {
+            $resolvedContext = $this->contextResolver->resolve($entity, $action, $newValues ?? [], $context);
+        } catch (Throwable $e) {
+            $this->logger?->warning('Failed to resolve audit context: '.$e->getMessage());
+            $resolvedContext = [
+                'userId' => null,
+                'username' => null,
+                'ipAddress' => null,
+                'userAgent' => null,
+                'context' => ['_error' => 'Context resolution failed'],
+            ];
         }
 
-        $this->enrichWithUserContext($auditLog, $entity, $context);
-        $auditLog->setTransactionHash($this->transactionIdGenerator->getTransactionId());
-        $auditLog->setCreatedAt($this->clock->now()->setTimezone(new DateTimeZone($this->timezone)));
+        $contextData = $resolvedContext['context'];
 
-        return $auditLog;
+        $encoded = json_encode($contextData, JSON_THROW_ON_ERROR);
+        if (strlen($encoded) > self::MAX_CONTEXT_BYTES) {
+            $this->logger?->warning(
+                sprintf('Audit context for %s#%s truncated (%d bytes exceeded %d limit).', $entity::class, $entityId, strlen($encoded), self::MAX_CONTEXT_BYTES),
+            );
+            $contextData = ['_truncated' => true, '_original_size' => strlen($encoded)];
+        }
+
+        return new AuditLog(
+            entityClass: $entity::class,
+            entityId: (string) $entityId,
+            action: $action,
+            createdAt: $this->clock->now()->setTimezone($this->tz),
+            oldValues: $oldValues,
+            newValues: $newValues,
+            changedFields: $changedFields,
+            transactionHash: $this->transactionIdGenerator->getTransactionId(),
+            userId: $resolvedContext['userId'],
+            username: $resolvedContext['username'],
+            ipAddress: $resolvedContext['ipAddress'],
+            userAgent: $resolvedContext['userAgent'],
+            context: $contextData
+        );
     }
 
-    /**
-     * @return array<string, string>
-     */
+    #[Override]
     public function getSensitiveFields(object $entity): array
     {
-        return $this->metadataCache->getSensitiveFields($entity::class);
-    }
-
-    /**
-     * @param array<string, mixed> $extraContext
-     */
-    private function enrichWithUserContext(AuditLog $auditLog, object $entity, array $extraContext = []): void
-    {
-        try {
-            $userId = $extraContext[AuditLogInterface::CONTEXT_USER_ID] ?? $this->userResolver->getUserId();
-            $username = $extraContext[AuditLogInterface::CONTEXT_USERNAME] ?? $this->userResolver->getUsername();
-
-            $auditLog->setUserId((is_scalar($userId) || ($userId instanceof Stringable)) ? (string) $userId : null);
-            $auditLog->setUsername((is_scalar($username) || ($username instanceof Stringable)) ? (string) $username : null);
-            $auditLog->setIpAddress($this->userResolver->getIpAddress());
-            $auditLog->setUserAgent($this->userResolver->getUserAgent());
-
-            // Remove internal "transport" keys so they don't pollute the JSON storage
-            $context = array_diff_key($extraContext, [
-                AuditLogInterface::CONTEXT_USER_ID => true,
-                AuditLogInterface::CONTEXT_USERNAME => true,
-            ]);
-
-            $impersonatorId = $this->userResolver->getImpersonatorId();
-            if ($impersonatorId !== null) {
-                $context['impersonation'] = [
-                    'impersonator_id' => $impersonatorId,
-                    'impersonator_username' => $this->userResolver->getImpersonatorUsername(),
-                ];
-            }
-
-            // Add custom context from contributors
-            foreach ($this->contributors as $contributor) {
-                $context = [
-                    ...$context,
-                    ...$contributor->contribute($entity, $auditLog->getAction(), $auditLog->getNewValues() ?? []),
-                ];
-            }
-
-            $auditLog->setContext($context);
-        } catch (Throwable $e) {
-            $this->logger?->error('Failed to set user context', ['exception' => $e->getMessage()]);
-        }
+        return $this->metadataManager->getSensitiveFields($entity::class);
     }
 }

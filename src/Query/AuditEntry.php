@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Query;
 
 use DateTimeImmutable;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Symfony\Component\Uid\Uuid;
 
 use function in_array;
 
@@ -18,218 +19,99 @@ use function in_array;
 class AuditEntry
 {
     public function __construct(
-        private readonly AuditLogInterface $log,
+        private readonly AuditLog $log,
     ) {
     }
 
-    public ?int $id {
-        get {
-            return $this->log->getId();
-        }
-    }
+    public ?Uuid $id { get => $this->log->id; }
 
-    public function getId(): ?int
-    {
-        return $this->id;
-    }
-
-    public string $entityClass {
-        get {
-            return $this->log->getEntityClass();
-        }
-    }
-
-    public function getEntityClass(): string
-    {
-        return $this->entityClass;
-    }
+    public string $entityClass { get => $this->log->entityClass; }
 
     /**
      * Get the short entity class name (without namespace).
      */
     public string $entityShortName {
         get {
-            $parts = explode('\\', $this->log->getEntityClass());
+            $parts = explode('\\', $this->log->entityClass);
             $shortName = end($parts);
 
-            return ($shortName !== '') ? $shortName : $this->log->getEntityClass();
+            return ($shortName !== '') ? $shortName : $this->log->entityClass;
         }
     }
 
-    public function getEntityShortName(): string
-    {
-        return $this->entityShortName;
-    }
+    public string $entityId { get => $this->log->entityId; }
 
-    public string $entityId {
-        get {
-            return $this->log->getEntityId();
-        }
-    }
+    public string $action { get => $this->log->action; }
 
-    public function getEntityId(): string
-    {
-        return $this->entityId;
-    }
+    public ?string $userId { get => $this->log->userId; }
 
-    public string $action {
-        get {
-            return $this->log->getAction();
-        }
-    }
+    public ?string $username { get => $this->log->username; }
 
-    public function getAction(): string
-    {
-        return $this->action;
-    }
+    public ?string $ipAddress { get => $this->log->ipAddress; }
 
-    public ?string $userId {
-        get {
-            return $this->log->getUserId();
-        }
-    }
+    public ?string $transactionHash { get => $this->log->transactionHash; }
 
-    public function getUserId(): ?string
-    {
-        return $this->userId;
-    }
+    public ?string $userAgent { get => $this->log->userAgent; }
 
-    public ?string $username {
-        get {
-            return $this->log->getUsername();
-        }
-    }
+    public ?string $signature { get => $this->log->signature; }
 
-    public function getUsername(): ?string
-    {
-        return $this->username;
-    }
-
-    public ?string $ipAddress {
-        get {
-            return $this->log->getIpAddress();
-        }
-    }
-
-    public function getIpAddress(): ?string
-    {
-        return $this->ipAddress;
-    }
-
-    public ?string $transactionHash {
-        get {
-            return $this->log->getTransactionHash();
-        }
-    }
-
-    public function getTransactionHash(): ?string
-    {
-        return $this->transactionHash;
-    }
-
-    public DateTimeImmutable $createdAt {
-        get {
-            return $this->log->getCreatedAt();
-        }
-    }
-
-    public function getCreatedAt(): DateTimeImmutable
-    {
-        return $this->createdAt;
-    }
+    public DateTimeImmutable $createdAt { get => $this->log->createdAt; }
 
     /**
-     * @var array<string, mixed>
+     * The underlying AuditLog entity.
      */
-    public array $context {
-        get {
-            return $this->log->getContext();
-        }
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function getContext(): array
-    {
-        return $this->context;
-    }
-
-    /**
-     * Get the underlying AuditLog entity.
-     */
-    public function getAuditLog(): AuditLogInterface
-    {
-        return $this->log;
-    }
+    public AuditLog $auditLog { get => $this->log; }
 
     // ========== Action Helpers ==========
 
-    public function isCreate(): bool
-    {
-        return AuditLogInterface::ACTION_CREATE === $this->log->getAction();
-    }
+    public bool $isCreate { get => $this->log->action === 'create'; }
 
-    public function isUpdate(): bool
-    {
-        return AuditLogInterface::ACTION_UPDATE === $this->log->getAction();
-    }
+    public bool $isUpdate { get => $this->log->action === 'update'; }
 
-    public function isDelete(): bool
-    {
-        return AuditLogInterface::ACTION_DELETE === $this->log->getAction();
-    }
+    public bool $isDelete { get => $this->log->action === 'delete'; }
 
-    public function isSoftDelete(): bool
-    {
-        return AuditLogInterface::ACTION_SOFT_DELETE === $this->log->getAction();
-    }
+    public bool $isSoftDelete { get => $this->log->action === 'soft_delete'; }
 
-    public function isRestore(): bool
-    {
-        return AuditLogInterface::ACTION_RESTORE === $this->log->getAction();
-    }
+    public bool $isRestore { get => $this->log->action === 'restore'; }
 
     // ========== Diff Helpers ==========
 
     /**
-     * Get all changed fields with their old and new values.
+     * All changed fields with their old and new values.
      *
-     * @return array<string, array{old: mixed, new: mixed}>
+     * @var array<string, array{old: mixed, new: mixed}>
      */
-    public function getDiff(): array
-    {
-        $oldValues = $this->log->getOldValues() ?? [];
-        $newValues = $this->log->getNewValues() ?? [];
-        $changedFields = $this->log->getChangedFields() ?? array_keys($newValues);
+    public array $diff {
+        get {
+            $oldValues = $this->log->oldValues ?? [];
+            $newValues = $this->log->newValues ?? [];
+            $changedFields = $this->log->changedFields ?? array_keys($newValues);
 
-        $diff = [];
-        foreach ($changedFields as $field) {
-            $diff[$field] = [
-                'old' => $oldValues[$field] ?? null,
-                'new' => $newValues[$field] ?? null,
-            ];
+            $diff = [];
+            foreach ($changedFields as $field) {
+                $diff[$field] = [
+                    'old' => $oldValues[$field] ?? null,
+                    'new' => $newValues[$field] ?? null,
+                ];
+            }
+
+            return $diff;
         }
-
-        return $diff;
     }
 
     /**
-     * Get list of fields that changed.
+     * List of fields that changed.
      *
-     * @return array<int, string>
+     * @var array<int, string>
      */
-    public function getChangedFields(): array
-    {
-        return $this->log->getChangedFields() ?? [];
-    }
+    public array $changedFields { get => $this->log->changedFields ?? []; }
 
     /**
      * Check if a specific field was changed.
      */
     public function hasFieldChanged(string $field): bool
     {
-        $changedFields = $this->log->getChangedFields() ?? [];
+        $changedFields = $this->log->changedFields ?? [];
 
         return in_array($field, $changedFields, true);
     }
@@ -239,7 +121,7 @@ class AuditEntry
      */
     public function getOldValue(string $field): mixed
     {
-        $oldValues = $this->log->getOldValues();
+        $oldValues = $this->log->oldValues;
 
         return $oldValues[$field] ?? null;
     }
@@ -249,28 +131,22 @@ class AuditEntry
      */
     public function getNewValue(string $field): mixed
     {
-        $newValues = $this->log->getNewValues();
+        $newValues = $this->log->newValues;
 
         return $newValues[$field] ?? null;
     }
 
     /**
-     * Get all old values.
+     * All old values.
      *
-     * @return array<string, mixed>|null
+     * @var array<string, mixed>|null
      */
-    public function getOldValues(): ?array
-    {
-        return $this->log->getOldValues();
-    }
+    public ?array $oldValues { get => $this->log->oldValues; }
 
     /**
-     * Get all new values.
+     * All new values.
      *
-     * @return array<string, mixed>|null
+     * @var array<string, mixed>|null
      */
-    public function getNewValues(): ?array
-    {
-        return $this->log->getNewValues();
-    }
+    public ?array $newValues { get => $this->log->newValues; }
 }

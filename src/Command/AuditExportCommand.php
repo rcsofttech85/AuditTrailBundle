@@ -6,9 +6,9 @@ namespace Rcsofttech\AuditTrailBundle\Command;
 
 use DateTimeImmutable;
 use Exception;
+use Rcsofttech\AuditTrailBundle\Contract\AuditExporterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
-use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
-use Rcsofttech\AuditTrailBundle\Service\AuditExporter;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -40,8 +40,8 @@ final class AuditExportCommand extends Command
     private const int MAX_LIMIT = 100000;
 
     public function __construct(
-        private readonly AuditLogRepository $repository,
-        private readonly AuditExporter $exporter,
+        private readonly AuditLogRepositoryInterface $repository,
+        private readonly AuditExporterInterface $exporter,
     ) {
         parent::__construct();
     }
@@ -72,7 +72,7 @@ final class AuditExportCommand extends Command
                 'action',
                 null,
                 InputOption::VALUE_OPTIONAL,
-                sprintf('Filter by action (%s)', implode(', ', $this->getAvailableActions()))
+                sprintf('Filter by action (%s)', implode(', ', AuditLogInterface::ALL_ACTIONS))
             )
             ->addOption(
                 'from',
@@ -243,7 +243,7 @@ final class AuditExportCommand extends Command
 
     private function validateAction(string $action, SymfonyStyle $io): bool
     {
-        $available = $this->getAvailableActions();
+        $available = AuditLogInterface::ALL_ACTIONS;
         if (!in_array($action, $available, true)) {
             $io->error(sprintf('Invalid action "%s". Available: %s', $action, implode(', ', $available)));
 
@@ -285,19 +285,5 @@ final class AuditExportCommand extends Command
             $outputFile,
             $this->exporter->formatFileSize(strlen($data))
         ));
-    }
-
-    /**
-     * @return array<string>
-     */
-    private function getAvailableActions(): array
-    {
-        return [
-            AuditLogInterface::ACTION_CREATE,
-            AuditLogInterface::ACTION_UPDATE,
-            AuditLogInterface::ACTION_DELETE,
-            AuditLogInterface::ACTION_SOFT_DELETE,
-            AuditLogInterface::ACTION_RESTORE,
-        ];
     }
 }

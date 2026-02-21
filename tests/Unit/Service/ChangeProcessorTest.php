@@ -12,7 +12,7 @@ use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
-use Rcsofttech\AuditTrailBundle\Service\AuditService;
+use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use ReflectionProperty;
@@ -21,15 +21,15 @@ use stdClass;
 #[AllowMockObjectsWithoutExpectations]
 class ChangeProcessorTest extends TestCase
 {
-    private AuditService&MockObject $auditService;
+    private AuditMetadataManagerInterface&MockObject $metadataManager;
 
     private ChangeProcessor $processor;
 
     protected function setUp(): void
     {
-        $this->auditService = $this->createMock(AuditService::class);
+        $this->metadataManager = $this->createMock(AuditMetadataManagerInterface::class);
         $this->processor = new ChangeProcessor(
-            $this->auditService,
+            $this->metadataManager,
             new ValueSerializer(),
             true,
             'deletedAt'
@@ -47,8 +47,8 @@ class ChangeProcessorTest extends TestCase
             'password' => ['old_pass', 'new_pass'],
         ];
 
-        $this->auditService->method('getSensitiveFields')->with($entity)->willReturn(['password' => '***']);
-        $this->auditService->method('getIgnoredProperties')->with($entity)->willReturn([]);
+        $this->metadataManager->method('getSensitiveFields')->with($entity::class)->willReturn(['password' => '***']);
+        $this->metadataManager->method('getIgnoredProperties')->with($entity)->willReturn([]);
 
         $changes = $this->processor->extractChanges($entity, $changeSet);
 
@@ -74,8 +74,8 @@ class ChangeProcessorTest extends TestCase
             'null_same' => [null, null],
         ];
 
-        $this->auditService->method('getSensitiveFields')->willReturn([]);
-        $this->auditService->method('getIgnoredProperties')->willReturn([]);
+        $this->metadataManager->method('getSensitiveFields')->willReturn([]);
+        $this->metadataManager->method('getIgnoredProperties')->willReturn([]);
 
         $changes = $this->processor->extractChanges($entity, $changeSet);
 
@@ -111,7 +111,7 @@ class ChangeProcessorTest extends TestCase
     public function testDetermineUpdateActionSoftDeleteDisabled(): void
     {
         $processor = new ChangeProcessor(
-            $this->auditService,
+            $this->metadataManager,
             new ValueSerializer(),
             false,
             'deletedAt'

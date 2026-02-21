@@ -43,9 +43,9 @@ class AuditAccessTest extends AbstractFunctionalTestCase
         $logs = $em->getRepository(AuditLog::class)->findBy(['action' => AuditLogInterface::ACTION_ACCESS]);
 
         self::assertCount(1, $logs, 'Should have created exactly one access log');
-        self::assertSame(AuditLogInterface::ACTION_ACCESS, $logs[0]->getAction());
-        self::assertSame(Post::class, $logs[0]->getEntityClass());
-        self::assertSame((string) $postId, $logs[0]->getEntityId());
-        self::assertSame('Opening secret file', $logs[0]->getContext()['message'] ?? null);
+        self::assertSame(AuditLogInterface::ACTION_ACCESS, $logs[0]->action);
+        self::assertSame(Post::class, $logs[0]->entityClass);
+        self::assertSame((string) $postId, $logs[0]->entityId);
+        self::assertSame('Opening secret file', $logs[0]->context['message'] ?? null);
     }
 }

@@ -8,12 +8,16 @@ use Doctrine\ORM\EntityManagerInterface;
 use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Attribute\AuditAccess;
+use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Contracts\Service\ResetInterface;
 use Throwable;
 
+use function in_array;
 use function preg_replace;
 use function sprintf;
 use function str_replace;
@@ -28,13 +32,18 @@ class AuditAccessHandler implements ResetInterface
     /** @var array<string, bool> */
     private array $skipAccessCheck = [];
 
+    /**
+     * @param array<string> $auditedMethods
+     */
     public function __construct(
-        private readonly AuditService $auditService,
-        private readonly AuditDispatcher $dispatcher,
+        private readonly AuditServiceInterface $auditService,
+        private readonly AuditDispatcherInterface $dispatcher,
         private readonly UserResolverInterface $userResolver,
         private readonly RequestStack $requestStack,
+        private readonly EntityIdResolverInterface $idResolver,
         private readonly ?CacheItemPoolInterface $cache = null,
         private readonly ?LoggerInterface $logger = null,
+        private readonly array $auditedMethods = ['GET'],
     ) {
     }
 
@@ -43,7 +52,7 @@ class AuditAccessHandler implements ResetInterface
      */
     public function handleAccess(object $entity, $om): void
     {
-        if ($this->isGetRequest() === false) {
+        if ($this->isAuditedRequest() === false) {
             return;
         }
 
@@ -84,7 +93,7 @@ class AuditAccessHandler implements ResetInterface
 
     public function markAsAudited(string $requestKey): void
     {
-        if ($this->isGetRequest() === false) {
+        if ($this->isAuditedRequest() === false) {
             return;
         }
 
@@ -100,9 +109,9 @@ class AuditAccessHandler implements ResetInterface
 
     private function resolveEntityId(object $entity, EntityManagerInterface $om): ?string
     {
-        $id = EntityIdResolver::resolveFromEntity($entity, $om);
+        $id = $this->idResolver->resolveFromEntity($entity, $om);
 
-        return $id === EntityIdResolver::PENDING_ID ? null : $id;
+        return $id === AuditLogInterface::PENDING_ID ? null : $id;
     }
 
     private function dispatchAccessAudit(object $entity, EntityManagerInterface $om, AuditAccess $accessAttr): void
@@ -130,9 +139,11 @@ class AuditAccessHandler implements ResetInterface
         }
     }
 
-    private function isGetRequest(): bool
+    private function isAuditedRequest(): bool
     {
-        return $this->isGetRequest ??= $this->requestStack->getCurrentRequest()?->getMethod() === 'GET';
+        $method = $this->requestStack->getCurrentRequest()?->getMethod();
+
+        return $this->isGetRequest ??= ($method !== null && in_array($method, $this->auditedMethods, true));
     }
 
     private function shouldSkipAccessLog(string $requestKey, string $class, string $id, int $cooldown): bool

@@ -33,5 +33,10 @@ interface AuditLogRepositoryInterface
      */
     public function findWithFilters(array $filters = [], int $limit = 30): array;
 
+    /**
+     * @return array<AuditLog>
+     */
+    public function findOlderThan(DateTimeImmutable $before): array;
+
     public function countOlderThan(DateTimeImmutable $before): int;
 }

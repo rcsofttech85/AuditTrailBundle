@@ -12,7 +12,9 @@ use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditExportCommand;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+use ReflectionClass;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Uid\Uuid;
 
 #[CoversClass(AuditExportCommand::class)]
 #[AllowMockObjectsWithoutExpectations]
@@ -45,7 +47,7 @@ class AuditExportCommandTest extends TestCase
 
     public function testExportToJson(): void
     {
-        $audit = $this->createAuditLog(1, 'App\\Entity\\User', '42', 'create');
+        $audit = $this->createAuditLog('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'App\\Entity\\User', '42', 'create');
 
         $this->repository
             ->expects($this->once())
@@ -65,7 +67,7 @@ class AuditExportCommandTest extends TestCase
 
     public function testExportToFile(): void
     {
-        $audit = $this->createAuditLog(1, 'App\\Entity\\User', '42', 'create');
+        $audit = $this->createAuditLog('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'App\\Entity\\User', '42', 'create');
         $tempFile = sys_get_temp_dir().'/audit_export_test.json';
         if (file_exists($tempFile)) {
             unlink($tempFile);
@@ -91,7 +93,7 @@ class AuditExportCommandTest extends TestCase
 
     public function testExportToCsv(): void
     {
-        $audit = $this->createAuditLog(1, 'App\\Entity\\User', '42', 'update');
+        $audit = $this->createAuditLog('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'App\\Entity\\User', '42', 'update');
 
         $this->repository
             ->expects($this->once())
@@ -204,17 +206,15 @@ class AuditExportCommandTest extends TestCase
         return (string) preg_replace('/\s+/', ' ', trim($output));
     }
 
-    private function createAuditLog(int $id, string $entityClass, string $entityId, string $action): AuditLog
+    private function createAuditLog(string $id, string $entityClass, string $entityId, string $action): AuditLog
     {
-        $audit = self::createStub(AuditLog::class);
+        $log = new AuditLog($entityClass, $entityId, $action, new DateTimeImmutable('2024-01-01 12:00:00'));
+        $reflection = new ReflectionClass($log);
+        $property = $reflection->getProperty('id');
+        $property->setAccessible(true);
+        $property->setValue($log, Uuid::fromString($id));
 
-        $audit->method('getId')->willReturn($id);
-        $audit->method('getEntityClass')->willReturn($entityClass);
-        $audit->method('getEntityId')->willReturn($entityId);
-        $audit->method('getAction')->willReturn($action);
-        $audit->method('getCreatedAt')->willReturn(new DateTimeImmutable('2024-01-01 12:00:00'));
-
-        return $audit;
+        return $log;
     }
 
     public function testExportNoResultsEarlyReturn(): void

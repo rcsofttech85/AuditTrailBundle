@@ -7,36 +7,36 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\EventSubscriber;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
-use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
 use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
 use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
-use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
-use Rcsofttech\AuditTrailBundle\Service\AuditService;
-use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
-use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
-use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class AuditSubscriberTest extends TestCase
 {
-    private AuditService&MockObject $auditService;
+    private AuditServiceInterface&MockObject $auditService;
 
-    private ChangeProcessor&MockObject $changeProcessor;
+    private ChangeProcessorInterface&MockObject $changeProcessor;
 
-    private AuditDispatcher&MockObject $dispatcher;
+    private AuditDispatcherInterface&MockObject $dispatcher;
 
-    private ScheduledAuditManager&MockObject $auditManager;
+    private MockScheduledAuditManager $auditManager;
 
-    private EntityProcessor&MockObject $entityProcessor;
+    private EntityProcessorInterface&MockObject $entityProcessor;
 
     private TransactionIdGenerator&MockObject $transactionIdGenerator;
 
@@ -44,18 +44,21 @@ class AuditSubscriberTest extends TestCase
 
     private AuditAccessHandler&MockObject $accessHandler;
 
+    private EntityIdResolverInterface&MockObject $idResolver;
+
     private AuditSubscriber $subscriber;
 
     protected function setUp(): void
     {
-        $this->auditService = $this->createMock(AuditService::class);
-        $this->changeProcessor = $this->createMock(ChangeProcessor::class);
-        $this->dispatcher = $this->createMock(AuditDispatcher::class);
-        $this->auditManager = $this->createMock(ScheduledAuditManager::class);
-        $this->entityProcessor = $this->createMock(EntityProcessor::class);
+        $this->auditService = $this->createMock(AuditServiceInterface::class);
+        $this->changeProcessor = $this->createMock(ChangeProcessorInterface::class);
+        $this->dispatcher = $this->createMock(AuditDispatcherInterface::class);
+        $this->auditManager = new MockScheduledAuditManager();
+        $this->entityProcessor = $this->createMock(EntityProcessorInterface::class);
         $this->transactionIdGenerator = $this->createMock(TransactionIdGenerator::class);
         $this->logger = $this->createMock(LoggerInterface::class);
         $this->accessHandler = $this->createMock(AuditAccessHandler::class);
+        $this->idResolver = $this->createMock(EntityIdResolverInterface::class);
 
         $this->subscriber = new AuditSubscriber(
             $this->auditService,
@@ -65,6 +68,7 @@ class AuditSubscriberTest extends TestCase
             $this->entityProcessor,
             $this->transactionIdGenerator,
             $this->accessHandler,
+            $this->idResolver,
             $this->logger
         );
     }
@@ -84,6 +88,7 @@ class AuditSubscriberTest extends TestCase
             $this->entityProcessor,
             $this->transactionIdGenerator,
             $this->accessHandler,
+            $this->idResolver,
             null,
             true,
             false // Disabled
@@ -109,7 +114,7 @@ class AuditSubscriberTest extends TestCase
         $this->subscriber->onFlush($args);
     }
 
-    public function testOnFlushBatchFlush(): void
+    public function testOnFlushNoBatchFlush(): void
     {
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
@@ -118,18 +123,19 @@ class AuditSubscriberTest extends TestCase
         $args->method('getObjectManager')->willReturn($em);
         $em->method('getUnitOfWork')->willReturn($uow);
 
-        // Simulate batch threshold reached
-        $this->auditManager->method('countScheduled')->willReturn(501);
-        $this->auditManager->method('getScheduledAudits')->willReturn([
-            [
-                'audit' => new AuditLog(),
-                'entity' => new stdClass(),
-                'is_insert' => false,
-            ],
-        ]);
+        // Simulate batch threshold reached - manually access property since implementation details allow it
+        // But wait, the subscriber doesn't check count anymore in onFlush?
+        // Let's check AuditSubscriber::onFlush again.
+        // It calls handleBatchFlushIfNeeded.
+        // handleBatchFlushIfNeeded was empty in the view!
+        // "Removed nested flush in onFlush..."
+        // So testOnFlushNoBatchFlush might be obsolete or testing nothing.
+        // Let's check the code I viewed earlier.
+        // handleBatchFlushIfNeeded was empty.
+        // So this test is testing... empty method.
+        // I'll keep it but remove the "countScheduled" expectation.
 
-        $this->dispatcher->expects($this->once())->method('dispatch');
-        $this->auditManager->expects($this->once())->method('clear');
+        $this->dispatcher->expects($this->never())->method('dispatch');
 
         $this->subscriber->onFlush($args);
     }
@@ -141,11 +147,14 @@ class AuditSubscriberTest extends TestCase
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
-        $audit = new AuditLog();
+        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_DELETE);
 
-        $this->auditManager->method('getPendingDeletions')->willReturn([
-            ['entity' => $entity, 'data' => ['id' => 1]],
-        ]);
+        // property access on mock
+        $this->auditManager->scheduledAudits = [];
+        $this->auditManager->pendingDeletions = [
+            ['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true],
+        ];
+
         $this->changeProcessor->method('determineDeletionAction')->willReturn('delete');
         $this->auditService->method('createAuditLog')->willReturn($audit);
 
@@ -165,15 +174,14 @@ class AuditSubscriberTest extends TestCase
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
-        $audit = new AuditLog();
+        $audit = new AuditLog(stdClass::class, 'pending', AuditLogInterface::ACTION_CREATE);
 
-        $this->auditManager->method('getScheduledAudits')->willReturn([
+        $this->auditManager->pendingDeletions = [];
+        $this->auditManager->scheduledAudits = [
             ['entity' => $entity, 'audit' => $audit, 'is_insert' => true],
-        ]);
+        ];
 
-        $metadata = $this->createMock(ClassMetadata::class);
-        $em->method('getClassMetadata')->with(stdClass::class)->willReturn($metadata);
-        $metadata->method('getIdentifierValues')->with($entity)->willReturn(['id' => 123]);
+        $this->idResolver->method('resolveFromEntity')->willReturn('123');
 
         $this->dispatcher->expects($this->once())->method('dispatch');
         $em->method('contains')->with($audit)->willReturn(true);
@@ -181,7 +189,7 @@ class AuditSubscriberTest extends TestCase
 
         $this->subscriber->postFlush($args);
 
-        self::assertEquals('123', $audit->getEntityId());
+        self::assertEquals('123', $audit->entityId);
     }
 
     public function testPostFlushFlushException(): void
@@ -190,14 +198,17 @@ class AuditSubscriberTest extends TestCase
         $args = $this->createMock(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
-        $audit = new AuditLog();
-        $this->auditManager->method('getScheduledAudits')->willReturn([
+        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+
+        $this->auditManager->pendingDeletions = [];
+        $this->auditManager->scheduledAudits = [
             [
                 'entity' => new stdClass(),
                 'audit' => $audit,
                 'is_insert' => false,
             ],
-        ]);
+        ];
+
         $this->dispatcher->method('dispatch');
         $em->method('contains')->with($audit)->willReturn(true);
 
@@ -210,7 +221,11 @@ class AuditSubscriberTest extends TestCase
 
     public function testOnClear(): void
     {
-        $this->auditManager->expects($this->once())->method('clear');
+        // Populate manager
+        $this->auditManager->scheduledAudits = [
+            ['entity' => new stdClass(), 'audit' => new AuditLog(stdClass::class, '1', 'create'), 'is_insert' => true],
+        ];
         $this->subscriber->onClear();
+        self::assertEmpty($this->auditManager->scheduledAudits);
     }
 }

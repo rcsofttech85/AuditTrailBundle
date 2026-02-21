@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use Override;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Traversable;
 
 use function is_string;
@@ -25,7 +25,7 @@ final class ChainAuditTransport implements AuditTransportInterface
      * @param array<string, mixed> $context
      */
     #[Override]
-    public function send(AuditLogInterface $log, array $context = []): void
+    public function send(AuditLog $log, array $context = []): void
     {
         $phase = $context['phase'] ?? null;
         if (!is_string($phase)) {
@@ -33,7 +33,6 @@ final class ChainAuditTransport implements AuditTransportInterface
         }
 
         foreach ($this->transports as $transport) {
-            // If phase is specified, only send to transports that support it
             if ($phase !== null && !$transport->supports($phase, $context)) {
                 continue;
             }
@@ -45,7 +44,6 @@ final class ChainAuditTransport implements AuditTransportInterface
     #[Override]
     public function supports(string $phase, array $context = []): bool
     {
-        // Optimistic support: return true if ANY transport supports the phase
         return array_any(
             $this->transports instanceof Traversable ? iterator_to_array($this->transports) : $this->transports,
             static fn (AuditTransportInterface $transport) => $transport->supports($phase, $context)
