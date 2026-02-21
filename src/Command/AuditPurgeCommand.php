@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Command;
 
 use DateTimeImmutable;
 use Exception;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -25,6 +26,7 @@ final class AuditPurgeCommand extends Command
 {
     public function __construct(
         private readonly AuditLogRepository $repository,
+        private readonly AuditIntegrityServiceInterface $integrityService,
     ) {
         parent::__construct();
     }
@@ -49,6 +51,12 @@ final class AuditPurgeCommand extends Command
                 null,
                 InputOption::VALUE_NONE,
                 'Skip confirmation prompt'
+            )
+            ->addOption(
+                'skip-integrity',
+                null,
+                InputOption::VALUE_NONE,
+                'Skip integrity verification before purging (not recommended)'
             )
             ->setHelp(
                 <<<'HELP'
@@ -96,6 +104,19 @@ final class AuditPurgeCommand extends Command
             $io->info('Operation cancelled.');
 
             return Command::SUCCESS;
+        }
+
+        // Integrity check before deletion
+        if (!((bool) $input->getOption('skip-integrity')) && $this->integrityService->isEnabled()) {
+            $tamperedCount = $this->verifyIntegrityBeforePurge($io, $before);
+            if ($tamperedCount > 0) {
+                $io->error(sprintf(
+                    'Aborting purge: %d tampered log(s) detected. Run "audit:verify-integrity" for details, or use --skip-integrity to force.',
+                    $tamperedCount,
+                ));
+
+                return Command::FAILURE;
+            }
         }
 
         // Perform deletion
@@ -161,5 +182,25 @@ final class AuditPurgeCommand extends Command
             sprintf('Are you sure you want to delete %s audit logs?', number_format($count)),
             false
         );
+    }
+
+    private function verifyIntegrityBeforePurge(SymfonyStyle $io, DateTimeImmutable $before): int
+    {
+        $io->section('Verifying integrity of logs before purge...');
+        $logs = $this->repository->findOlderThan($before);
+
+        $tamperedCount = 0;
+        foreach ($logs as $log) {
+            if (!$this->integrityService->verifySignature($log)) {
+                ++$tamperedCount;
+                $io->warning(sprintf('Tampered log: %s', (string) $log->id));
+            }
+        }
+
+        if ($tamperedCount === 0) {
+            $io->info('All logs passed integrity verification.');
+        }
+
+        return $tamperedCount;
     }
 }

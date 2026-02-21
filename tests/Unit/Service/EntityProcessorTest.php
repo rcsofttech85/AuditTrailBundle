@@ -9,57 +9,85 @@ use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
-use Rcsofttech\AuditTrailBundle\Service\AuditService;
-use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
-use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubCollection;
 use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class EntityProcessorTest extends TestCase
 {
-    private AuditService&MockObject $auditService;
+    private AuditServiceInterface&MockObject $auditService;
 
-    private ChangeProcessor&MockObject $changeProcessor;
+    private ChangeProcessorInterface&MockObject $changeProcessor;
 
-    private AuditDispatcher&MockObject $dispatcher;
+    private AuditDispatcherInterface&MockObject $dispatcher;
 
-    private ScheduledAuditManager&MockObject $auditManager;
+    private ScheduledAuditManagerInterface&MockObject $auditManager;
+
+    private EntityIdResolverInterface&MockObject $idResolver;
 
     private EntityProcessor $processor;
 
     protected function setUp(): void
     {
-        $this->auditService = $this->createMock(AuditService::class);
-        $this->changeProcessor = $this->createMock(ChangeProcessor::class);
-        $this->dispatcher = $this->createMock(AuditDispatcher::class);
-        $this->auditManager = $this->createMock(ScheduledAuditManager::class);
+        $this->auditService = $this->createMock(AuditServiceInterface::class);
+        $this->changeProcessor = $this->createMock(ChangeProcessorInterface::class);
+        $this->dispatcher = $this->createMock(AuditDispatcherInterface::class);
+        $this->auditManager = $this->createMock(ScheduledAuditManagerInterface::class);
+        $this->idResolver = $this->createMock(EntityIdResolverInterface::class);
 
         $this->processor = new EntityProcessor(
             $this->auditService,
             $this->changeProcessor,
             $this->dispatcher,
             $this->auditManager,
+            $this->idResolver,
             true // deferTransportUntilCommit
         );
     }
 
-    public function testProcessInsertions(): void
+    public function testProcessInsertionsWithResolvedId(): void
     {
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
         $entity = new stdClass();
-        $audit = new AuditLog();
+        // Entity ID is already resolved (UUID case) — should dispatch immediately
+        $audit = new AuditLog(stdClass::class, '550e8400-e29b-41d4-a716-446655440000', AuditLogInterface::ACTION_CREATE);
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->method('shouldAudit')->with($entity)->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
         $this->auditService->method('createAuditLog')->willReturn($audit);
 
+        // UUID path: dispatch during onFlush (single flush), NOT scheduled
+        $this->dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
+        $this->auditManager->expects($this->never())->method('schedule');
+
+        $this->processor->processInsertions($em, $uow);
+    }
+
+    public function testProcessInsertionsDeferredForPendingId(): void
+    {
+        $em = $this->createMock(EntityManagerInterface::class);
+        $uow = $this->createMock(UnitOfWork::class);
+        $entity = new stdClass();
+        // Entity ID is PENDING (auto-increment) — must defer to postFlush
+        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditLogInterface::ACTION_CREATE);
+
+        $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
+        $this->auditService->method('shouldAudit')->with($entity)->willReturn(true);
+        $this->auditService->method('getEntityData')->willReturn([]);
+        $this->auditService->method('createAuditLog')->willReturn($audit);
+
+        // Auto-increment path: scheduled for postFlush, NOT dispatched
+        $this->dispatcher->expects($this->never())->method('dispatch');
         $this->auditManager->expects($this->once())->method('schedule')->with($entity, $audit, true);
 
         $this->processor->processInsertions($em, $uow);
@@ -84,7 +112,7 @@ class EntityProcessorTest extends TestCase
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
         $entity = new stdClass();
-        $audit = new AuditLog();
+        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
 
         $uow->method('getScheduledEntityUpdates')->willReturn([$entity]);
         $uow->method('getEntityChangeSet')->willReturn(['field' => ['old', 'new']]);
@@ -150,7 +178,7 @@ class EntityProcessorTest extends TestCase
                 return 2;
             }
         };
-        $audit = new AuditLog();
+        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
 
         $collection = new StubCollection(
             $owner,
@@ -165,7 +193,6 @@ class EntityProcessorTest extends TestCase
 
         $this->auditManager->expects($this->once())->method('schedule')->with($owner, $audit, false);
 
-        // @phpstan-ignore-next-line
         $this->processor->processCollectionUpdates($em, $uow, [$collection]);
     }
 
@@ -176,20 +203,20 @@ class EntityProcessorTest extends TestCase
             $this->changeProcessor,
             $this->dispatcher,
             $this->auditManager,
+            $this->idResolver,
             false // deferTransportUntilCommit = false
         );
 
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
         $entity = new stdClass();
-        $audit = new AuditLog();
+        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->method('shouldAudit')->with($entity)->willReturn(true);
         $this->auditService->method('createAuditLog')->willReturn($audit);
 
-        $this->dispatcher->method('supports')->willReturn(true);
-        $this->dispatcher->expects($this->once())->method('dispatch');
+        $this->dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
         $this->auditManager->expects($this->never())->method('schedule');
 
         $processor->processInsertions($em, $uow);

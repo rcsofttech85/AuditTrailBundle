@@ -9,13 +9,21 @@ services:
       $enabled: '%audit_trail.enabled%'
       $deferTransportUntilCommit: '%audit_trail.defer_transport_until_commit%'
       $failOnTransportError: '%audit_trail.fail_on_transport_error%'
-      $fallbackToDatabase: '%audit_trail.fallback_to_database%'
       $tablePrefix: '%audit_trail.table_prefix%'
       $tableSuffix: '%audit_trail.table_suffix%'
       $timezone: '%audit_trail.timezone%'
       $ignoredEntities: '%audit_trail.ignored_entities%'
       $ignoredProperties: '%audit_trail.ignored_properties%'
       $cache: '@?rcsofttech_audit_trail.cache'
+      $auditedMethods: '%audit_trail.audited_methods%'
+      $fallbackToDatabase: '%audit_trail.fallback_to_database%'
+
+  _instanceof:
+    Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface:
+      tags: ['audit_trail.voter']
+    Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface:
+      tags: ['audit_trail.context_contributor']
+
 
   Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService:
     bind:
@@ -26,9 +34,57 @@ services:
   Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService
 
+  Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\AuditMetadataManager
+
+  Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\ContextResolver
+
+  Rcsofttech\AuditTrailBundle\Contract\DataMaskerInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\DataMasker
+
+  Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\EntityIdResolver
+
+  Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\AuditDispatcher
+
+  Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface:
+    alias: Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository
+
+  Rcsofttech\AuditTrailBundle\Contract\AuditReaderInterface:
+    alias: Rcsofttech\AuditTrailBundle\Query\AuditReader
+
+  Rcsofttech\AuditTrailBundle\Contract\AuditRendererInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\AuditRenderer
+
+  Rcsofttech\AuditTrailBundle\Contract\AuditExporterInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\AuditExporter
+
+  Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\AuditService
+
+  Rcsofttech\AuditTrailBundle\Contract\DiffGeneratorInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\DiffGenerator
+
+  Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\UserResolver
+
+  Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\ValueSerializer
+
+  Rcsofttech\AuditTrailBundle\Query\AuditReader:
+    lazy: true
+
+  Rcsofttech\AuditTrailBundle\Service\AuditRenderer:
+    lazy: true
+
+  Rcsofttech\AuditTrailBundle\Service\AuditExporter:
+    lazy: true
+
   Rcsofttech\AuditTrailBundle\:
     resource: '../../*'
     exclude:
       - '../../DependencyInjection/'
       - '../../Service/AuditIntegrityService.php'
-
+      - '../../Transport/'

@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Query;
 
-use Doctrine\ORM\EntityManagerInterface;
 use Override;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReaderInterface;
-use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
-use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Throwable;
 
 /**
  * Main service for programmatic audit log retrieval.
@@ -21,11 +22,11 @@ use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
  *            ->updates()
  *            ->getResults();
  */
-readonly class AuditReader implements AuditReaderInterface
+final readonly class AuditReader implements AuditReaderInterface
 {
     public function __construct(
-        private AuditLogRepository $repository,
-        private EntityManagerInterface $entityManager,
+        private AuditLogRepositoryInterface $repository,
+        private EntityIdResolverInterface $idResolver,
     ) {
     }
 
@@ -92,7 +93,7 @@ readonly class AuditReader implements AuditReaderInterface
         $grouped = [];
 
         foreach ($history as $entry) {
-            $txHash = $entry->getTransactionHash() ?? 'unknown';
+            $txHash = $entry->transactionHash ?? 'unknown';
             $grouped[$txHash] ??= [];
             $grouped[$txHash][] = $entry;
         }
@@ -133,8 +134,12 @@ readonly class AuditReader implements AuditReaderInterface
      */
     private function extractEntityId(object $entity): ?string
     {
-        $id = EntityIdResolver::resolveFromEntity($entity, $this->entityManager);
+        try {
+            $id = $this->idResolver->resolveFromEntity($entity);
 
-        return $id === EntityIdResolver::PENDING_ID ? null : $id;
+            return $id === AuditLogInterface::PENDING_ID ? null : $id;
+        } catch (Throwable) {
+            return null;
+        }
     }
 }

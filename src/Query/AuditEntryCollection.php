@@ -85,7 +85,7 @@ readonly class AuditEntryCollection implements IteratorAggregate, Countable
     {
         $grouped = [];
         foreach ($this->entries as $entry) {
-            $action = $entry->getAction();
+            $action = $entry->action;
             if (!isset($grouped[$action])) {
                 $grouped[$action] = [];
             }
@@ -104,7 +104,7 @@ readonly class AuditEntryCollection implements IteratorAggregate, Countable
     {
         $grouped = [];
         foreach ($this->entries as $entry) {
-            $entityClass = $entry->getEntityClass();
+            $entityClass = $entry->entityClass;
             if (!isset($grouped[$entityClass])) {
                 $grouped[$entityClass] = [];
             }
@@ -123,7 +123,7 @@ readonly class AuditEntryCollection implements IteratorAggregate, Countable
     {
         $grouped = [];
         foreach ($this->entries as $entry) {
-            $key = $entry->getEntityClass().':'.$entry->getEntityId();
+            $key = $entry->entityClass.':'.$entry->entityId;
             if (!isset($grouped[$key])) {
                 $grouped[$key] = [];
             }
@@ -138,7 +138,7 @@ readonly class AuditEntryCollection implements IteratorAggregate, Countable
      */
     public function getCreates(): self
     {
-        return $this->filter(static fn (AuditEntry $e) => $e->isCreate());
+        return $this->filter(static fn (AuditEntry $e) => $e->isCreate);
     }
 
     /**
@@ -146,7 +146,7 @@ readonly class AuditEntryCollection implements IteratorAggregate, Countable
      */
     public function getUpdates(): self
     {
-        return $this->filter(static fn (AuditEntry $e) => $e->isUpdate());
+        return $this->filter(static fn (AuditEntry $e) => $e->isUpdate);
     }
 
     /**
@@ -154,7 +154,7 @@ readonly class AuditEntryCollection implements IteratorAggregate, Countable
      */
     public function getDeletes(): self
     {
-        return $this->filter(static fn (AuditEntry $e) => $e->isDelete() || $e->isSoftDelete());
+        return $this->filter(static fn (AuditEntry $e) => $e->isDelete || $e->isSoftDelete);
     }
 
     /**

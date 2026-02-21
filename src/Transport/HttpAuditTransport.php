@@ -6,11 +6,14 @@ namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use DateTimeInterface;
 use Override;
+use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
-use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+
+use function sprintf;
 
 use const JSON_THROW_ON_ERROR;
 
@@ -23,6 +26,8 @@ final class HttpAuditTransport implements AuditTransportInterface
         private readonly HttpClientInterface $client,
         private readonly string $endpoint,
         private readonly AuditIntegrityServiceInterface $integrityService,
+        private readonly EntityIdResolverInterface $idResolver,
+        private readonly ?LoggerInterface $logger = null,
         private readonly array $headers = [],
         private readonly int $timeout = 5,
     ) {
@@ -32,25 +37,25 @@ final class HttpAuditTransport implements AuditTransportInterface
      * @param array<string, mixed> $context
      */
     #[Override]
-    public function send(AuditLogInterface $log, array $context = []): void
+    public function send(AuditLog $log, array $context = []): void
     {
-        $entityId = EntityIdResolver::resolve($log, $context) ?? $log->getEntityId();
+        $entityId = $this->idResolver->resolve($log, $context) ?? $log->entityId;
 
         $payload = [
-            'entity_class' => $log->getEntityClass(),
+            'entity_class' => $log->entityClass,
             'entity_id' => $entityId,
-            'action' => $log->getAction(),
-            'old_values' => $log->getOldValues(),
-            'new_values' => $log->getNewValues(),
-            'changed_fields' => $log->getChangedFields(),
-            'user_id' => $log->getUserId(),
-            'username' => $log->getUsername(),
-            'ip_address' => $log->getIpAddress(),
-            'user_agent' => $log->getUserAgent(),
-            'transaction_hash' => $log->getTransactionHash(),
-            'signature' => $log->getSignature(),
-            'context' => [...$log->getContext(), ...$context],
-            'created_at' => $log->getCreatedAt()->format(DateTimeInterface::ATOM),
+            'action' => $log->action,
+            'old_values' => $log->oldValues,
+            'new_values' => $log->newValues,
+            'changed_fields' => $log->changedFields,
+            'user_id' => $log->userId,
+            'username' => $log->username,
+            'ip_address' => $log->ipAddress,
+            'user_agent' => $log->userAgent,
+            'transaction_hash' => $log->transactionHash,
+            'signature' => $log->signature,
+            'context' => [...$log->context, ...$context],
+            'created_at' => $log->createdAt->format(DateTimeInterface::ATOM),
         ];
 
         $jsonPayload = json_encode($payload, JSON_THROW_ON_ERROR);
@@ -60,11 +65,21 @@ final class HttpAuditTransport implements AuditTransportInterface
             $headers['X-Signature'] = $this->integrityService->signPayload($jsonPayload);
         }
 
-        $this->client->request('POST', $this->endpoint, [
+        $response = $this->client->request('POST', $this->endpoint, [
             'headers' => $headers,
             'body' => $jsonPayload,
             'timeout' => $this->timeout,
         ]);
+
+        if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) {
+            $this->logger?->error(sprintf(
+                'HTTP audit transport failed for %s#%s with status code %d: %s',
+                $log->entityClass,
+                $entityId,
+                $response->getStatusCode(),
+                $response->getContent(false)
+            ));
+        }
     }
 
     #[Override]

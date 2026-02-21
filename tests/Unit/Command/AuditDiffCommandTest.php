@@ -17,6 +17,7 @@ use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use ReflectionClass;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Uid\Uuid;
 
 #[AllowMockObjectsWithoutExpectations]
 #[CoversClass(AuditDiffCommand::class)]
@@ -37,11 +38,11 @@ class AuditDiffCommandTest extends TestCase
         $this->commandTester = new CommandTester($command);
     }
 
-    private function setLogId(AuditLog $log, int $id): void
+    private function setLogId(AuditLog $log, string $id): void
     {
         $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
-        $property->setValue($log, $id);
+        $property->setValue($log, Uuid::fromString($id));
     }
 
     private function normalizeOutput(): string
@@ -59,31 +60,32 @@ class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithId(): void
     {
-        $log = new AuditLog();
-        $this->setLogId($log, 1);
-        $log->setEntityClass('App\Entity\Post');
-        $log->setEntityId('123');
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setUsername('testuser');
-        $log->setCreatedAt(new DateTimeImmutable('2023-01-01 10:00:00'));
-        $log->setOldValues(['title' => 'Old Title']);
-        $log->setNewValues(['title' => 'New Title']);
+        $log = new AuditLog(
+            'App\Entity\Post',
+            '123',
+            AuditLogInterface::ACTION_UPDATE,
+            new DateTimeImmutable('2023-01-01 10:00:00'),
+            oldValues: ['title' => 'Old Title'],
+            newValues: ['title' => 'New Title'],
+            username: 'testuser'
+        );
+        $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
 
         $this->repository->expects($this->once())
             ->method('find')
-            ->with(1)
+            ->with('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a')
             ->willReturn($log);
 
         $this->diffGenerator->expects($this->once())
             ->method('generate')
             ->willReturn(['title' => ['old' => 'Old Title', 'new' => 'New Title']]);
 
-        $this->commandTester->execute(['identifier' => '1']);
+        $this->commandTester->execute(['identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
 
         $this->commandTester->assertCommandIsSuccessful();
         $output = $this->normalizeOutput();
         self::assertStringContainsString('Audit Diff for App\Entity\Post #123', $output);
-        self::assertStringContainsString('Log ID 1', $output);
+        self::assertStringContainsString('Log ID 018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', $output);
         self::assertStringContainsString('Action UPDATE', $output);
         self::assertStringContainsString('Date 2023-01-01 10:00:00', $output);
         self::assertStringContainsString('User testuser', $output);
@@ -97,17 +99,13 @@ class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithNoSemanticChanges(): void
     {
-        $log = new AuditLog();
-        $this->setLogId($log, 1);
-        $log->setEntityClass('App\Entity\Post');
-        $log->setEntityId('123');
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new DateTimeImmutable());
+        $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
+        $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
 
         $this->repository->method('find')->willReturn($log);
         $this->diffGenerator->method('generate')->willReturn([]);
 
-        $this->commandTester->execute(['identifier' => '1']);
+        $this->commandTester->execute(['identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
 
         $this->commandTester->assertCommandIsSuccessful();
         $output = $this->normalizeOutput();
@@ -116,12 +114,8 @@ class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithEntityClassAndId(): void
     {
-        $log = new AuditLog();
-        $this->setLogId($log, 1);
-        $log->setEntityClass('App\Entity\Post');
-        $log->setEntityId('123');
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new DateTimeImmutable());
+        $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
+        $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
 
         $this->repository->expects($this->once())
             ->method('findWithFilters')
@@ -140,15 +134,12 @@ class AuditDiffCommandTest extends TestCase
         $this->commandTester->assertCommandIsSuccessful();
         $output = $this->normalizeOutput();
         self::assertStringContainsString('Audit Diff for App\Entity\Post #123', $output);
-        self::assertStringContainsString('Log ID 1', $output);
+        self::assertStringContainsString('Log ID 018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', $output);
     }
 
     public function testExecuteWithEntityShortName(): void
     {
-        $log = new AuditLog();
-        $log->setEntityClass('App\Entity\Post');
-        $log->setEntityId('123');
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
 
         $this->repository->expects($this->once())
             ->method('findWithFilters')
@@ -170,15 +161,13 @@ class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithJsonOption(): void
     {
-        $log = new AuditLog();
-        $log->setEntityClass('App\Entity\Post');
-        $log->setEntityId('123');
+        $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
 
         $this->repository->method('find')->willReturn($log);
         $this->diffGenerator->method('generate')->willReturn(['title' => ['old' => 'A', 'new' => 'B']]);
 
         $this->commandTester->execute([
-            'identifier' => '1',
+            'identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a',
             '--json' => true,
         ]);
 
@@ -190,15 +179,16 @@ class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithIdAndTimestamps(): void
     {
-        $log = new AuditLog();
-        $log->setEntityClass('App\Entity\Post');
-        $log->setEntityId('123');
-        $log->setAction('update'); // Lowercase to test strtoupper
-        $log->setCreatedAt(new DateTimeImmutable('2023-01-01 12:00:00'));
+        $log = new AuditLog(
+            'App\Entity\Post',
+            '123',
+            'update',
+            new DateTimeImmutable('2023-01-01 12:00:00')
+        );
 
         $this->repository->expects($this->once())
             ->method('find')
-            ->with(1)
+            ->with('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a')
             ->willReturn($log);
 
         $this->diffGenerator->expects($this->once())
@@ -211,7 +201,7 @@ class AuditDiffCommandTest extends TestCase
             ->willReturn(['title' => ['old' => 'Old', 'new' => 'New']]);
 
         $this->commandTester->execute([
-            'identifier' => '1',
+            'identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a',
             '--include-timestamps' => true,
         ]);
 
@@ -223,11 +213,7 @@ class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithNumericIdentifierAndEntityId(): void
     {
-        $log = new AuditLog();
-        $log->setEntityClass('123'); // Weird class name
-        $log->setEntityId('456');
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new DateTimeImmutable());
+        $log = new AuditLog('123', '456', AuditLogInterface::ACTION_UPDATE);
 
         $this->repository->expects($this->once())
             ->method('findWithFilters')
@@ -246,11 +232,7 @@ class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithRawOption(): void
     {
-        $log = new AuditLog();
-        $log->setEntityClass('App\Entity\Post');
-        $log->setEntityId('123');
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new DateTimeImmutable());
+        $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
 
         $this->repository->method('find')->willReturn($log);
 
@@ -264,7 +246,7 @@ class AuditDiffCommandTest extends TestCase
             ->willReturn([]);
 
         $this->commandTester->execute([
-            'identifier' => '1',
+            'identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a',
             '--raw' => true,
         ]);
 
@@ -275,11 +257,12 @@ class AuditDiffCommandTest extends TestCase
     {
         $this->repository->method('find')->willReturn(null);
 
-        $this->commandTester->execute(['identifier' => '999']);
+        $this->commandTester->execute(['identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
 
         self::assertSame(Command::FAILURE, $this->commandTester->getStatusCode());
         $display = preg_replace('/\s+/', ' ', trim($this->commandTester->getDisplay()));
-        self::assertStringContainsString('Audit log with ID 999 not found.', (string) $display);
+        self::assertStringContainsString('Audit log with ID', (string) $display);
+        self::assertStringContainsString('not found.', (string) $display);
     }
 
     public function testExecuteEntityIdRequiredForClassIdentifier(): void
@@ -308,12 +291,8 @@ class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithNullAndBoolValues(): void
     {
-        $log = new AuditLog();
-        $this->setLogId($log, 123);
-        $log->setEntityClass('App\Entity\Post');
-        $log->setEntityId('123');
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new DateTimeImmutable());
+        $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
+        $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a362731');
 
         $this->repository->method('find')->willReturn($log);
 
@@ -322,7 +301,7 @@ class AuditDiffCommandTest extends TestCase
             'description' => ['old' => null, 'new' => 'Description'],
         ]);
 
-        $this->commandTester->execute(['identifier' => '123'], ['decorated' => true]);
+        $this->commandTester->execute(['identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a362731'], ['decorated' => true]);
 
         $this->commandTester->assertCommandIsSuccessful();
         $output = $this->normalizeOutput();
@@ -337,12 +316,8 @@ class AuditDiffCommandTest extends TestCase
 
     public function testFormatValueBooleanTernaryOrder(): void
     {
-        $log = new AuditLog();
-        $this->setLogId($log, 1);
-        $log->setEntityClass('App\\Entity\\Post');
-        $log->setEntityId('1');
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new DateTimeImmutable());
+        $log = new AuditLog('App\\Entity\\Post', '1', AuditLogInterface::ACTION_UPDATE);
+        $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
 
         $this->repository->method('find')->willReturn($log);
 
@@ -351,7 +326,7 @@ class AuditDiffCommandTest extends TestCase
             'active' => ['old' => true, 'new' => false],
         ]);
 
-        $this->commandTester->execute(['identifier' => '1']);
+        $this->commandTester->execute(['identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
 
         $this->commandTester->assertCommandIsSuccessful();
         $display = $this->commandTester->getDisplay();
@@ -366,17 +341,13 @@ class AuditDiffCommandTest extends TestCase
 
     public function testNoSemanticChangesEarlyReturn(): void
     {
-        $log = new AuditLog();
-        $this->setLogId($log, 1);
-        $log->setEntityClass('App\\Entity\\Post');
-        $log->setEntityId('123');
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setCreatedAt(new DateTimeImmutable());
+        $log = new AuditLog('App\\Entity\\Post', '123', AuditLogInterface::ACTION_UPDATE);
+        $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
 
         $this->repository->method('find')->willReturn($log);
         $this->diffGenerator->method('generate')->willReturn([]);
 
-        $this->commandTester->execute(['identifier' => '1']);
+        $this->commandTester->execute(['identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
 
         $this->commandTester->assertCommandIsSuccessful();
         $output = $this->normalizeOutput();

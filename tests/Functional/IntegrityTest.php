@@ -41,8 +41,8 @@ class IntegrityTest extends AbstractFunctionalTestCase
         ]);
 
         self::assertNotNull($auditLog);
-        self::assertNotNull($auditLog->getSignature());
-        self::assertSame(64, strlen($auditLog->getSignature()));
+        self::assertNotNull($auditLog->signature);
+        self::assertSame(64, strlen($auditLog->signature));
     }
 
     public function testVerifyIntegrityCommandDetectsTampering(): void
@@ -85,18 +85,21 @@ class IntegrityTest extends AbstractFunctionalTestCase
             'entityClass' => TestEntity::class,
         ]);
         self::assertNotNull($auditLog);
+        self::assertNotNull($auditLog->id);
 
-        $em->getConnection()->executeStatement(
+        $affected = $em->getConnection()->executeStatement(
             'UPDATE audit_log SET new_values = ? WHERE id = ?',
-            [json_encode(['name' => 'TAMPERED'], JSON_THROW_ON_ERROR), $auditLog->getId()]
+            [json_encode(['name' => 'TAMPERED'], JSON_THROW_ON_ERROR), $auditLog->id->toBinary()]
         );
+        self::assertEquals(1, $affected, 'Tampering UPDATE should affect exactly 1 row');
         $em->clear();
 
         // Verify tampering is detected
         $commandTester->execute([]);
         self::assertSame(1, $commandTester->getStatusCode());
         $output = $commandTester->getDisplay();
-        self::assertTrue(str_contains($output, 'tampered audit logs'), 'Output should contain error message');
-        self::assertTrue(str_contains($output, (string) $auditLog->getId()), 'Output should contain tampered log ID');
+        self::assertStringContainsString('tampered', $output);
+        self::assertStringContainsString('audit logs', $output);
+        self::assertStringContainsString((string) $auditLog->id, $output);
     }
 }

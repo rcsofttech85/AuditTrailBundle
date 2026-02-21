@@ -4,14 +4,19 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle;
 
+use Rcsofttech\AuditTrailBundle\DependencyInjection\AuditTrailExtension;
+use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 use Symfony\Component\HttpKernel\Bundle\Bundle;
-
-use function dirname;
 
 final class AuditTrailBundle extends Bundle
 {
     public function getPath(): string
     {
-        return dirname(__DIR__);
+        return __DIR__;
+    }
+
+    protected function createContainerExtension(): ExtensionInterface
+    {
+        return new AuditTrailExtension();
     }
 }

@@ -13,7 +13,9 @@ use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditListCommand;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+use ReflectionClass;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Uid\Uuid;
 
 #[CoversClass(AuditListCommand::class)]
 #[AllowMockObjectsWithoutExpectations]
@@ -47,7 +49,7 @@ class AuditListCommandTest extends TestCase
 
     public function testListWithResults(): void
     {
-        $audit = $this->createAuditLog(1, 'TestEntity', '42', 'update');
+        $audit = $this->createAuditLog('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'TestEntity', '42', 'update');
 
         $this->repository
             ->expects($this->once())
@@ -70,7 +72,7 @@ class AuditListCommandTest extends TestCase
 
     public function testListWithDetailsFlag(): void
     {
-        $audit = $this->createAuditLog(1, 'TestEntity', '42', 'update');
+        $audit = $this->createAuditLog('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'TestEntity', '42', 'update');
 
         $this->repository
             ->expects($this->once())
@@ -275,22 +277,26 @@ class AuditListCommandTest extends TestCase
         return (string) preg_replace('/\s+/', ' ', trim($output));
     }
 
-    private function createAuditLog(int $id, string $entityClass, string $entityId, string $action): AuditLog
+    private function createAuditLog(string $id, string $entityClass, string $entityId, string $action): AuditLog
     {
-        $audit = self::createStub(AuditLog::class);
+        $log = new AuditLog(
+            $entityClass,
+            $entityId,
+            $action,
+            new DateTimeImmutable('2024-01-01 12:00:00'),
+            oldValues: ['title' => 'Old Title'],
+            newValues: ['title' => 'New Title'],
+            changedFields: ['title'],
+            transactionHash: 'abc-123-def-456',
+            username: 'test_user'
+        );
 
-        $audit->method('getId')->willReturn($id);
-        $audit->method('getEntityClass')->willReturn($entityClass);
-        $audit->method('getEntityId')->willReturn($entityId);
-        $audit->method('getAction')->willReturn($action);
-        $audit->method('getCreatedAt')->willReturn(new DateTimeImmutable('2024-01-01 12:00:00'));
-        $audit->method('getUsername')->willReturn('test_user');
-        $audit->method('getChangedFields')->willReturn(['title']);
-        $audit->method('getOldValues')->willReturn(['title' => 'Old Title']);
-        $audit->method('getNewValues')->willReturn(['title' => 'New Title']);
-        $audit->method('getTransactionHash')->willReturn('abc-123-def-456');
+        $reflection = new ReflectionClass($log);
+        $property = $reflection->getProperty('id');
+        $property->setAccessible(true);
+        $property->setValue($log, Uuid::fromString($id));
 
-        return $audit;
+        return $log;
     }
 
     public function testListNoResultsEarlyReturn(): void

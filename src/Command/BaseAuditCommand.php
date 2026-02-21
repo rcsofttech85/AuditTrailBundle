@@ -7,18 +7,19 @@ namespace Rcsofttech\AuditTrailBundle\Command;
 use InvalidArgumentException;
 use JsonException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Uid\Uuid;
 
 use function in_array;
 use function is_array;
 use function is_string;
 use function sprintf;
 
-use const FILTER_VALIDATE_INT;
 use const JSON_THROW_ON_ERROR;
 
 /**
@@ -28,13 +29,7 @@ abstract class BaseAuditCommand extends Command
 {
     use ClassNameHelperTrait;
 
-    protected const array VALID_ACTIONS = [
-        AuditLogInterface::ACTION_CREATE,
-        AuditLogInterface::ACTION_UPDATE,
-        AuditLogInterface::ACTION_DELETE,
-        AuditLogInterface::ACTION_SOFT_DELETE,
-        AuditLogInterface::ACTION_RESTORE,
-    ];
+    protected const array VALID_ACTIONS = AuditLogInterface::ALL_ACTIONS;
 
     public function __construct(
         protected readonly AuditLogRepository $auditLogRepository,
@@ -69,20 +64,18 @@ abstract class BaseAuditCommand extends Command
         return true;
     }
 
-    protected function parseAuditId(InputInterface $input): int
+    protected function parseAuditId(InputInterface $input): string
     {
         $auditIdInput = $input->getArgument('auditId');
-        if ($auditIdInput === null) {
-            return 0;
+        if ($auditIdInput === null || !is_string($auditIdInput)) {
+            throw new InvalidArgumentException('auditId is required');
         }
 
-        $auditId = filter_var($auditIdInput, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-
-        if ($auditId === false) {
-            throw new InvalidArgumentException('auditId must be a valid audit log ID');
+        if (!Uuid::isValid($auditIdInput)) {
+            throw new InvalidArgumentException('auditId must be a valid UUID');
         }
 
-        return $auditId;
+        return $auditIdInput;
     }
 
     /**
@@ -113,12 +106,12 @@ abstract class BaseAuditCommand extends Command
         }
     }
 
-    protected function fetchAuditLog(int $auditId, SymfonyStyle $io): ?AuditLogInterface
+    protected function fetchAuditLog(string $auditId, SymfonyStyle $io): ?AuditLog
     {
         $log = $this->auditLogRepository->find($auditId);
 
-        if (!$log instanceof AuditLogInterface) {
-            $io->error(sprintf('Audit log with ID %d not found.', $auditId));
+        if (!$log instanceof AuditLog) {
+            $io->error(sprintf('Audit log with ID %s not found.', $auditId));
 
             return null;
         }

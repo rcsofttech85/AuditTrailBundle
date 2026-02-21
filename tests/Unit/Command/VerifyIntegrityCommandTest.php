@@ -16,6 +16,7 @@ use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use ReflectionClass;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Uid\Uuid;
 
 #[AllowMockObjectsWithoutExpectations]
 #[CoversClass(VerifyIntegrityCommand::class)]
@@ -36,11 +37,11 @@ class VerifyIntegrityCommandTest extends TestCase
         $this->commandTester = new CommandTester($command);
     }
 
-    private function setLogId(AuditLog $log, int $id): void
+    private function setLogId(AuditLog $log, string $id): void
     {
         $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
-        $property->setValue($log, $id);
+        $property->setValue($log, Uuid::fromString($id));
     }
 
     private function normalizeOutput(): string
@@ -66,9 +67,9 @@ class VerifyIntegrityCommandTest extends TestCase
     public function testExecuteSingleLogNotFound(): void
     {
         $this->integrityService->method('isEnabled')->willReturn(true);
-        $this->repository->method('find')->with(1)->willReturn(null);
+        $this->repository->method('find')->with('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a')->willReturn(null);
 
-        $this->commandTester->execute(['--id' => 1]);
+        $this->commandTester->execute(['--id' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
 
         self::assertEquals(Command::FAILURE, $this->commandTester->getStatusCode());
         self::assertStringContainsString('not found', $this->normalizeOutput());
@@ -76,22 +77,17 @@ class VerifyIntegrityCommandTest extends TestCase
 
     public function testExecuteSingleLogValid(): void
     {
-        $log = new AuditLog();
-        $this->setLogId($log, 1);
-        $log->setEntityClass('App\Entity\User');
-        $log->setEntityId('1');
-        $log->setAction('update');
-        $log->setCreatedAt(new DateTimeImmutable('2024-01-01 12:00:00'));
-
+        $log = new AuditLog('App\Entity\User', '1', 'update', new DateTimeImmutable('2024-01-01 12:00:00'));
+        $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
         $this->integrityService->method('isEnabled')->willReturn(true);
-        $this->repository->method('find')->with(1)->willReturn($log);
+        $this->repository->method('find')->with('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a')->willReturn($log);
         $this->integrityService->method('verifySignature')->with($log)->willReturn(true);
 
-        $this->commandTester->execute(['--id' => 1]);
+        $this->commandTester->execute(['--id' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
 
         self::assertEquals(Command::SUCCESS, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
-        self::assertStringContainsString('Verifying Audit Log #1', $output);
+        self::assertStringContainsString('Verifying Audit Log #018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', $output);
         self::assertStringContainsString('Entity: App\Entity\User 1', $output);
         self::assertStringContainsString('Action: update', $output);
         self::assertStringContainsString('Created: 2024-01-01 12:00:00', $output);
@@ -100,17 +96,13 @@ class VerifyIntegrityCommandTest extends TestCase
 
     public function testExecuteSingleLogInvalid(): void
     {
-        $log = new AuditLog();
-        $log->setEntityClass('App\Entity\User');
-        $log->setEntityId('1');
-        $log->setAction('update');
-        $log->setCreatedAt(new DateTimeImmutable());
-
+        $log = new AuditLog('App\Entity\User', '1', 'update');
+        $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
         $this->integrityService->method('isEnabled')->willReturn(true);
-        $this->repository->method('find')->with(1)->willReturn($log);
+        $this->repository->method('find')->with('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a')->willReturn($log);
         $this->integrityService->method('verifySignature')->with($log)->willReturn(false);
 
-        $this->commandTester->execute(['--id' => 1]);
+        $this->commandTester->execute(['--id' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
 
         self::assertEquals(Command::FAILURE, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
@@ -131,10 +123,10 @@ class VerifyIntegrityCommandTest extends TestCase
 
     public function testExecuteAllLogsValid(): void
     {
-        $log1 = new AuditLog();
-        $this->setLogId($log1, 1);
-        $log2 = new AuditLog();
-        $this->setLogId($log2, 2);
+        $log1 = new AuditLog('App\Entity\User', '1', 'create');
+        $this->setLogId($log1, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
+        $log2 = new AuditLog('App\Entity\User', '2', 'create');
+        $this->setLogId($log2, '018f3b3b-3b3b-7b3b-8b3b-3b3b3b3b3b3b');
 
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->repository->method('count')->willReturn(2);
@@ -157,13 +149,8 @@ class VerifyIntegrityCommandTest extends TestCase
 
     public function testExecuteAllLogsTampered(): void
     {
-        $log1 = new AuditLog();
-        $this->setLogId($log1, 1);
-        $log1->setEntityClass('User');
-        $log1->setEntityId('1');
-        $log1->setAction('update');
-        $log1->setCreatedAt(new DateTimeImmutable('2024-01-01 10:00:00'));
-
+        $log1 = new AuditLog('User', '1', 'update', new DateTimeImmutable('2024-01-01 10:00:00'));
+        $this->setLogId($log1, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->repository->method('count')->willReturn(1);
         $this->repository->method('findBy')->willReturn([$log1]);
@@ -175,7 +162,7 @@ class VerifyIntegrityCommandTest extends TestCase
         self::assertEquals(Command::FAILURE, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput();
         self::assertStringContainsString('Found 1 tampered', $output);
-        self::assertStringContainsString('1 User 1 update 2024-01-01 10:00:00', $output);
+        self::assertStringContainsString('User 1 update 2024-01-01 10:00:00', $output);
     }
 
     public function testExecuteWithBatching(): void
@@ -183,8 +170,8 @@ class VerifyIntegrityCommandTest extends TestCase
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->repository->method('count')->willReturn(150);
 
-        $batch1 = array_fill(0, 100, new AuditLog());
-        $batch2 = array_fill(0, 50, new AuditLog());
+        $batch1 = array_fill(0, 100, new AuditLog('User', '1', 'create'));
+        $batch2 = array_fill(0, 50, new AuditLog('User', '1', 'create'));
 
         $callCount = 0;
         $this->repository->expects($this->exactly(2))

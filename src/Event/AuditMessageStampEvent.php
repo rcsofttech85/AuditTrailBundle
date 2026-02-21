@@ -4,18 +4,20 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Event;
 
+use Psr\EventDispatcher\StoppableEventInterface;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Symfony\Component\Messenger\Stamp\StampInterface;
 
-final class AuditMessageStampEvent
+final class AuditMessageStampEvent implements StoppableEventInterface
 {
+    private bool $propagationStopped = false;
+
     /**
      * @param array<StampInterface> $stamps
      */
     public function __construct(
         public readonly AuditLogMessage $message,
         private array $stamps = [],
-        private bool $cancelled = false,
     ) {
     }
 
@@ -32,13 +34,13 @@ final class AuditMessageStampEvent
         return $this->stamps;
     }
 
-    public function cancel(): void
+    public function isPropagationStopped(): bool
     {
-        $this->cancelled = true;
+        return $this->propagationStopped;
     }
 
-    public function isCancelled(): bool
+    public function stopPropagation(): void
     {
-        return $this->cancelled;
+        $this->propagationStopped = true;
     }
 }

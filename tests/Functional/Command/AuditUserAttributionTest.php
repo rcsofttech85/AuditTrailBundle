@@ -9,6 +9,7 @@ use Rcsofttech\AuditTrailBundle\Tests\Functional\AbstractFunctionalTestCase;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\HttpKernel\KernelInterface;
 
 use function assert;
 
@@ -32,13 +33,13 @@ class AuditUserAttributionTest extends AbstractFunctionalTestCase
         $auditLog = $em->getRepository(AuditLog::class)->findOneBy(['action' => 'update']);
         self::assertNotNull($auditLog);
 
-        assert(self::$kernel instanceof \Symfony\Component\HttpKernel\KernelInterface);
+        assert(self::$kernel instanceof KernelInterface);
         $application = new Application(self::$kernel);
         $command = $application->find('audit:revert');
         $commandTester = new CommandTester($command);
 
         $commandTester->execute([
-            'auditId' => (string) $auditLog->getId(),
+            'auditId' => (string) $auditLog->id,
             '--user' => 'admin_tester',
         ]);
 
@@ -46,8 +47,8 @@ class AuditUserAttributionTest extends AbstractFunctionalTestCase
 
         $revertLog = $em->getRepository(AuditLog::class)->findOneBy(['action' => 'revert']);
         self::assertNotNull($revertLog);
-        self::assertEquals('admin_tester', $revertLog->getUsername());
-        self::assertEquals('admin_tester', $revertLog->getUserId());
+        self::assertEquals('admin_tester', $revertLog->username);
+        self::assertEquals('admin_tester', $revertLog->userId);
     }
 
     public function testAuditRevertDefaultCliUser(): void
@@ -65,13 +66,13 @@ class AuditUserAttributionTest extends AbstractFunctionalTestCase
         $auditLog = $em->getRepository(AuditLog::class)->findOneBy(['action' => 'update']);
         self::assertNotNull($auditLog);
 
-        assert(self::$kernel instanceof \Symfony\Component\HttpKernel\KernelInterface);
+        assert(self::$kernel instanceof KernelInterface);
         $application = new Application(self::$kernel);
         $command = $application->find('audit:revert');
         $commandTester = new CommandTester($command);
 
         $commandTester->execute([
-            'auditId' => (string) $auditLog->getId(),
+            'auditId' => (string) $auditLog->id,
         ]);
 
         self::assertSame(0, $commandTester->getStatusCode());
@@ -80,10 +81,10 @@ class AuditUserAttributionTest extends AbstractFunctionalTestCase
         self::assertNotNull($revertLog);
 
         // Should have cli: prefix and machine defaults
-        self::assertStringStartsWith('cli:', (string) $revertLog->getUsername());
-        self::assertStringStartsWith('cli:', (string) $revertLog->getUserId());
-        self::assertEquals(gethostbyname((string) gethostname()), $revertLog->getIpAddress());
-        self::assertStringContainsString('cli-console', (string) $revertLog->getUserAgent());
-        self::assertStringContainsString((string) gethostname(), (string) $revertLog->getUserAgent());
+        self::assertStringStartsWith('cli:', (string) $revertLog->username);
+        self::assertStringStartsWith('cli:', (string) $revertLog->userId);
+        self::assertEquals(gethostbyname((string) gethostname()), $revertLog->ipAddress);
+        self::assertStringContainsString('cli-console', (string) $revertLog->userAgent);
+        self::assertStringContainsString((string) gethostname(), (string) $revertLog->userAgent);
     }
 }

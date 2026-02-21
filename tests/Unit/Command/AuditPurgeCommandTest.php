@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditPurgeCommand;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -19,12 +20,16 @@ class AuditPurgeCommandTest extends TestCase
 {
     private AuditLogRepository&MockObject $repository;
 
+    private AuditIntegrityServiceInterface&MockObject $integrityService;
+
     private CommandTester $commandTester;
 
     protected function setUp(): void
     {
         $this->repository = $this->createMock(AuditLogRepository::class);
-        $command = new AuditPurgeCommand($this->repository);
+        $this->integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
+        $this->integrityService->method('isEnabled')->willReturn(false);
+        $command = new AuditPurgeCommand($this->repository, $this->integrityService);
         $this->commandTester = new CommandTester($command);
     }
 

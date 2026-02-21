@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
 use DAMA\DoctrineTestBundle\DAMADoctrineTestBundle;
 use Doctrine\Bundle\DoctrineBundle\DoctrineBundle;
+use Psr\Log\NullLogger;
 use Rcsofttech\AuditTrailBundle\AuditTrailBundle;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
@@ -13,6 +14,7 @@ use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
 use Symfony\Bundle\SecurityBundle\SecurityBundle;
 use Symfony\Component\Config\Loader\LoaderInterface;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
+use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\HttpKernel\Kernel;
 
@@ -35,7 +37,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
 
     public function build(ContainerBuilder $container): void
     {
-        $container->addCompilerPass($this, \Symfony\Component\DependencyInjection\Compiler\PassConfig::TYPE_OPTIMIZE);
+        $container->addCompilerPass($this, PassConfig::TYPE_OPTIMIZE);
     }
 
     public function process(ContainerBuilder $container): void
@@ -46,6 +48,9 @@ class TestKernel extends Kernel implements CompilerPassInterface
                 $container->removeAlias(AuditTransportInterface::class);
             }
             $container->setAlias(AuditTransportInterface::class, ThrowingTransport::class);
+
+            // Silence logger during expected failures
+            $container->register('logger', NullLogger::class);
         }
     }
 

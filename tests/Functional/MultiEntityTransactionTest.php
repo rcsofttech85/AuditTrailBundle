@@ -24,8 +24,8 @@ class MultiEntityTransactionTest extends AbstractFunctionalTestCase
         $auditLogs = $em->getRepository(AuditLog::class)->findAll();
         self::assertCount(2, $auditLogs);
 
-        self::assertSame($auditLogs[0]->getTransactionHash(), $auditLogs[1]->getTransactionHash());
-        self::assertNotEmpty($auditLogs[0]->getTransactionHash());
+        self::assertSame($auditLogs[0]->transactionHash, $auditLogs[1]->transactionHash);
+        self::assertNotEmpty($auditLogs[0]->transactionHash);
     }
 
     public function testMultipleFlushesHaveDifferentHashes(): void
@@ -44,6 +44,6 @@ class MultiEntityTransactionTest extends AbstractFunctionalTestCase
         $auditLogs = $em->getRepository(AuditLog::class)->findAll();
         self::assertCount(2, $auditLogs);
 
-        self::assertNotSame($auditLogs[0]->getTransactionHash(), $auditLogs[1]->getTransactionHash());
+        self::assertNotSame($auditLogs[0]->transactionHash, $auditLogs[1]->transactionHash);
     }
 }

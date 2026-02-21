@@ -9,16 +9,21 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
-use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
-use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
-use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use ReflectionClass;
@@ -32,44 +37,55 @@ abstract class AbstractAuditTestCase extends TestCase
         Stub&TransactionIdGenerator $transactionIdGenerator,
         MetadataCache $metadataCache = new MetadataCache(),
         ValueSerializer $serializer = new ValueSerializer(null),
-    ): AuditService {
+    ): AuditServiceInterface {
         $extractor = new EntityDataExtractor($em, $serializer, $metadataCache);
+        $metadataManager = self::createStub(AuditMetadataManagerInterface::class);
+        $contextResolver = self::createStub(ContextResolverInterface::class);
+        $contextResolver->method('resolve')->willReturn([
+            'userId' => null,
+            'username' => null,
+            'ipAddress' => null,
+            'userAgent' => null,
+            'context' => [],
+        ]);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolveFromEntity')->willReturn('1');
 
         return new AuditService(
             $em,
-            self::createStub(UserResolverInterface::class),
             new MockClock(),
             $transactionIdGenerator,
             $extractor,
-            $metadataCache,
-            [],
-            []
+            $metadataManager,
+            $contextResolver,
+            $idResolver
         );
     }
 
     protected function createAuditDispatcher(
         MockObject&AuditTransportInterface $transport,
         (Stub&AuditIntegrityServiceInterface)|null $integrityService = null,
-    ): AuditDispatcher {
+    ): AuditDispatcherInterface {
         return new AuditDispatcher(
             $transport,
-            $integrityService ?? self::createStub(AuditIntegrityServiceInterface::class),
-            null
+            null, // eventDispatcher
+            $integrityService ?? self::createStub(AuditIntegrityServiceInterface::class)
         );
     }
 
     protected function createEntityProcessor(
-        AuditService $auditService,
-        ChangeProcessor $changeProcessor,
-        AuditDispatcher $dispatcher,
-        ScheduledAuditManager $auditManager,
+        AuditServiceInterface $auditService,
+        ChangeProcessorInterface $changeProcessor,
+        AuditDispatcherInterface $dispatcher,
+        ScheduledAuditManagerInterface $auditManager,
         bool $deferTransportUntilCommit = false,
-    ): EntityProcessor {
+    ): EntityProcessorInterface {
         return new EntityProcessor(
             $auditService,
             $changeProcessor,
             $dispatcher,
             $auditManager,
+            self::createStub(EntityIdResolverInterface::class),
             $deferTransportUntilCommit
         );
     }

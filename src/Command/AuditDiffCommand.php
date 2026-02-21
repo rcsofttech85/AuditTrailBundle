@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Command;
 
 use DateTimeInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\DiffGeneratorInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -16,6 +16,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Uid\Uuid;
 
 use function is_array;
 use function is_bool;
@@ -43,7 +44,7 @@ class AuditDiffCommand extends BaseAuditCommand
     protected function configure(): void
     {
         $this
-            ->addArgument('identifier', InputArgument::REQUIRED, 'Audit Log ID OR Entity Class')
+            ->addArgument('identifier', InputArgument::REQUIRED, 'Audit Log UUID OR Entity Class')
             ->addArgument('entityId', InputArgument::OPTIONAL, 'Entity ID (if identifier is Entity Class)')
             ->addOption('raw', null, InputOption::VALUE_NONE, 'No normalization')
             ->addOption(
@@ -64,7 +65,7 @@ class AuditDiffCommand extends BaseAuditCommand
             return Command::FAILURE;
         }
 
-        $diff = $this->diffGenerator->generate($log->getOldValues(), $log->getNewValues(), [
+        $diff = $this->diffGenerator->generate($log->oldValues, $log->newValues, [
             'raw' => $input->getOption('raw'),
             'include_timestamps' => $input->getOption('include-timestamps'),
         ]);
@@ -81,7 +82,7 @@ class AuditDiffCommand extends BaseAuditCommand
         return Command::SUCCESS;
     }
 
-    private function resolveAuditLog(InputInterface $input, SymfonyStyle $io): ?AuditLogInterface
+    private function resolveAuditLog(InputInterface $input, SymfonyStyle $io): ?AuditLog
     {
         $identifier = $input->getArgument('identifier');
         $entityId = $input->getArgument('entityId');
@@ -92,8 +93,8 @@ class AuditDiffCommand extends BaseAuditCommand
 
         $entityId = is_string($entityId) ? $entityId : null;
 
-        return is_numeric($identifier) && $entityId === null
-            ? $this->fetchAuditLog((int) $identifier, $io)
+        return Uuid::isValid($identifier) && $entityId === null
+            ? $this->fetchAuditLog($identifier, $io)
             : $this->fetchByEntityClassAndId($identifier, $entityId, $io);
     }
 
@@ -101,7 +102,7 @@ class AuditDiffCommand extends BaseAuditCommand
         string $entityClass,
         ?string $entityId,
         SymfonyStyle $io,
-    ): ?AuditLogInterface {
+    ): ?AuditLog {
         if ($entityId === null) {
             $io->error('Entity ID is required when providing an Entity Class.');
 
@@ -119,14 +120,14 @@ class AuditDiffCommand extends BaseAuditCommand
     /**
      * @param array<string, array{old: mixed, new: mixed}> $diff
      */
-    private function renderDiff(SymfonyStyle $io, OutputInterface $output, AuditLogInterface $log, array $diff): void
+    private function renderDiff(SymfonyStyle $io, OutputInterface $output, AuditLog $log, array $diff): void
     {
-        $io->title(sprintf('Audit Diff for %s #%s', $log->getEntityClass(), $log->getEntityId()));
+        $io->title(sprintf('Audit Diff for %s #%s', $log->entityClass, $log->entityId));
         $io->definitionList(
-            ['Log ID' => $log->getId()],
-            ['Action' => strtoupper($log->getAction())],
-            ['Date' => $log->getCreatedAt()->format('Y-m-d H:i:s')],
-            ['User' => $log->getUsername() ?? 'System']
+            ['Log ID' => $log->id?->toRfc4122()],
+            ['Action' => strtoupper($log->action)],
+            ['Date' => $log->createdAt->format('Y-m-d H:i:s')],
+            ['User' => $log->username ?? 'System']
         );
 
         if ($diff === []) {

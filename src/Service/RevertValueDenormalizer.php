@@ -12,7 +12,6 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Exception;
 
-use function in_array;
 use function is_array;
 use function is_object;
 use function is_scalar;
@@ -37,20 +36,17 @@ final class RevertValueDenormalizer
         if ($metadata->hasField($field)) {
             $type = $metadata->getTypeOfField($field);
 
-            if (
-                in_array($type, [
-                    'datetime',
-                    'datetime_immutable',
-                    'datetimetz',
-                    'datetimetz_immutable',
-                    'date',
-                    'date_immutable',
-                    'time',
-                    'time_immutable',
-                ], true)
-            ) {
-                return $this->denormalizeDateTime($value, $type);
-            }
+            return match ($type) {
+                'datetime',
+                'datetime_immutable',
+                'datetimetz',
+                'datetimetz_immutable',
+                'date',
+                'date_immutable',
+                'time',
+                'time_immutable' => $this->denormalizeDateTime($value, $type),
+                default => $value,
+            };
         }
 
         if ($metadata->hasAssociation($field)) {
@@ -110,9 +106,13 @@ final class RevertValueDenormalizer
     /**
      * @param class-string<DateTime>|class-string<DateTimeImmutable> $dateTimeClass
      */
-    private function denormalizeDateTimeFromString(string $value, string $dateTimeClass): DateTimeInterface
+    private function denormalizeDateTimeFromString(string $value, string $dateTimeClass): ?DateTimeInterface
     {
-        return new $dateTimeClass($value);
+        try {
+            return new $dateTimeClass($value);
+        } catch (Exception) {
+            return null;
+        }
     }
 
     /**

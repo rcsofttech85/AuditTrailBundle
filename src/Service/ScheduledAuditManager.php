@@ -5,28 +5,29 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use OverflowException;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 use function count;
 use function sprintf;
 
-class ScheduledAuditManager
+final class ScheduledAuditManager implements ScheduledAuditManagerInterface
 {
     private const int MAX_SCHEDULED_AUDITS = 1000;
 
     /**
      * @var array<int, array{
      *     entity: object,
-     *     audit: AuditLogInterface,
+     *     audit: AuditLog,
      *     is_insert: bool
      * }>
      */
-    private array $scheduledAudits = [];
+    public private(set) array $scheduledAudits = [];
 
     /** @var list<array{entity: object, data: array<string, mixed>, is_managed: bool}> */
-    private array $pendingDeletions = [];
+    public private(set) array $pendingDeletions = [];
 
     public function __construct(
         private readonly ?EventDispatcherInterface $eventDispatcher = null,
@@ -35,7 +36,7 @@ class ScheduledAuditManager
 
     public function schedule(
         object $entity,
-        AuditLogInterface $audit,
+        AuditLog $audit,
         bool $isInsert,
     ): void {
         if (count($this->scheduledAudits) >= self::MAX_SCHEDULED_AUDITS) {
@@ -63,46 +64,16 @@ class ScheduledAuditManager
         ];
     }
 
-    /**
-     * @return array<int, array{
-     *     entity: object,
-     *     audit: AuditLogInterface,
-     *     is_insert: bool
-     * }>
-     */
-    public function getScheduledAudits(): array
-    {
-        return $this->scheduledAudits;
-    }
-
-    /**
-     * @return list<array{entity: object, data: array<string, mixed>, is_managed: bool}>
-     */
-    public function getPendingDeletions(): array
-    {
-        return $this->pendingDeletions;
-    }
-
     public function clear(): void
     {
         $this->scheduledAudits = [];
         $this->pendingDeletions = [];
     }
 
-    public function hasScheduledAudits(): bool
-    {
-        return $this->scheduledAudits !== [];
-    }
-
-    public function countScheduled(): int
-    {
-        return count($this->scheduledAudits);
-    }
-
     private function dispatchCreatedEvent(
         object $entity,
-        AuditLogInterface $audit,
-    ): AuditLogInterface {
+        AuditLog $audit,
+    ): AuditLog {
         if ($this->eventDispatcher === null) {
             return $audit;
         }
@@ -110,6 +81,6 @@ class ScheduledAuditManager
         $event = new AuditLogCreatedEvent($audit, $entity);
         $this->eventDispatcher->dispatch($event, AuditLogCreatedEvent::NAME);
 
-        return $event->getAuditLog();
+        return $event->auditLog;
     }
 }

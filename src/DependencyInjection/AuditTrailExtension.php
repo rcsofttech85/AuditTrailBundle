@@ -7,7 +7,6 @@ namespace Rcsofttech\AuditTrailBundle\DependencyInjection;
 use LogicException;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
-use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessageSerializer;
 use Rcsofttech\AuditTrailBundle\Transport\ChainAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
@@ -47,6 +46,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
          *   fallback_to_database: bool,
          *   integrity: array{enabled: bool, secret: ?string, algorithm: string},
          *   cache_pool: ?string,
+         *   audited_methods: array<string>,
          *   transports: array{
          *     doctrine: bool,
          *     http: array{enabled: bool, endpoint: string, headers: array<string, string>, timeout: int},
@@ -71,6 +71,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         $container->setParameter('audit_trail.fail_on_transport_error', $config['fail_on_transport_error']);
         $container->setParameter('audit_trail.fallback_to_database', $config['fallback_to_database']);
         $container->setParameter('audit_trail.cache_pool', $config['cache_pool']);
+        $container->setParameter('audit_trail.audited_methods', $config['audited_methods']);
 
         if ($config['cache_pool'] !== null) {
             $container->setAlias('rcsofttech_audit_trail.cache', $config['cache_pool']);
@@ -79,12 +80,9 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         $container->setParameter('audit_trail.integrity.enabled', $config['integrity']['enabled']);
         $container->setParameter('audit_trail.integrity.secret', $config['integrity']['secret'] ?? '');
         $container->setParameter('audit_trail.integrity.algorithm', $config['integrity']['algorithm']);
-
-        $loader = new YamlFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'));
-        $loader->load('services.yaml');
+        new YamlFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'))->load('services.yaml');
 
         $this->configureTransports($config, $container);
-        $this->registerSerializer($container);
     }
 
     #[Override]
@@ -107,13 +105,6 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
                 ],
             ],
         ]);
-    }
-
-    private function registerSerializer(ContainerBuilder $container): void
-    {
-        $container->register(AuditLogMessageSerializer::class)
-            ->setAutowired(true)
-            ->setAutoconfigured(true);
     }
 
     /**
@@ -202,7 +193,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     private function registerMainTransport(ContainerBuilder $container, array $transports): void
     {
         if (1 === count($transports)) {
-            $container->setAlias(AuditTransportInterface::class, $transports[0]);
+            $container->setAlias(AuditTransportInterface::class, $transports[0])->setPublic(true);
 
             return;
         }
@@ -214,7 +205,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
             $container->register($id, ChainAuditTransport::class)
                 ->setArgument('$transports', $references);
 
-            $container->setAlias(AuditTransportInterface::class, $id);
+            $container->setAlias(AuditTransportInterface::class, $id)->setPublic(true);
         }
     }
 

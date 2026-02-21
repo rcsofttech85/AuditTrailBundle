@@ -6,55 +6,90 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use DateTimeInterface;
 use InvalidArgumentException;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Override;
+use Rcsofttech\AuditTrailBundle\Contract\AuditExporterInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use RuntimeException;
 use Stringable;
 
+use function in_array;
 use function is_array;
 use function is_scalar;
-use function mb_strlen;
 use function sprintf;
 
 use const JSON_PRETTY_PRINT;
 use const JSON_THROW_ON_ERROR;
 use const JSON_UNESCAPED_SLASHES;
 
-final readonly class AuditExporter
+final readonly class AuditExporter implements AuditExporterInterface
 {
     /**
-     * @param array<AuditLogInterface> $audits
+     * @param iterable<AuditLog> $audits
      */
-    public function formatAudits(array $audits, string $format): string
+    #[Override]
+    public function formatAudits(iterable $audits, string $format): string
     {
-        $rows = array_map([$this, 'auditToArray'], $audits);
-
         return match ($format) {
-            'json' => json_encode($rows, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
-            'csv' => $this->formatAsCsv($rows),
+            'json' => $this->formatAsJson($audits),
+            'csv' => $this->formatAsCsv($audits),
             default => throw new InvalidArgumentException(sprintf('Unsupported format: %s', $format)),
         };
     }
 
     /**
-     * @param array<array<string, mixed>> $rows
+     * @param iterable<AuditLog> $audits
      */
-    public function formatAsCsv(array $rows): string
+    public function formatAsJson(iterable $audits): string
     {
-        if ($rows === []) {
-            return '';
+        $output = fopen('php://temp', 'r+');
+        if ($output === false) {
+            throw new RuntimeException('Failed to open temp stream for JSON generation');
         }
 
+        try {
+            fwrite($output, '[');
+            $first = true;
+
+            foreach ($audits as $audit) {
+                if (!$first) {
+                    fwrite($output, ',');
+                }
+                fwrite($output, json_encode($this->auditToArray($audit), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+                $first = false;
+            }
+
+            fwrite($output, ']');
+            rewind($output);
+            $json = stream_get_contents($output);
+
+            return $json !== false ? $json : '[]';
+        } finally {
+            fclose($output);
+        }
+    }
+
+    /**
+     * @param iterable<AuditLog> $audits
+     */
+    public function formatAsCsv(iterable $audits): string
+    {
         $output = fopen('php://temp', 'r+');
         if ($output === false) {
             throw new RuntimeException('Failed to open temp stream for CSV generation');
         }
 
         try {
-            fputcsv($output, array_keys($rows[0]), ',', '"', '\\');
+            $headerWritten = false;
 
-            foreach ($rows as $row) {
+            foreach ($audits as $audit) {
+                $row = $this->auditToArray($audit);
+                if (!$headerWritten) {
+                    fputcsv($output, array_keys($row), ',', '"', '\\');
+                    $headerWritten = true;
+                }
+
                 $csvRow = array_map(
-                    static fn ($value) => is_array($value) ? json_encode($value, JSON_THROW_ON_ERROR) : (string) (is_scalar($value) || $value instanceof Stringable ? $value : ''),
+                    fn ($value) => is_array($value) ? json_encode($value, JSON_THROW_ON_ERROR) : $this->sanitizeCsvValue((string) (is_scalar($value) || $value instanceof Stringable ? $value : '')),
                     $row
                 );
                 fputcsv($output, $csvRow, ',', '"', '\\');
@@ -70,31 +105,51 @@ final readonly class AuditExporter
     }
 
     /**
+     * @param AuditLog|array<string, mixed> $audit
+     *
      * @return array<string, mixed>
      */
-    public function auditToArray(AuditLogInterface $audit): array
+    public function auditToArray(AuditLog|array $audit): array
     {
+        if (is_array($audit)) {
+            return $audit;
+        }
+
         return [
-            'id' => $audit->getId(),
-            'entity_class' => $audit->getEntityClass(),
-            'entity_id' => $audit->getEntityId(),
-            'action' => $audit->getAction(),
-            'old_values' => $audit->getOldValues(),
-            'new_values' => $audit->getNewValues(),
-            'changed_fields' => $audit->getChangedFields(),
-            'user_id' => $audit->getUserId(),
-            'username' => $audit->getUsername(),
-            'ip_address' => $audit->getIpAddress(),
-            'user_agent' => $audit->getUserAgent(),
-            'created_at' => $audit->getCreatedAt()->format(DateTimeInterface::ATOM),
+            'id' => $audit->id?->toRfc4122(),
+            'entity_class' => $audit->entityClass,
+            'entity_id' => $audit->entityId,
+            'action' => $audit->action,
+            'old_values' => $audit->oldValues,
+            'new_values' => $audit->newValues,
+            'changed_fields' => $audit->changedFields,
+            'user_id' => $audit->userId,
+            'username' => $audit->username,
+            'ip_address' => $audit->ipAddress,
+            'user_agent' => $audit->userAgent,
+            'created_at' => $audit->createdAt->format(DateTimeInterface::ATOM),
         ];
     }
 
+    #[Override]
     public function formatFileSize(int $bytes): string
     {
-        $units = ['B', 'KB', 'MB', 'GB'];
-        $factor = (int) floor((mb_strlen((string) $bytes) - 1) / 3);
+        if ($bytes <= 0) {
+            return '0 B';
+        }
 
-        return sprintf('%.2f %s', $bytes / (1024 ** $factor), $units[$factor]);
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $i = (int) floor(log($bytes, 1024));
+
+        return sprintf('%.2f %s', $bytes / (1024 ** $i), $units[$i] ?? 'B');
+    }
+
+    private function sanitizeCsvValue(string $value): string
+    {
+        if ($value !== '' && in_array(mb_substr($value, 0, 1), ['=', '+', '-', '@'], true)) {
+            return "'".$value;
+        }
+
+        return $value;
     }
 }

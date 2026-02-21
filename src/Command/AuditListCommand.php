@@ -7,7 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Command;
 use DateTimeImmutable;
 use Exception;
 use InvalidArgumentException;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Rcsofttech\AuditTrailBundle\Service\AuditRenderer;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
@@ -131,7 +131,7 @@ final class AuditListCommand extends BaseAuditCommand
     }
 
     /**
-     * @param array<AuditLogInterface> $audits
+     * @param array<AuditLog> $audits
      */
     private function displayResults(
         SymfonyStyle $io,

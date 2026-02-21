@@ -12,11 +12,13 @@ use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
+use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
 use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
-use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
@@ -52,10 +54,10 @@ class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
 
     private function createSubscriber(
         AuditTransportInterface&MockObject $transport,
-        AuditService $auditService,
+        AuditServiceInterface $auditService,
     ): AuditSubscriber {
         $changeProcessor = new ChangeProcessor(
-            $auditService,
+            self::createStub(AuditMetadataManagerInterface::class),
             new ValueSerializer(),
             true,
             'deletedAt'
@@ -78,16 +80,16 @@ class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
             $auditManager,
             $entityProcessor,
             self::createStub(TransactionIdGenerator::class),
-            self::createStub(AuditAccessHandler::class)
+            self::createStub(AuditAccessHandler::class),
+            self::createStub(EntityIdResolverInterface::class)
         );
     }
 
-    private function createAuditServiceStub(): AuditService
+    private function createAuditServiceStub(): AuditServiceInterface
     {
-        $auditLog = new AuditLog();
-        $auditLog->setAction('update');
+        $auditLog = new AuditLog(stdClass::class, '123', 'update');
 
-        $auditService = self::createStub(AuditService::class);
+        $auditService = self::createStub(AuditServiceInterface::class);
         $auditService->method('shouldAudit')->willReturn(true);
         $auditService->method('createAuditLog')->willReturn($auditLog);
 

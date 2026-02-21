@@ -1,7 +1,58 @@
+---
+# =============================================================================
+# Codacy Configuration File
+# Docs: https://docs.codacy.com/repositories-configure/codacy-configuration-file/
+# =============================================================================
 
+exclude_paths: # Global static analysis ignores
+  - "docs/**"
+  - "*.md"
+  - "tests/**"
+  - "phpunit.xml*"
+  - ".github/**"
+  - "src/DependencyInjection/**"
+  - "src/Resources/**"
+  - "src/AuditTrailBundle.php"
+  - "src/Entity/AuditLog.php"
+  - "vendor/**"
+  - "var/**"
+  - "bin/**"
+  - ".php-cs-fixer.cache"
+  - ".phpunit.result.cache"
+
+# =============================================================================
+# Explicit Coverage Exclusions
+# =============================================================================
+coverage:
+  exclude_paths:
+    - "docs/**"
+    - "*.md"
+    - "tests/**"
+    - "phpunit.xml*"
+    - ".github/**"
+    - "src/DependencyInjection/**"
+    - "src/Resources/**"
+    - "src/AuditTrailBundle.php"
+    - "vendor/**"
+
+# =============================================================================
+# Engine-specific overrides
+# =============================================================================
 engines:
   phpcs:
     exclude_paths:
-      - "src/Entity/AuditLog.php"
       - "src/Query/AuditEntry.php"
       - "src/Event/AuditLogCreatedEvent.php"
+
+  duplication:
+    minTokenMatch: 20
+    ignoreIdentifiers: true
+    ignoreLiterals: false
+
+# =============================================================================
+# Language configuration
+# =============================================================================
+languages:
+  php:
+    extensions:
+      - ".php"

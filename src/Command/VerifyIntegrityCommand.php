@@ -13,8 +13,10 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Uid\Uuid;
 
 use function count;
+use function is_string;
 use function sprintf;
 
 #[AsCommand(
@@ -36,7 +38,7 @@ final class VerifyIntegrityCommand extends Command
             'id',
             null,
             InputOption::VALUE_REQUIRED,
-            'Verify a specific audit log by ID'
+            'Verify a specific audit log by UUID'
         );
     }
 
@@ -51,26 +53,26 @@ final class VerifyIntegrityCommand extends Command
         }
 
         $logId = $input->getOption('id');
-        if (is_numeric($logId)) {
-            return $this->verifySingleLog((int) $logId, $io);
+        if (is_string($logId) && Uuid::isValid($logId)) {
+            return $this->verifySingleLog($logId, $io);
         }
 
         return $this->verifyAllLogs($io, $output);
     }
 
-    private function verifySingleLog(int $id, SymfonyStyle $io): int
+    private function verifySingleLog(string $id, SymfonyStyle $io): int
     {
         $log = $this->repository->find($id);
         if ($log === null) {
-            $io->error(sprintf('Audit log with ID %d not found.', $id));
+            $io->error(sprintf('Audit log with ID %s not found.', $id));
 
             return Command::FAILURE;
         }
 
-        $io->title(sprintf('Verifying Audit Log #%d', $id));
-        $io->writeln(sprintf('Entity: %s [%s]', $log->getEntityClass(), $log->getEntityId()));
-        $io->writeln(sprintf('Action: %s', $log->getAction()));
-        $io->writeln(sprintf('Created: %s', $log->getCreatedAt()->format('Y-m-d H:i:s')));
+        $io->title(sprintf('Verifying Audit Log #%s', $id));
+        $io->writeln(sprintf('Entity: %s [%s]', $log->entityClass, $log->entityId));
+        $io->writeln(sprintf('Action: %s', $log->action));
+        $io->writeln(sprintf('Created: %s', $log->createdAt->format('Y-m-d H:i:s')));
         $io->newLine();
 
         if ($this->integrityService->verifySignature($log)) {
@@ -84,9 +86,9 @@ final class VerifyIntegrityCommand extends Command
         if ($io->isVeryVerbose()) {
             $io->section('Debug Information');
             $io->writeln('<info>Expected Signature:</info> '.$this->integrityService->generateSignature($log));
-            $io->writeln('<info>Actual Signature:  </info> '.$log->getSignature());
-            $io->writeln('<info>Normalized Old Values:</info> '.json_encode($log->getOldValues()));
-            $io->writeln('<info>Normalized New Values:</info> '.json_encode($log->getNewValues()));
+            $io->writeln('<info>Actual Signature:  </info> '.$log->signature);
+            $io->writeln('<info>Normalized Old Values:</info> '.json_encode($log->oldValues));
+            $io->writeln('<info>Normalized New Values:</info> '.json_encode($log->newValues));
         }
 
         return Command::FAILURE;
@@ -114,11 +116,11 @@ final class VerifyIntegrityCommand extends Command
             foreach ($logs as $log) {
                 if (!$this->integrityService->verifySignature($log)) {
                     $tamperedLogs[] = [
-                        'id' => $log->getId(),
-                        'entity' => $log->getEntityClass(),
-                        'entity_id' => $log->getEntityId(),
-                        'action' => $log->getAction(),
-                        'created_at' => $log->getCreatedAt()->format('Y-m-d H:i:s'),
+                        'id' => $log->id?->toRfc4122(),
+                        'entity' => $log->entityClass,
+                        'entity_id' => $log->entityId,
+                        'action' => $log->action,
+                        'created_at' => $log->createdAt->format('Y-m-d H:i:s'),
                     ];
                 }
                 $progressBar->advance();

@@ -5,17 +5,19 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditReverter;
-use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\RevertValueDenormalizer;
-use Rcsofttech\AuditTrailBundle\Service\SoftDeleteHandler;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\DummyEntity;
 use RuntimeException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -28,7 +30,7 @@ class AuditRevertIntegrityTest extends TestCase
 
     private AuditIntegrityServiceInterface&MockObject $integrityService;
 
-    private SoftDeleteHandler&MockObject $softDeleteHandler;
+    private SoftDeleteHandlerInterface&MockObject $softDeleteHandler;
 
     private AuditReverter $reverter;
 
@@ -36,26 +38,24 @@ class AuditRevertIntegrityTest extends TestCase
     {
         $this->em = $this->createMock(EntityManagerInterface::class);
         $this->integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $this->softDeleteHandler = $this->createMock(SoftDeleteHandler::class);
+        $this->softDeleteHandler = $this->createMock(SoftDeleteHandlerInterface::class);
 
         $this->softDeleteHandler->method('disableSoftDeleteFilters')->willReturn([]);
 
         $this->reverter = new AuditReverter(
             $this->em,
             $this->createMock(ValidatorInterface::class),
-            $this->createMock(AuditService::class),
+            $this->createMock(AuditServiceInterface::class),
             new RevertValueDenormalizer($this->em),
             $this->softDeleteHandler,
-            $this->integrityService
+            $this->integrityService,
+            $this->createMock(AuditDispatcherInterface::class),
         );
     }
 
     public function testRevertFailsIfTampered(): void
     {
-        $log = new AuditLog();
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setEntityClass(DummyEntity::class);
-        $log->setEntityId('1');
+        $log = new AuditLog(entityClass: DummyEntity::class, entityId: '1', action: AuditLogInterface::ACTION_UPDATE);
 
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->integrityService->method('verifySignature')->with($log)->willReturn(false);
@@ -68,17 +68,18 @@ class AuditRevertIntegrityTest extends TestCase
 
     public function testRevertSucceedsIfAuthentic(): void
     {
-        $log = new AuditLog();
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setEntityClass(DummyEntity::class);
-        $log->setEntityId('1');
-        $log->setOldValues(['name' => 'John']);
+        $log = new AuditLog(
+            entityClass: DummyEntity::class,
+            entityId: '1',
+            action: AuditLogInterface::ACTION_UPDATE,
+            oldValues: ['name' => 'John']
+        );
 
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->integrityService->method('verifySignature')->with($log)->willReturn(true);
 
         $this->em->method('find')->willReturn(new DummyEntity());
-        $meta = $this->createMock(\Doctrine\ORM\Mapping\ClassMetadata::class);
+        $meta = $this->createMock(ClassMetadata::class);
         $meta->method('hasField')->willReturn(true);
         $meta->method('getFieldValue')->willReturn('different');
         $this->em->method('getClassMetadata')->willReturn($meta);
@@ -89,17 +90,18 @@ class AuditRevertIntegrityTest extends TestCase
 
     public function testRevertSucceedsIfIntegrityDisabled(): void
     {
-        $log = new AuditLog();
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setEntityClass(DummyEntity::class);
-        $log->setEntityId('1');
-        $log->setOldValues(['name' => 'John']);
+        $log = new AuditLog(
+            entityClass: DummyEntity::class,
+            entityId: '1',
+            action: AuditLogInterface::ACTION_UPDATE,
+            oldValues: ['name' => 'John']
+        );
 
         $this->integrityService->method('isEnabled')->willReturn(false);
         $this->integrityService->expects($this->never())->method('verifySignature');
 
         $this->em->method('find')->willReturn(new DummyEntity());
-        $meta = $this->createMock(\Doctrine\ORM\Mapping\ClassMetadata::class);
+        $meta = $this->createMock(ClassMetadata::class);
         $meta->method('hasField')->willReturn(true);
         $meta->method('getFieldValue')->willReturn('different');
         $this->em->method('getClassMetadata')->willReturn($meta);
@@ -110,10 +112,7 @@ class AuditRevertIntegrityTest extends TestCase
 
     public function testRevertSucceedsForRevertActionWithoutSignature(): void
     {
-        $log = new AuditLog();
-        $log->setAction(AuditLogInterface::ACTION_REVERT);
-        $log->setEntityClass(DummyEntity::class);
-        $log->setEntityId('1');
+        $log = new AuditLog(entityClass: DummyEntity::class, entityId: '1', action: AuditLogInterface::ACTION_REVERT);
 
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->integrityService->method('verifySignature')->with($log)->willReturn(true);

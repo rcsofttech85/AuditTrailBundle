@@ -16,6 +16,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use ReflectionClass;
 use Symfony\Bridge\Doctrine\ManagerRegistry;
+use Symfony\Component\Uid\Uuid;
 
 #[AllowMockObjectsWithoutExpectations]
 class AuditLogRepositoryTest extends TestCase
@@ -125,7 +126,7 @@ class AuditLogRepositoryTest extends TestCase
             'transactionHash' => 'tx1',
             'from' => new DateTimeImmutable(),
             'to' => new DateTimeImmutable(),
-            'afterId' => 10,
+            'afterId' => Uuid::v4()->toString(),
         ];
 
         // Verify filter application
@@ -138,12 +139,12 @@ class AuditLogRepositoryTest extends TestCase
     {
         $this->setupQueryBuilderDefaults(false); // Don't mock getResult yet
 
-        $filters = ['beforeId' => 10];
+        $filters = ['beforeId' => Uuid::v4()->toString()];
 
         $this->qb->expects($this->once())->method('andWhere')->with('a.id > :beforeId');
         $this->qb->expects($this->once())->method('orderBy')->with('a.id', 'ASC');
 
-        $log = new AuditLog();
+        $log = new AuditLog('Class', '1', 'create');
         $this->query->method('getResult')->willReturn([$log]);
 
         $result = $this->repository->findWithFilters($filters);
@@ -165,12 +166,13 @@ class AuditLogRepositoryTest extends TestCase
     {
         $this->setupQueryBuilderDefaults(false);
 
-        $filters = ['beforeId' => 10];
+        $uuid = Uuid::v4()->toString();
+        $filters = ['beforeId' => $uuid];
 
-        $log1 = new AuditLog();
-        $this->setLogId($log1, 11);
-        $log2 = new AuditLog();
-        $this->setLogId($log2, 12);
+        $log1 = new AuditLog('Class', '1', 'create');
+        $this->setLogId($log1, Uuid::v4()->toString());
+        $log2 = new AuditLog('Class', '2', 'create');
+        $this->setLogId($log2, Uuid::v4()->toString());
 
         // Results from DB will be ASC: [11, 12]
         $this->query->method('getResult')->willReturn([$log1, $log2]);
@@ -216,12 +218,25 @@ class AuditLogRepositoryTest extends TestCase
         $this->repository->findWithFilters($filters);
     }
 
+    public function testFindWithFiltersShortNameWithWildcards(): void
+    {
+        $this->setupQueryBuilderDefaults();
+
+        $filters = ['entityClass' => 'Audit%_Log'];
+
+        $this->qb->expects($this->once())->method('andWhere')->with('a.entityClass LIKE :entityClass');
+        // Should be escaped as \% and \_
+        $this->qb->expects($this->once())->method('setParameter')->with('entityClass', '%Audit\%\_Log%');
+
+        $this->repository->findWithFilters($filters);
+    }
+
     public function testFindByUserReturnsAllResults(): void
     {
         $this->setupQueryBuilderDefaults(false);
 
-        $log1 = new AuditLog();
-        $log2 = new AuditLog();
+        $log1 = new AuditLog('Class', '1', 'create');
+        $log2 = new AuditLog('Class', '2', 'create');
         $this->query->method('getResult')->willReturn([$log1, $log2]);
 
         $result = $this->repository->findByUser('1');
@@ -234,8 +249,8 @@ class AuditLogRepositoryTest extends TestCase
     {
         $this->setupQueryBuilderDefaults(false);
 
-        $log1 = new AuditLog();
-        $log2 = new AuditLog();
+        $log1 = new AuditLog('Class', '1', 'create');
+        $log2 = new AuditLog('Class', '1', 'update');
         $this->query->method('getResult')->willReturn([$log1, $log2]);
 
         $result = $this->repository->findByEntity('Class', '1');
@@ -246,8 +261,8 @@ class AuditLogRepositoryTest extends TestCase
     {
         $this->setupQueryBuilderDefaults(false);
 
-        $log1 = new AuditLog();
-        $log2 = new AuditLog();
+        $log1 = new AuditLog('Class', '1', 'create');
+        $log2 = new AuditLog('Class', '2', 'update');
         $this->query->method('getResult')->willReturn([$log1, $log2]);
 
         $result = $this->repository->findByTransactionHash('tx1');
@@ -271,10 +286,10 @@ class AuditLogRepositoryTest extends TestCase
         self::assertEquals(10, $this->repository->countOlderThan(new DateTimeImmutable()));
     }
 
-    private function setLogId(AuditLog $log, int $id): void
+    private function setLogId(AuditLog $log, string $id): void
     {
         $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
-        $property->setValue($log, $id);
+        $property->setValue($log, Uuid::fromString($id));
     }
 }

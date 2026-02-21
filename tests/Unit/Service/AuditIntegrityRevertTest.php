@@ -20,44 +20,42 @@ class AuditIntegrityRevertTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->service = new AuditIntegrityService('secret', 'sha256', true);
+        $this->service = new AuditIntegrityService('secret', true, 'sha256');
     }
 
-    public function testVerifySignatureAllowsRevertWithoutSignature(): void
+    public function testVerifySignatureRejectsRevertWithoutSignature(): void
     {
-        $log = new AuditLog();
-        $log->setAction(AuditLogInterface::ACTION_REVERT);
-        $log->setSignature(null);
+        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_REVERT);
+        $log->signature = null;
 
-        self::assertTrue($this->service->verifySignature($log));
+        self::assertFalse($this->service->verifySignature($log));
     }
 
     public function testVerifySignatureFailsForOtherActionsWithoutSignature(): void
     {
-        $log = new AuditLog();
-        $log->setAction(AuditLogInterface::ACTION_UPDATE);
-        $log->setSignature(null);
+        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_UPDATE);
+        $log->signature = null;
 
         self::assertFalse($this->service->verifySignature($log));
     }
 
     public function testVerifySignatureWorksForRevertWithSignature(): void
     {
-        $log = new AuditLog();
-        $log->setAction(AuditLogInterface::ACTION_REVERT);
-        $log->setEntityClass('App\Entity\User');
-        $log->setEntityId('1');
-        $log->setOldValues(['name' => 'John']);
-        $log->setNewValues(null);
-        $log->setCreatedAt(new DateTimeImmutable());
+        $log = new AuditLog(
+            'App\Entity\User',
+            '1',
+            AuditLogInterface::ACTION_REVERT,
+            new DateTimeImmutable('2024-01-01 12:00:00'),
+            ['name' => 'John']
+        );
 
         $signature = $this->service->generateSignature($log);
-        $log->setSignature($signature);
+        $log->signature = $signature;
 
         self::assertTrue($this->service->verifySignature($log));
 
         // Tamper it
-        $log->setEntityId('2');
+        $log->entityId = '2';
         self::assertFalse($this->service->verifySignature($log));
     }
 }

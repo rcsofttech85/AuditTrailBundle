@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 use OverflowException;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
@@ -20,14 +21,14 @@ class ScheduledAuditManagerTest extends TestCase
     {
         $manager = new ScheduledAuditManager();
         $entity = new stdClass();
-        $log = new AuditLog();
+        $log = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
 
         $manager->schedule($entity, $log, true);
 
-        self::assertTrue($manager->hasScheduledAudits());
-        self::assertEquals(1, $manager->countScheduled());
+        self::assertNotEmpty($manager->scheduledAudits);
+        self::assertCount(1, $manager->scheduledAudits);
 
-        $audits = $manager->getScheduledAudits();
+        $audits = $manager->scheduledAudits;
         self::assertCount(1, $audits);
         self::assertSame($entity, $audits[0]['entity']);
         self::assertSame($log, $audits[0]['audit']);
@@ -38,7 +39,7 @@ class ScheduledAuditManagerTest extends TestCase
     {
         $manager = new ScheduledAuditManager();
         $entity = new stdClass();
-        $log = new AuditLog();
+        $log = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
 
         // Fill up to max (1000)
         for ($i = 0; $i < 1000; ++$i) {
@@ -57,7 +58,7 @@ class ScheduledAuditManagerTest extends TestCase
             ->with(self::isInstanceOf(AuditLogCreatedEvent::class), AuditLogCreatedEvent::NAME);
 
         $manager = new ScheduledAuditManager($dispatcher);
-        $manager->schedule(new stdClass(), new AuditLog(), false);
+        $manager->schedule(new stdClass(), new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE), false);
     }
 
     public function testPendingDeletions(): void
@@ -68,7 +69,7 @@ class ScheduledAuditManagerTest extends TestCase
 
         $manager->addPendingDeletion($entity, $data, true);
 
-        $deletions = $manager->getPendingDeletions();
+        $deletions = $manager->pendingDeletions;
         self::assertCount(1, $deletions);
         self::assertSame($entity, $deletions[0]['entity']);
         self::assertSame($data, $deletions[0]['data']);
@@ -78,13 +79,12 @@ class ScheduledAuditManagerTest extends TestCase
     public function testClear(): void
     {
         $manager = new ScheduledAuditManager();
-        $manager->schedule(new stdClass(), new AuditLog(), true);
+        $manager->schedule(new stdClass(), new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE), true);
         $manager->addPendingDeletion(new stdClass(), [], true);
 
         $manager->clear();
 
-        self::assertFalse($manager->hasScheduledAudits());
-        self::assertEquals(0, $manager->countScheduled());
-        self::assertEmpty($manager->getPendingDeletions());
+        self::assertEmpty($manager->scheduledAudits);
+        self::assertEmpty($manager->pendingDeletions);
     }
 }

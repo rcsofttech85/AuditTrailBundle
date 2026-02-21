@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Throwable;
 
 use function array_key_exists;
@@ -16,7 +17,7 @@ class EntityDataExtractor
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly ValueSerializer $serializer,
+        private ValueSerializerInterface $serializer,
         private readonly MetadataCache $metadataCache,
         private readonly ?LoggerInterface $logger = null,
     ) {
@@ -79,12 +80,22 @@ class EntityDataExtractor
      */
     private function processAssociations(ClassMetadata $meta, object $entity, array $ignored, array &$data): void
     {
+        $uow = $this->entityManager->getUnitOfWork();
+
         foreach ($meta->getAssociationNames() as $assoc) {
             if (in_array($assoc, $ignored, true)) {
                 continue;
             }
 
             $value = $this->getFieldValueSafely($meta, $entity, $assoc);
+
+            // Optimization: If it's an uninitialized proxy, extract only the ID to prevent N+1 query
+            if ($value instanceof \Doctrine\Persistence\Proxy && !$value->__isInitialized()) {
+                $identifier = $uow->getEntityIdentifier($value);
+                $data[$assoc] = $this->serializer->serialize($identifier);
+                continue;
+            }
+
             $data[$assoc] = $this->serializer->serializeAssociation($value);
         }
     }

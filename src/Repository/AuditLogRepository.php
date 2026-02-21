@@ -138,9 +138,10 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
             $qb->andWhere('a.entityClass = :entityClass')
                 ->setParameter('entityClass', $entityClass);
         } else {
-            // Partial match for short names
+            // Partial match for short names - escape wildcards
+            $escaped = addcslashes($entityClass, '%_');
             $qb->andWhere('a.entityClass LIKE :entityClass')
-                ->setParameter('entityClass', '%'.$entityClass.'%');
+                ->setParameter('entityClass', '%'.$escaped.'%');
         }
     }
 
@@ -204,6 +205,22 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
         }
 
         $qb->orderBy('a.id', $order);
+    }
+
+    /**
+     * Find audit logs older than a given date.
+     *
+     * @return array<AuditLog>
+     */
+    #[Override]
+    public function findOlderThan(DateTimeImmutable $before): array
+    {
+        return $this->createQueryBuilder('a')
+            ->where('a.createdAt < :before')
+            ->setParameter('before', $before)
+            ->orderBy('a.createdAt', 'ASC')
+            ->getQuery()
+            ->getResult();
     }
 
     /**

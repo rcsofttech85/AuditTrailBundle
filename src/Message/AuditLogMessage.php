@@ -4,15 +4,17 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Message;
 
-use DateTimeImmutable;
 use DateTimeInterface;
 use JsonSerializable;
 use Override;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Symfony\Component\Messenger\Attribute\AsMessage;
 
+/**
+ * Represents an audit log message for queue transport.
+ */
 #[AsMessage(transport: 'audit_trail')]
-final readonly class AuditLogMessage implements JsonSerializable
+readonly class AuditLogMessage implements JsonSerializable
 {
     /**
      * @param array<string, mixed>|null $oldValues
@@ -32,29 +34,27 @@ final readonly class AuditLogMessage implements JsonSerializable
         public ?string $ipAddress,
         public ?string $userAgent,
         public ?string $transactionHash,
-        public ?string $signature,
-        public array $context,
-        public DateTimeImmutable $createdAt,
+        public string $createdAt,
+        public array $context = [],
     ) {
     }
 
-    public static function createFromAuditLog(AuditLogInterface $log, string $entityId): self
+    public static function createFromAuditLog(AuditLog $log, ?string $resolvedEntityId = null): self
     {
         return new self(
-            $log->getEntityClass(),
-            $entityId,
-            $log->getAction(),
-            $log->getOldValues(),
-            $log->getNewValues(),
-            $log->getChangedFields(),
-            $log->getUserId(),
-            $log->getUsername(),
-            $log->getIpAddress(),
-            $log->getUserAgent(),
-            $log->getTransactionHash(),
-            $log->getSignature(),
-            $log->getContext(),
-            $log->getCreatedAt()
+            entityClass: $log->entityClass,
+            entityId: $resolvedEntityId ?? $log->entityId,
+            action: $log->action,
+            oldValues: $log->oldValues,
+            newValues: $log->newValues,
+            changedFields: $log->changedFields,
+            userId: $log->userId,
+            username: $log->username,
+            ipAddress: $log->ipAddress,
+            userAgent: $log->userAgent,
+            transactionHash: $log->transactionHash,
+            createdAt: $log->createdAt->format(DateTimeInterface::ATOM),
+            context: $log->context,
         );
     }
 
@@ -76,9 +76,8 @@ final readonly class AuditLogMessage implements JsonSerializable
             'ip_address' => $this->ipAddress,
             'user_agent' => $this->userAgent,
             'transaction_hash' => $this->transactionHash,
-            'signature' => $this->signature,
+            'created_at' => $this->createdAt,
             'context' => $this->context,
-            'created_at' => $this->createdAt->format(DateTimeInterface::ATOM),
         ];
     }
 }

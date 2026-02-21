@@ -13,6 +13,8 @@ use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubUserWithoutId;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\Security\Core\Authentication\Token\SwitchUserToken;
+use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 
 use function strlen;
@@ -120,5 +122,142 @@ class UserResolverTest extends TestCase
         $this->requestStack->method('getCurrentRequest')->willReturn($request);
         $resolver = new UserResolver($this->security, $this->requestStack, true, true);
         self::assertStringContainsString('cli-console', (string) $resolver->getUserAgent());
+    }
+
+    public function testGetImpersonatorId(): void
+    {
+        $resolver = new UserResolver($this->security, $this->requestStack);
+        $this->security->method('getToken')->willReturn(null);
+        self::assertNull($resolver->getImpersonatorId());
+
+        $token = $this->createMock(SwitchUserToken::class);
+        $originalToken = $this->createMock(TokenInterface::class);
+        $originalToken->method('getUser')->willReturn(new StubUserWithId());
+        $token->method('getOriginalToken')->willReturn($originalToken);
+
+        $this->security = $this->createMock(Security::class);
+        $this->security->method('getToken')->willReturn($token);
+
+        $resolver = new UserResolver($this->security, $this->requestStack);
+        self::assertEquals('123', $resolver->getImpersonatorId());
+    }
+
+    public function testGetImpersonatorUsername(): void
+    {
+        $resolver = new UserResolver($this->security, $this->requestStack);
+        $this->security->method('getToken')->willReturn(null);
+        self::assertNull($resolver->getImpersonatorUsername());
+
+        $token = $this->createMock(SwitchUserToken::class);
+        $originalToken = $this->createMock(TokenInterface::class);
+        $user = $this->createMock(UserInterface::class);
+        $user->method('getUserIdentifier')->willReturn('superadmin');
+        $originalToken->method('getUser')->willReturn($user);
+        $token->method('getOriginalToken')->willReturn($originalToken);
+
+        $this->security = $this->createMock(Security::class);
+        $this->security->method('getToken')->willReturn($token);
+
+        $resolver = new UserResolver($this->security, $this->requestStack);
+        self::assertEquals('superadmin', $resolver->getImpersonatorUsername());
+    }
+
+    public function testGetImpersonatorIdWithoutIdMethod(): void
+    {
+        $token = $this->createMock(SwitchUserToken::class);
+        $originalToken = $this->createMock(TokenInterface::class);
+        $user = new StubUserWithoutId();
+        $originalToken->method('getUser')->willReturn($user);
+        $token->method('getOriginalToken')->willReturn($originalToken);
+
+        $security = $this->createMock(Security::class);
+        $security->method('getToken')->willReturn($token);
+
+        $resolver = new UserResolver($security, new RequestStack());
+        self::assertNull($resolver->getImpersonatorId());
+    }
+
+    public function testGetImpersonatorIdWhenIdNotScalarOrStringable(): void
+    {
+        $token = $this->createMock(SwitchUserToken::class);
+        $originalToken = $this->createMock(TokenInterface::class);
+        $user = new class implements UserInterface {
+            /** @return array<mixed> */
+            public function getId(): array
+            {
+                return [];
+            }
+
+            public function getUserIdentifier(): string
+            {
+                return 'user';
+            }
+
+            /** @return array<string> */
+            public function getRoles(): array
+            {
+                return [];
+            }
+
+            public function eraseCredentials(): void
+            {
+            }
+        };
+        $originalToken->method('getUser')->willReturn($user);
+        $token->method('getOriginalToken')->willReturn($originalToken);
+
+        $security = $this->createMock(Security::class);
+        $security->method('getToken')->willReturn($token);
+
+        $resolver = new UserResolver($security, new RequestStack());
+        self::assertNull($resolver->getImpersonatorId());
+    }
+
+    public function testGetUserIdWhenIdNotScalarOrStringable(): void
+    {
+        $security = $this->createMock(Security::class);
+        $user = new class implements UserInterface {
+            /** @return array<mixed> */
+            public function getId(): array
+            {
+                return [];
+            }
+
+            public function getUserIdentifier(): string
+            {
+                return 'user_identifier';
+            }
+
+            /** @return array<string> */
+            public function getRoles(): array
+            {
+                return [];
+            }
+
+            public function eraseCredentials(): void
+            {
+            }
+        };
+        $security->method('getUser')->willReturn($user);
+
+        $resolver = new UserResolver($security, new RequestStack());
+        self::assertEquals('user_identifier', $resolver->getUserId());
+    }
+
+    public function testGetIpAddressInCliWithoutRequestUsesHostname(): void
+    {
+        $resolver = new UserResolver($this->createMock(Security::class), new RequestStack(), true, true);
+
+        $ip = $resolver->getIpAddress();
+        self::assertIsString($ip); // In CLI it uses gethostbyname
+    }
+
+    public function testGetUserAgentInCliWithoutRequestUsesHostname(): void
+    {
+        $resolver = new UserResolver($this->createMock(Security::class), new RequestStack(), true, true);
+
+        $ua = $resolver->getUserAgent();
+        self::assertIsString($ua);
+        self::assertStringContainsString('cli-console', $ua);
     }
 }

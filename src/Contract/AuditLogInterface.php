@@ -4,27 +4,10 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Contract;
 
-use DateTimeImmutable;
-
-/**
- * @property int|null                  $id
- * @property string                    $entityClass
- * @property string                    $entityId
- * @property string                    $action
- * @property array<string, mixed>|null $oldValues
- * @property array<string, mixed>|null $newValues
- * @property array<int, string>|null   $changedFields
- * @property string|null               $userId
- * @property string|null               $username
- * @property string|null               $ipAddress
- * @property string|null               $userAgent
- * @property string|null               $transactionHash
- * @property DateTimeImmutable         $createdAt
- * @property string|null               $signature
- * @property array<string, mixed>      $context
- */
 interface AuditLogInterface
 {
+    public const string PENDING_ID = 'pending';
+
     public const string ACTION_CREATE = 'create';
 
     public const string ACTION_UPDATE = 'update';
@@ -39,89 +22,24 @@ interface AuditLogInterface
 
     public const string ACTION_ACCESS = 'access';
 
+    public const array ALL_ACTIONS = [
+        self::ACTION_CREATE,
+        self::ACTION_UPDATE,
+        self::ACTION_DELETE,
+        self::ACTION_SOFT_DELETE,
+        self::ACTION_RESTORE,
+        self::ACTION_REVERT,
+        self::ACTION_ACCESS,
+    ];
+
     public const string CONTEXT_USER_ID = '_audit_user_id';
 
     public const string CONTEXT_USERNAME = '_audit_username';
 
-    public function getId(): ?int;
+    public string $entityId { get; set; }
 
-    public function getEntityClass(): string;
+    /** @var array<string, mixed> */
+    public array $context { get; set; }
 
-    public function setEntityClass(string $entityClass): self;
-
-    public function getEntityId(): string;
-
-    public function setEntityId(string $entityId): self;
-
-    public function getAction(): string;
-
-    public function setAction(string $action): self;
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    public function getOldValues(): ?array;
-
-    /**
-     * @param array<string, mixed>|null $oldValues
-     */
-    public function setOldValues(?array $oldValues): self;
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    public function getNewValues(): ?array;
-
-    /**
-     * @param array<string, mixed>|null $newValues
-     */
-    public function setNewValues(?array $newValues): self;
-
-    /**
-     * @return array<int, string>|null
-     */
-    public function getChangedFields(): ?array;
-
-    /**
-     * @param array<int, string>|null $changedFields
-     */
-    public function setChangedFields(?array $changedFields): self;
-
-    public function getUserId(): ?string;
-
-    public function setUserId(?string $userId): self;
-
-    public function getUsername(): ?string;
-
-    public function setUsername(?string $username): self;
-
-    public function getIpAddress(): ?string;
-
-    public function setIpAddress(?string $ipAddress): self;
-
-    public function getUserAgent(): ?string;
-
-    public function setUserAgent(?string $userAgent): self;
-
-    public function getTransactionHash(): ?string;
-
-    public function setTransactionHash(?string $transactionHash): self;
-
-    public function getCreatedAt(): DateTimeImmutable;
-
-    public function setCreatedAt(DateTimeImmutable $createdAt): self;
-
-    public function getSignature(): ?string;
-
-    public function setSignature(?string $signature): self;
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function getContext(): array;
-
-    /**
-     * @param array<string, mixed> $context
-     */
-    public function setContext(array $context): self;
+    public ?string $signature { get; set; }
 }

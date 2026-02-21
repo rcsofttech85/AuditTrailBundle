@@ -13,10 +13,12 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
-use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 
 #[AllowMockObjectsWithoutExpectations]
@@ -26,23 +28,34 @@ final class AuditServiceTimezoneTest extends TestCase
     public function testCreateAuditLogWithCustomTimezone(): void
     {
         $entityManager = self::createStub(EntityManagerInterface::class);
-        $userResolver = self::createStub(UserResolverInterface::class);
         $clock = self::createStub(ClockInterface::class);
 
         // Mock current time as UTC
         $now = new DateTimeImmutable('2023-01-01 12:00:00', new DateTimeZone('UTC'));
         $clock->method('now')->willReturn($now);
 
+        $contextResolver = self::createStub(ContextResolverInterface::class);
+        $contextResolver->method('resolve')->willReturn([
+            'userId' => null,
+            'username' => null,
+            'ipAddress' => null,
+            'userAgent' => null,
+            'context' => [],
+        ]);
+
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolveFromEntity')->willReturn('1');
+        $metadataManager = self::createStub(AuditMetadataManagerInterface::class);
+
         // Configure service with 'Asia/Kolkata' (UTC+5:30)
         $service = new AuditService(
             $entityManager,
-            $userResolver,
             $clock,
             self::createStub(TransactionIdGenerator::class),
             self::createStub(EntityDataExtractor::class),
-            self::createStub(MetadataCache::class),
-            [],
-            [], // ignoredProperties
+            $metadataManager,
+            $contextResolver,
+            $idResolver,
             null,
             'Asia/Kolkata'
         );
@@ -61,8 +74,8 @@ final class AuditServiceTimezoneTest extends TestCase
 
         $auditLog = $service->createAuditLog($entity, AuditLogInterface::ACTION_CREATE);
 
-        self::assertEquals('Asia/Kolkata', $auditLog->getCreatedAt()->getTimezone()->getName());
-        self::assertEquals('2023-01-01 17:30:00', $auditLog->getCreatedAt()->format('Y-m-d H:i:s'));
+        self::assertEquals('Asia/Kolkata', $auditLog->createdAt->getTimezone()->getName());
+        self::assertEquals('2023-01-01 17:30:00', $auditLog->createdAt->format('Y-m-d H:i:s'));
     }
 
     public function testCreateAuditLogWithDefaultTimezone(): void
@@ -74,16 +87,27 @@ final class AuditServiceTimezoneTest extends TestCase
         $now = new DateTimeImmutable('2023-01-01 12:00:00', new DateTimeZone('UTC'));
         $clock->method('now')->willReturn($now);
 
+        $contextResolver = self::createStub(ContextResolverInterface::class);
+        $contextResolver->method('resolve')->willReturn([
+            'userId' => null,
+            'username' => null,
+            'ipAddress' => null,
+            'userAgent' => null,
+            'context' => [],
+        ]);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolveFromEntity')->willReturn('1');
+        $metadataManager = self::createStub(AuditMetadataManagerInterface::class);
+
         // Default timezone is UTC
         $service = new AuditService(
             $entityManager,
-            $userResolver,
             $clock,
             self::createStub(TransactionIdGenerator::class),
             self::createStub(EntityDataExtractor::class),
-            self::createStub(MetadataCache::class),
-            [],
-            [] // ignoredProperties
+            $metadataManager,
+            $contextResolver,
+            $idResolver
         );
 
         $entity = new class {
@@ -99,7 +123,7 @@ final class AuditServiceTimezoneTest extends TestCase
 
         $auditLog = $service->createAuditLog($entity, AuditLogInterface::ACTION_CREATE);
 
-        self::assertEquals('UTC', $auditLog->getCreatedAt()->getTimezone()->getName());
-        self::assertEquals('2023-01-01 12:00:00', $auditLog->getCreatedAt()->format('Y-m-d H:i:s'));
+        self::assertEquals('UTC', $auditLog->createdAt->getTimezone()->getName());
+        self::assertEquals('2023-01-01 12:00:00', $auditLog->createdAt->format('Y-m-d H:i:s'));
     }
 }

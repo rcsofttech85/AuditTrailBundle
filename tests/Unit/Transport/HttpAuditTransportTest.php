@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
 use stdClass;
@@ -24,18 +24,18 @@ class HttpAuditTransportTest extends TestCase
     {
         $client = $this->createMock(HttpClientInterface::class);
         $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
+        $idResolver = $this->createMock(EntityIdResolverInterface::class);
         $transport = new HttpAuditTransport(
             $client,
             'http://example.com',
             $integrityService,
+            $idResolver,
+            null,
             ['X-Test' => 'value'],
             10
         );
 
-        $log = new AuditLog();
-        $log->setEntityClass('TestEntity');
-        $log->setEntityId('1');
-        $log->setAction('create');
+        $log = new AuditLog('TestEntity', '1', 'create');
 
         $client->expects($this->once())
             ->method('request')
@@ -44,8 +44,11 @@ class HttpAuditTransportTest extends TestCase
                     && $options['timeout'] === 10
                     && isset($options['body']);
             }))
-            ->willReturnCallback(static function () {
-                return self::createStub(ResponseInterface::class);
+            ->willReturnCallback(function () {
+                $response = $this->createMock(ResponseInterface::class);
+                $response->method('getStatusCode')->willReturn(200);
+
+                return $response;
             });
 
         $transport->send($log, ['phase' => 'post_flush']);
@@ -55,19 +58,12 @@ class HttpAuditTransportTest extends TestCase
     {
         $client = $this->createMock(HttpClientInterface::class);
         $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService);
+        $idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver);
 
-        $log = new AuditLog();
-        $log->setEntityClass('TestEntity');
-        $log->setEntityId('pending');
-        $log->setAction('create');
+        $log = new AuditLog('TestEntity', 'pending', 'create');
 
-        $entity = new stdClass();
-        $em = self::createStub(EntityManagerInterface::class);
-        $meta = self::createStub(ClassMetadata::class);
-
-        $em->method('getClassMetadata')->willReturn($meta);
-        $meta->method('getIdentifierValues')->willReturn(['id' => 100]);
+        $idResolver->method('resolve')->willReturn('100');
 
         $client->expects($this->once())
             ->method('request')
@@ -78,7 +74,15 @@ class HttpAuditTransportTest extends TestCase
                     && $body['entity_id'] === '100'
                     && array_key_exists('changed_fields', $body);
             }))
-            ->willReturn(self::createStub(ResponseInterface::class));
+            ->willReturnCallback(function () {
+                $response = $this->createMock(ResponseInterface::class);
+                $response->method('getStatusCode')->willReturn(200);
+
+                return $response;
+            });
+
+        $entity = new stdClass();
+        $em = self::createStub(EntityManagerInterface::class);
 
         $transport->send($log, [
             'phase' => 'post_flush',
