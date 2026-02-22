@@ -40,6 +40,7 @@ final class DataMasker implements DataMaskerInterface
             }
 
             if (is_array($value)) {
+                /** @var array<string, mixed> $value */
                 $data[$key] = $this->redact($value);
             }
         }

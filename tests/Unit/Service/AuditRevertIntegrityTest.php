@@ -15,6 +15,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditReverter;
 use Rcsofttech\AuditTrailBundle\Service\RevertValueDenormalizer;
@@ -42,6 +43,9 @@ class AuditRevertIntegrityTest extends TestCase
 
         $this->softDeleteHandler->method('disableSoftDeleteFilters')->willReturn([]);
 
+        $serializer = $this->createMock(ValueSerializerInterface::class);
+        $serializer->method('serialize')->willReturnArgument(0);
+
         $this->reverter = new AuditReverter(
             $this->em,
             $this->createMock(ValidatorInterface::class),
@@ -50,6 +54,7 @@ class AuditRevertIntegrityTest extends TestCase
             $this->softDeleteHandler,
             $this->integrityService,
             $this->createMock(AuditDispatcherInterface::class),
+            $serializer,
         );
     }
 

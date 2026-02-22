@@ -27,8 +27,6 @@ class AuditAccessHandler implements ResetInterface
     /** @var array<string, bool> */
     private array $auditedEntities = [];
 
-    private ?bool $isGetRequest = null;
-
     /** @var array<string, bool> */
     private array $skipAccessCheck = [];
 
@@ -103,7 +101,6 @@ class AuditAccessHandler implements ResetInterface
     public function reset(): void
     {
         $this->auditedEntities = [];
-        $this->isGetRequest = null;
         $this->skipAccessCheck = [];
     }
 
@@ -143,7 +140,7 @@ class AuditAccessHandler implements ResetInterface
     {
         $method = $this->requestStack->getCurrentRequest()?->getMethod();
 
-        return $this->isGetRequest ??= ($method !== null && in_array($method, $this->auditedMethods, true));
+        return $method !== null && in_array($method, $this->auditedMethods, true);
     }
 
     private function shouldSkipAccessLog(string $requestKey, string $class, string $id, int $cooldown): bool

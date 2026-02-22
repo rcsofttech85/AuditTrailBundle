@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use BackedEnum;
 use DateTimeInterface;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\PersistentCollection;
 use Override;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
+use Stringable;
+use UnitEnum;
 
 use function is_array;
 use function is_object;
 use function is_resource;
+use function method_exists;
 use function sprintf;
 
 final readonly class ValueSerializer implements ValueSerializerInterface
@@ -35,9 +39,11 @@ final readonly class ValueSerializer implements ValueSerializerInterface
         }
 
         return match (true) {
+            $value === null => null,
             $value instanceof DateTimeInterface => $value->format(DateTimeInterface::ATOM),
+            $value instanceof UnitEnum => $this->serializeEnum($value),
             $value instanceof Collection => $this->serializeCollection($value, $depth),
-            is_object($value) => $this->serializeObject($value),
+            is_object($value) => $this->serializeObject($value, $depth),
             is_array($value) => array_map(
                 fn ($v) => $this->serialize($v, $depth + 1),
                 $value
@@ -110,23 +116,34 @@ final readonly class ValueSerializer implements ValueSerializerInterface
         );
     }
 
-    private function serializeObject(object $value): mixed
+    private function serializeObject(object $value, int $depth = 0): mixed
     {
         if (method_exists($value, 'getId')) {
-            return $value->getId();
+            $id = $value->getId();
+
+            // Handle IDs that are themselves objects (e.g. UUID objects)
+            return is_object($id) ? $this->serialize($id, $depth + 1) : $id;
         }
 
-        if (method_exists($value, '__toString')) {
+        if ($value instanceof Stringable || method_exists($value, '__toString')) {
             return (string) $value;
         }
 
         return $value::class;
     }
 
+    private function serializeEnum(UnitEnum $value): mixed
+    {
+        return $value instanceof BackedEnum ? $value->value : $value->name;
+    }
+
     private function extractEntityIdentifier(object $entity): mixed
     {
         if (method_exists($entity, 'getId')) {
-            return $entity->getId();
+            $id = $entity->getId();
+
+            // Recurse for object identifiers (like Uuid)
+            return is_object($id) ? $this->serialize($id) : $id;
         }
 
         return $entity::class;

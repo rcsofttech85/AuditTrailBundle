@@ -10,6 +10,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\DataMaskerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Stringable;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 use Throwable;
@@ -24,6 +25,7 @@ final class ContextResolver implements ContextResolverInterface
     public function __construct(
         private readonly UserResolverInterface $userResolver,
         private readonly DataMaskerInterface $dataMasker,
+        private readonly ValueSerializerInterface $serializer,
         #[AutowireIterator('audit_trail.context_contributor')]
         private readonly iterable $contributors = [],
         private readonly ?LoggerInterface $logger = null,
@@ -103,10 +105,16 @@ final class ContextResolver implements ContextResolverInterface
 
         // Add custom context from contributors
         foreach ($this->contributors as $contributor) {
-            $context = [
-                ...$context,
-                ...$contributor->contribute($entity, $action, $newValues),
-            ];
+            $contribution = $contributor->contribute($entity, $action, $newValues);
+
+            foreach ($contribution as $key => $val) {
+                $context[$key] = $val;
+            }
+        }
+
+        // This ensures extraContext and contributor data are both safe.
+        foreach ($context as $key => $value) {
+            $context[$key] = $this->serializer->serialize($value);
         }
 
         return $context;
