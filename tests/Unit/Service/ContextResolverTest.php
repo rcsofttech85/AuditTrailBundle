@@ -12,6 +12,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\DataMaskerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Service\ContextResolver;
 use RuntimeException;
 use stdClass;
@@ -35,11 +36,15 @@ final class ContextResolverTest extends TestCase
         $contributor = $this->createMock(AuditContextContributorInterface::class);
         $contributor->method('contribute')->willReturn(['custom' => 'data']);
 
+        $serializer = $this->createMock(ValueSerializerInterface::class);
+        $serializer->method('serialize')->willReturnArgument(0);
+
         $logger = $this->createMock(LoggerInterface::class);
 
         $resolver = new ContextResolver(
             $userResolver,
             $dataMasker,
+            $serializer,
             new ArrayIterator([$contributor]),
             $logger
         );
@@ -71,12 +76,15 @@ final class ContextResolverTest extends TestCase
         $dataMasker = $this->createMock(DataMaskerInterface::class);
         $dataMasker->method('redact')->willReturnArgument(0);
 
+        $serializer = $this->createMock(ValueSerializerInterface::class);
+
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects($this->once())->method('error');
 
         $resolver = new ContextResolver(
             $userResolver,
             $dataMasker,
+            $serializer,
             new ArrayIterator([]),
             $logger
         );

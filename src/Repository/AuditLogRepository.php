@@ -215,12 +215,15 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
     #[Override]
     public function findOlderThan(DateTimeImmutable $before): array
     {
-        return $this->createQueryBuilder('a')
+        /** @var array<AuditLog> $results */
+        $results = $this->createQueryBuilder('a')
             ->where('a.createdAt < :before')
             ->setParameter('before', $before)
             ->orderBy('a.createdAt', 'ASC')
             ->getQuery()
             ->getResult();
+
+        return $results;
     }
 
     /**

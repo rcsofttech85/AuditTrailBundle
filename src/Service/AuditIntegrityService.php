@@ -11,16 +11,24 @@ use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use RuntimeException;
+use Stringable;
 use Throwable;
 
+use function gettype;
+use function hash_equals;
 use function hash_hmac;
 use function is_array;
 use function is_bool;
 use function is_float;
 use function is_int;
+use function is_object;
+use function is_scalar;
 use function is_string;
 use function json_encode;
 use function ksort;
+use function method_exists;
+use function preg_match;
+use function sprintf;
 use function strlen;
 
 use const JSON_THROW_ON_ERROR;
@@ -32,10 +40,17 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
 {
     private readonly DateTimeZone $utc;
 
+    /**
+     * @var bool Read-only property check for integrity status using PHP 8.4 hooks.
+     */
+    public bool $isEnabled {
+        get => $this->enabled && $this->secret !== null;
+    }
+
     public function __construct(
-        private readonly ?string $secret = null,
-        private readonly bool $enabled = false,
-        private readonly string $algorithm = 'sha256',
+        private(set) ?string $secret = null,
+        public private(set) bool $enabled = false,
+        public private(set) string $algorithm = 'sha256',
     ) {
         $this->utc = new DateTimeZone('UTC');
     }
@@ -45,7 +60,7 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
     #[Override]
     public function isEnabled(): bool
     {
-        return $this->enabled && $this->secret !== null;
+        return $this->isEnabled;
     }
 
     #[Override]
@@ -64,7 +79,7 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
     #[Override]
     public function verifySignature(AuditLog $log): bool
     {
-        if (!$this->isEnabled()) {
+        if (!$this->isEnabled) {
             return true;
         }
 
@@ -141,31 +156,42 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
 
     private function normalizeValue(mixed $value, int $depth = 0): mixed
     {
-        if ($value === null) {
-            return 'n:';
+        return match (true) {
+            $value === null => 'n:',
+            is_bool($value) => sprintf('b:%d', $value ? 1 : 0),
+            is_int($value) => sprintf('i:%d', $value),
+            is_float($value) => sprintf('f:%F', $value),
+            is_string($value) => $this->normalizeString($value),
+            $value instanceof DateTimeInterface => $this->normalizeDateTime($value),
+            is_array($value) => $this->normalizeArray($value, $depth),
+            is_object($value) => $this->normalizeObject($value),
+            default => sprintf('s:%s', gettype($value)),
+        };
+    }
+
+    private function normalizeDateTime(DateTimeInterface $value): string
+    {
+        $dt = DateTimeImmutable::createFromInterface($value);
+
+        return sprintf('d:%s', $dt->setTimezone($this->utc)->format(DateTimeInterface::ATOM));
+    }
+
+    private function normalizeObject(object $value): string
+    {
+        if (method_exists($value, 'getId')) {
+            /** @var mixed $id */
+            $id = $value->getId();
+
+            if (is_scalar($id) || $id instanceof Stringable || (is_object($id) && method_exists($id, '__toString'))) {
+                return sprintf('s:%s', (string) $id);
+            }
+
+            return sprintf('o:%s', $value::class);
         }
 
-        if (is_bool($value)) {
-            return 'b:'.($value ? '1' : '0');
-        }
-
-        if (is_int($value)) {
-            return 'i:'.$value;
-        }
-
-        if (is_float($value)) {
-            return 'f:'.$value;
-        }
-
-        if (is_string($value)) {
-            return $this->normalizeString($value);
-        }
-
-        if (is_array($value)) {
-            return $this->normalizeArray($value, $depth);
-        }
-
-        return 's:'.(string) $value;
+        return $value instanceof Stringable || method_exists($value, '__toString')
+            ? sprintf('s:%s', (string) $value)
+            : sprintf('o:%s', $value::class);
     }
 
     private function normalizeString(string $value): string
@@ -184,7 +210,7 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
     }
 
     /**
-     * @param array<string, mixed>|array{date?: string, timezone?: string} $value
+     * @param array<mixed> $value
      */
     private function normalizeArray(array $value, int $depth): mixed
     {
@@ -193,11 +219,15 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
         }
 
         if (isset($value['date'], $value['timezone'])) {
-            try {
-                $dt = new DateTimeImmutable($value['date'], new DateTimeZone($value['timezone']));
+            $dateVal = $value['date'];
+            $tzVal = $value['timezone'];
+            if (is_string($dateVal) && is_string($tzVal)) {
+                try {
+                    $dt = new DateTimeImmutable($dateVal, new DateTimeZone($tzVal));
 
-                return 'd:'.$dt->setTimezone($this->utc)->format(DateTimeInterface::ATOM);
-            } catch (Throwable) {
+                    return $this->normalizeDateTime($dt);
+                } catch (Throwable) {
+                }
             }
         }
 

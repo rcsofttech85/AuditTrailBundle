@@ -17,8 +17,10 @@ abstract class AbstractFunctionalTestCase extends KernelTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // Reset static state on TestKernel to prevent cross-test contamination (DAMA protection)
+
         TestKernel::$useThrowingTransport = false;
+
+        $this->clearTestCache();
     }
 
     protected function tearDown(): void

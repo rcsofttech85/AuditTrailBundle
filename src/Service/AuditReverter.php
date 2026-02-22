@@ -13,6 +13,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use RuntimeException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -30,6 +31,7 @@ final readonly class AuditReverter implements AuditReverterInterface
         private SoftDeleteHandlerInterface $softDeleteHandler,
         private AuditIntegrityServiceInterface $integrityService,
         private AuditDispatcherInterface $dispatcher,
+        private ValueSerializerInterface $serializer,
     ) {
     }
 
@@ -124,10 +126,15 @@ final readonly class AuditReverter implements AuditReverterInterface
             'reverted_log_id' => $log->id?->toRfc4122(),
         ];
 
+        $serializedChanges = [];
+        foreach ($changes as $field => $value) {
+            $serializedChanges[$field] = $this->serializer->serialize($value);
+        }
+
         $revertLog = $this->auditService->createAuditLog(
             $entity,
             AuditLogInterface::ACTION_REVERT,
-            $isDelete ? null : $changes,
+            $isDelete ? null : $serializedChanges,
             null,
             $revertContext
         );
