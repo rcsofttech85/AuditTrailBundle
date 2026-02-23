@@ -6,7 +6,6 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\VerifyIntegrityCommand;
@@ -19,9 +18,10 @@ use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Uid\Uuid;
 
 #[AllowMockObjectsWithoutExpectations]
-#[CoversClass(VerifyIntegrityCommand::class)]
 class VerifyIntegrityCommandTest extends TestCase
 {
+    use ConsoleOutputTestTrait;
+
     private AuditLogRepository&MockObject $repository;
 
     private AuditIntegrityServiceInterface&MockObject $integrityService;
@@ -44,16 +44,6 @@ class VerifyIntegrityCommandTest extends TestCase
         $property->setValue($log, Uuid::fromString($id));
     }
 
-    private function normalizeOutput(): string
-    {
-        $output = $this->commandTester->getDisplay();
-        $regex = '/\x1b[[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/';
-        $output = (string) preg_replace($regex, '', $output);
-        $output = (string) preg_replace('/[!\[\]]+/', ' ', $output);
-
-        return (string) preg_replace('/\s+/', ' ', trim($output));
-    }
-
     public function testExecuteIntegrityDisabled(): void
     {
         $this->integrityService->method('isEnabled')->willReturn(false);
@@ -61,7 +51,7 @@ class VerifyIntegrityCommandTest extends TestCase
         $this->commandTester->execute([]);
 
         self::assertEquals(Command::FAILURE, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('not enabled', $this->normalizeOutput());
+        self::assertStringContainsString('not enabled', $this->normalizeOutput($this->commandTester));
     }
 
     public function testExecuteSingleLogNotFound(): void
@@ -72,7 +62,7 @@ class VerifyIntegrityCommandTest extends TestCase
         $this->commandTester->execute(['--id' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
 
         self::assertEquals(Command::FAILURE, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('not found', $this->normalizeOutput());
+        self::assertStringContainsString('not found', $this->normalizeOutput($this->commandTester));
     }
 
     public function testExecuteSingleLogValid(): void
@@ -86,7 +76,7 @@ class VerifyIntegrityCommandTest extends TestCase
         $this->commandTester->execute(['--id' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
 
         self::assertEquals(Command::SUCCESS, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Verifying Audit Log #018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', $output);
         self::assertStringContainsString('Entity: App\Entity\User 1', $output);
         self::assertStringContainsString('Action: update', $output);
@@ -105,7 +95,7 @@ class VerifyIntegrityCommandTest extends TestCase
         $this->commandTester->execute(['--id' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
 
         self::assertEquals(Command::FAILURE, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Signature', $output);
         self::assertStringContainsString('failed', $output);
     }
@@ -118,7 +108,7 @@ class VerifyIntegrityCommandTest extends TestCase
         $this->commandTester->execute([]);
 
         self::assertEquals(Command::SUCCESS, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('No audit logs found', $this->normalizeOutput());
+        self::assertStringContainsString('No audit logs found', $this->normalizeOutput($this->commandTester));
     }
 
     public function testExecuteAllLogsValid(): void
@@ -142,7 +132,7 @@ class VerifyIntegrityCommandTest extends TestCase
         $this->commandTester->execute([]);
 
         self::assertEquals(Command::SUCCESS, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Verifying Audit Log Integrity', $output);
         self::assertStringContainsString('All 2 audit logs verified', $output);
     }
@@ -160,7 +150,7 @@ class VerifyIntegrityCommandTest extends TestCase
         $this->commandTester->execute([]);
 
         self::assertEquals(Command::FAILURE, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Found 1 tampered', $output);
         self::assertStringContainsString('User 1 update 2024-01-01 10:00:00', $output);
     }
@@ -196,6 +186,6 @@ class VerifyIntegrityCommandTest extends TestCase
         $this->commandTester->execute([]);
 
         self::assertEquals(Command::SUCCESS, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('All 150 audit logs verified', $this->normalizeOutput());
+        self::assertStringContainsString('All 150 audit logs verified', $this->normalizeOutput($this->commandTester));
     }
 }

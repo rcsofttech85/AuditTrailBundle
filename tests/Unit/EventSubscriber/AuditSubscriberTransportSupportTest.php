@@ -10,7 +10,6 @@ use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
@@ -27,7 +26,6 @@ use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use stdClass;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
-#[CoversClass(AuditSubscriber::class)]
 #[AllowMockObjectsWithoutExpectations]
 class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
 {

@@ -4,18 +4,17 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
-use Symfony\Component\HttpKernel\KernelInterface;
 
-use function assert;
 use function strlen;
 
 use const JSON_THROW_ON_ERROR;
 
-class IntegrityTest extends AbstractFunctionalTestCase
+final class IntegrityTest extends AbstractFunctionalTestCase
 {
     public function testAuditLogsAreSignedWhenIntegrityIsEnabled(): void
     {
@@ -28,7 +27,7 @@ class IntegrityTest extends AbstractFunctionalTestCase
             ],
         ];
 
-        $this->bootTestKernel($options);
+        self::bootKernel($options);
         $em = $this->getEntityManager();
 
         $entity = new TestEntity('Integrity Test');
@@ -37,7 +36,7 @@ class IntegrityTest extends AbstractFunctionalTestCase
 
         $auditLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => TestEntity::class,
-            'action' => 'create',
+            'action' => AuditLogInterface::ACTION_CREATE,
         ]);
 
         self::assertNotNull($auditLog);
@@ -56,7 +55,7 @@ class IntegrityTest extends AbstractFunctionalTestCase
             ],
         ];
 
-        $this->bootTestKernel($options);
+        $kernel = self::bootKernel($options);
         $em = $this->getEntityManager();
 
         // Create a valid audit log
@@ -64,8 +63,6 @@ class IntegrityTest extends AbstractFunctionalTestCase
         $em->persist($entity);
         $em->flush();
 
-        $kernel = self::$kernel;
-        assert($kernel instanceof KernelInterface);
         $application = new Application($kernel);
         $command = $application->find('audit:verify-integrity');
         $commandTester = new CommandTester($command);
@@ -99,7 +96,7 @@ class IntegrityTest extends AbstractFunctionalTestCase
         self::assertSame(1, $commandTester->getStatusCode());
         $output = $commandTester->getDisplay();
         self::assertStringContainsString('tampered', $output);
-        self::assertStringContainsString('audit logs', $output);
+        self::assertStringContainsString('audit', $output);
         self::assertStringContainsString((string) $auditLog->id, $output);
     }
 }

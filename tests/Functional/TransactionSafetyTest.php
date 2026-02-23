@@ -15,12 +15,12 @@ use RuntimeException;
  * DAMA's internal savepoint (DAMA_TEST), corrupting the static connection state
  * for subsequent tests. Process isolation prevents this corruption from leaking.
  */
-class TransactionSafetyTest extends AbstractFunctionalTestCase
+final class TransactionSafetyTest extends AbstractFunctionalTestCase
 {
     protected function setUp(): void
     {
         parent::setUp();
-        // Enable throwing transport for this test class specifically
+        // Enable throwing transport for this test final class specifically
         TestKernel::$useThrowingTransport = true;
     }
 
@@ -31,7 +31,7 @@ class TransactionSafetyTest extends AbstractFunctionalTestCase
      */
     private function getFreshEntityManager(array $options): \Doctrine\ORM\EntityManagerInterface
     {
-        $this->bootTestKernel($options);
+        self::bootKernel($options);
 
         return $this->getEntityManager();
     }
@@ -46,7 +46,7 @@ class TransactionSafetyTest extends AbstractFunctionalTestCase
             ],
         ];
 
-        $this->bootTestKernel($options);
+        self::bootKernel($options);
 
         $em = $this->getEntityManager();
 
@@ -78,7 +78,7 @@ class TransactionSafetyTest extends AbstractFunctionalTestCase
             ],
         ];
 
-        $this->bootTestKernel($options);
+        self::bootKernel($options);
 
         $em = $this->getEntityManager();
 
@@ -101,7 +101,7 @@ class TransactionSafetyTest extends AbstractFunctionalTestCase
             ],
         ];
 
-        $this->bootTestKernel($options);
+        self::bootKernel($options);
 
         $em = $this->getEntityManager();
 

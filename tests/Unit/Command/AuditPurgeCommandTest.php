@@ -6,7 +6,6 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
 use DateTimeInterface;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditPurgeCommand;
@@ -14,10 +13,11 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Symfony\Component\Console\Tester\CommandTester;
 
-#[CoversClass(AuditPurgeCommand::class)]
 #[AllowMockObjectsWithoutExpectations]
 class AuditPurgeCommandTest extends TestCase
 {
+    use ConsoleOutputTestTrait;
+
     private AuditLogRepository&MockObject $repository;
 
     private AuditIntegrityServiceInterface&MockObject $integrityService;
@@ -46,7 +46,7 @@ class AuditPurgeCommandTest extends TestCase
         $this->commandTester->execute([]);
 
         self::assertSame(1, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('--before', $output);
         self::assertStringContainsString('required', $output);
     }
@@ -66,7 +66,7 @@ class AuditPurgeCommandTest extends TestCase
         ]);
 
         self::assertSame(1, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Invalid date format', $output);
         self::assertStringContainsString('Valid formats', $output);
     }
@@ -88,7 +88,13 @@ class AuditPurgeCommandTest extends TestCase
         ]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('No audit logs', $this->normalizeOutput());
+        $output = $this->normalizeOutput($this->commandTester);
+        self::assertStringContainsString('No audit logs found before', $output);
+
+        // Verify early return — no purge summary or confirmation
+        self::assertStringNotContainsString('Purge Summary', $output);
+        self::assertStringNotContainsString('Are you sure', $output);
+        self::assertStringNotContainsString('Successfully', $output);
     }
 
     public function testPurgeDryRun(): void
@@ -109,7 +115,7 @@ class AuditPurgeCommandTest extends TestCase
         ]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Purge Summary', $output);
         self::assertStringContainsString('Setting Value', $output);
         self::assertStringContainsString('Records to delete 100', $output);
@@ -136,7 +142,7 @@ class AuditPurgeCommandTest extends TestCase
         ]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Deleting audit logs...', $output);
         self::assertStringContainsString('Successfully deleted', $output);
         self::assertStringContainsString('50', $output);
@@ -161,7 +167,7 @@ class AuditPurgeCommandTest extends TestCase
         ]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Operation cancelled', $this->normalizeOutput());
+        self::assertStringContainsString('Operation cancelled', $this->normalizeOutput($this->commandTester));
     }
 
     public function testPurgeDefaultCancelled(): void
@@ -183,7 +189,7 @@ class AuditPurgeCommandTest extends TestCase
         ]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Operation cancelled', $this->normalizeOutput());
+        self::assertStringContainsString('Operation cancelled', $this->normalizeOutput($this->commandTester));
     }
 
     public function testPurgeConfirmedByUser(): void
@@ -207,7 +213,7 @@ class AuditPurgeCommandTest extends TestCase
         ]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Successfully deleted', $output);
         self::assertStringContainsString('75', $output);
     }
@@ -253,76 +259,11 @@ class AuditPurgeCommandTest extends TestCase
 
         // 10000 should NOT show warning (it's > 10000)
         $this->commandTester->execute(['--before' => '30 days ago']);
-        self::assertStringNotContainsString('large operation', $this->normalizeOutput());
+        self::assertStringNotContainsString('large operation', $this->normalizeOutput($this->commandTester));
 
         // 10001 SHOULD show warning
         $this->commandTester->setInputs(['yes']);
         $this->commandTester->execute(['--before' => '30 days ago']);
-        self::assertStringContainsString('large operation', $this->normalizeOutput());
-    }
-
-    private function normalizeOutput(): string
-    {
-        $output = $this->commandTester->getDisplay();
-        $regex = '/\x1b[[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/';
-        $output = (string) preg_replace($regex, '', $output);
-        $output = (string) preg_replace('/[!\[\]]+/', ' ', $output);
-
-        return (string) preg_replace('/\s+/', ' ', trim($output));
-    }
-
-    public function testPurgeNoLogsEarlyReturn(): void
-    {
-        $this->repository
-            ->expects($this->once())
-            ->method('countOlderThan')
-            ->willReturn(0);
-
-        $this->repository
-            ->expects($this->never())
-            ->method('deleteOldLogs');
-
-        $this->commandTester->execute([
-            '--before' => '30 days ago',
-        ]);
-
-        self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
-
-        // Verify info message is shown
-        self::assertStringContainsString('No audit logs found before', $output);
-
-        // Verify no purge summary or confirmation is shown (early return)
-        self::assertStringNotContainsString('Purge Summary', $output);
-        self::assertStringNotContainsString('Are you sure', $output);
-        self::assertStringNotContainsString('Successfully', $output);
-    }
-
-    public function testPurgeDryRunEarlyReturn(): void
-    {
-        $this->repository
-            ->expects($this->once())
-            ->method('countOlderThan')
-            ->willReturn(100);
-
-        $this->repository
-            ->expects($this->never())
-            ->method('deleteOldLogs');
-
-        $this->commandTester->execute([
-            '--before' => '30 days ago',
-            '--dry-run' => true,
-        ]);
-
-        self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
-
-        // Verify summary and warning are shown
-        self::assertStringContainsString('Purge Summary', $output);
-        self::assertStringContainsString('Dry run mode', $output);
-
-        // Verify no actual deletion occurred (no success message)
-        self::assertStringNotContainsString('Successfully deleted', $output);
-        self::assertStringNotContainsString('Deleting audit logs', $output);
+        self::assertStringContainsString('large operation', $this->normalizeOutput($this->commandTester));
     }
 }

@@ -24,7 +24,7 @@ use ReflectionProperty;
  * Covers internal mechanics (property hooks, reflection, serialization)
  * and external attack vectors (SQLi, CSRF, DoS, XSS).
  */
-class SecurityAuditTest extends AbstractFunctionalTestCase
+final class SecurityAuditTest extends AbstractFunctionalTestCase
 {
     private AuditIntegrityService $standaloneIntegrityService;
 
@@ -180,7 +180,7 @@ class SecurityAuditTest extends AbstractFunctionalTestCase
      */
     public function testRepositoryFilterInjection(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $repository = $this->getEntityManager()->getRepository(AuditLog::class);
 
         $filters = ['entityId' => "1' OR '1'='1", 'action' => "create'--"];
@@ -198,7 +198,7 @@ class SecurityAuditTest extends AbstractFunctionalTestCase
      */
     public function testExpressionLanguageVoterAttack(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         /** @var ExpressionLanguageVoter $voter */
         $voter = self::getContainer()->get(ExpressionLanguageVoter::class);
 
@@ -214,7 +214,7 @@ class SecurityAuditTest extends AbstractFunctionalTestCase
      */
     public function testMassIngestionDoS(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         $entity = new TestEntity('DoS Test');
@@ -238,7 +238,7 @@ class SecurityAuditTest extends AbstractFunctionalTestCase
      */
     public function testCircularReferenceDoS(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         /** @var ValueSerializerInterface $serializer */
         $serializer = self::getContainer()->get(ValueSerializerInterface::class);
 
@@ -256,7 +256,7 @@ class SecurityAuditTest extends AbstractFunctionalTestCase
      */
     public function testLogInjectionSanitization(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         $xss = "<script>alert('xss')</script>";

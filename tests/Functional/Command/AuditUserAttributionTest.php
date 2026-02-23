@@ -20,7 +20,7 @@ class AuditUserAttributionTest extends AbstractFunctionalTestCase
 {
     public function testAuditRevertWithUserOption(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         $entity = new TestEntity('Original');
@@ -53,7 +53,7 @@ class AuditUserAttributionTest extends AbstractFunctionalTestCase
 
     public function testAuditRevertDefaultCliUser(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         $entity = new TestEntity('Original');

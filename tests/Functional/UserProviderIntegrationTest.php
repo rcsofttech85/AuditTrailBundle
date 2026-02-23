@@ -14,11 +14,11 @@ use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 
 use function assert;
 
-class UserProviderIntegrationTest extends AbstractFunctionalTestCase
+final class UserProviderIntegrationTest extends AbstractFunctionalTestCase
 {
     public function testAuditLogCapturesCurrentUser(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         // Create a user
@@ -61,7 +61,7 @@ class UserProviderIntegrationTest extends AbstractFunctionalTestCase
 
     public function testAuditLogWithNoUser(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         // No token set

@@ -22,7 +22,7 @@ use function sprintf;
  * flush cycles occur for each entity type, proving the smart flush detection
  * in EntityProcessor::dispatchOrSchedule() works correctly.
  */
-class SmartFlushDetectionProofTest extends AbstractFunctionalTestCase
+final class SmartFlushDetectionProofTest extends AbstractFunctionalTestCase
 {
     private int $flushCount = 0;
 
@@ -95,7 +95,7 @@ class SmartFlushDetectionProofTest extends AbstractFunctionalTestCase
      */
     public function testAutoIncrementEntityRequiresDoubleFlush(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
         $this->attachFlushCounter($em);
 
@@ -138,7 +138,7 @@ class SmartFlushDetectionProofTest extends AbstractFunctionalTestCase
      */
     public function testUuidEntityRequiresSingleFlush(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
         $this->attachFlushCounter($em);
 
@@ -179,7 +179,7 @@ class SmartFlushDetectionProofTest extends AbstractFunctionalTestCase
      */
     public function testBothStrategiesProduceIdenticalAuditData(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         // Create auto-increment entity

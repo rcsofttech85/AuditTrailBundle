@@ -13,7 +13,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpKernel\KernelInterface;
 
 #[AllowMockObjectsWithoutExpectations]
-class InheritanceTest extends KernelTestCase
+final class InheritanceTest extends KernelTestCase
 {
     protected static function getKernelClass(): string
     {

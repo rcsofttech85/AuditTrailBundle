@@ -7,7 +7,6 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 use DateTimeImmutable;
 use DateTimeInterface;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditListCommand;
@@ -17,10 +16,11 @@ use ReflectionClass;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Uid\Uuid;
 
-#[CoversClass(AuditListCommand::class)]
 #[AllowMockObjectsWithoutExpectations]
 class AuditListCommandTest extends TestCase
 {
+    use ConsoleOutputTestTrait;
+
     private AuditLogRepository&MockObject $repository;
 
     private CommandTester $commandTester;
@@ -43,8 +43,14 @@ class AuditListCommandTest extends TestCase
         $this->commandTester->execute([]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('No audit logs found matching the criteria.', $output);
+
+        // Verify early return — no table is rendered
+        self::assertStringNotContainsString('Audit Logs', $output);
+        self::assertStringNotContainsString('Entity', $output);
+        self::assertStringNotContainsString('Action', $output);
+        self::assertStringNotContainsString('--details', $output);
     }
 
     public function testListWithResults(): void
@@ -60,7 +66,7 @@ class AuditListCommandTest extends TestCase
         $this->commandTester->execute([]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Audit Logs (1 results)', $output);
         self::assertStringContainsString('TestEntity', $output);
         self::assertStringContainsString('42', $output);
@@ -83,7 +89,7 @@ class AuditListCommandTest extends TestCase
         $this->commandTester->execute(['--details' => true]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         // Detailed view shows Entity ID but not Entity name or ID columns
         self::assertStringContainsString('42', $output);
         self::assertStringContainsString('Old Title', $output);
@@ -219,7 +225,7 @@ class AuditListCommandTest extends TestCase
         ]);
 
         self::assertSame(1, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Invalid action', $this->normalizeOutput());
+        self::assertStringContainsString('Invalid action', $this->normalizeOutput($this->commandTester));
     }
 
     public function testListWithLimitBoundaries(): void
@@ -227,12 +233,12 @@ class AuditListCommandTest extends TestCase
         // Test lower boundary
         $this->commandTester->execute(['--limit' => '0']);
         self::assertSame(1, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Limit must be between 1 and 1000', $this->normalizeOutput());
+        self::assertStringContainsString('Limit must be between 1 and 1000', $this->normalizeOutput($this->commandTester));
 
         // Test upper boundary
         $this->commandTester->execute(['--limit' => '1001']);
         self::assertSame(1, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Limit must be between 1 and 1000', $this->normalizeOutput());
+        self::assertStringContainsString('Limit must be between 1 and 1000', $this->normalizeOutput($this->commandTester));
     }
 
     public function testListWithInvalidFromDate(): void
@@ -246,7 +252,7 @@ class AuditListCommandTest extends TestCase
         ]);
 
         self::assertSame(1, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Invalid', $output);
         self::assertStringContainsString('from', $output);
     }
@@ -262,19 +268,9 @@ class AuditListCommandTest extends TestCase
         ]);
 
         self::assertSame(1, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Invalid', $output);
         self::assertStringContainsString('to', $output);
-    }
-
-    private function normalizeOutput(): string
-    {
-        $output = $this->commandTester->getDisplay();
-        $regex = '/\x1b[[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/';
-        $output = (string) preg_replace($regex, '', $output);
-        $output = (string) preg_replace('/[!\[\]]+/', ' ', $output);
-
-        return (string) preg_replace('/\s+/', ' ', trim($output));
     }
 
     private function createAuditLog(string $id, string $entityClass, string $entityId, string $action): AuditLog
@@ -293,31 +289,8 @@ class AuditListCommandTest extends TestCase
 
         $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
-        $property->setAccessible(true);
         $property->setValue($log, Uuid::fromString($id));
 
         return $log;
-    }
-
-    public function testListNoResultsEarlyReturn(): void
-    {
-        $this->repository
-            ->expects($this->once())
-            ->method('findWithFilters')
-            ->willReturn([]);
-
-        $this->commandTester->execute([]);
-
-        self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
-
-        // Verify info message is shown
-        self::assertStringContainsString('No audit logs found matching the criteria.', $output);
-
-        // Verify no table headers are shown (early return prevents table rendering)
-        self::assertStringNotContainsString('Audit Logs', $output);
-        self::assertStringNotContainsString('Entity', $output);
-        self::assertStringNotContainsString('Action', $output);
-        self::assertStringNotContainsString('--details', $output);
     }
 }
