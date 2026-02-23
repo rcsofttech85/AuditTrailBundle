@@ -157,7 +157,6 @@ final class AuditIntegrityServiceTest extends TestCase
         // Manual check of normalization behavior (internal)
         $reflection = new ReflectionClass($this->service);
         $method = $reflection->getMethod('normalizeValues');
-        $method->setAccessible(true);
         $result = $method->invoke($this->service, $deepArray);
 
         self::assertEquals('s:[max_depth]', $result['a']['b']['c']['d']['e']);
@@ -265,12 +264,10 @@ final class AuditIntegrityServiceTest extends TestCase
         $log = new AuditLog('Test', '1', 'update');
         $reflectionLog = new ReflectionClass($log);
         $property = $reflectionLog->getProperty('oldValues');
-        $property->setAccessible(true);
         $property->setValue($log, ['a' => ['b' => ['c' => ['d' => ['e' => ['f' => 'g']]]]]]);
 
         $reflection = new ReflectionClass($this->service);
         $method = $reflection->getMethod('normalizeValues');
-        $method->setAccessible(true);
 
         $result = $method->invoke($this->service, $log->oldValues);
         // Depth logic internal check, maximum depth replaces value with something max_depth_reached
@@ -285,7 +282,6 @@ final class AuditIntegrityServiceTest extends TestCase
     {
         $reflection = new ReflectionClass($this->service);
         $method = $reflection->getMethod('normalizeValues');
-        $method->setAccessible(true);
         $result = $method->invoke($this->service, ['a' => 'b'], 5); // 5 is max depth
         self::assertEquals(['_error' => 'max_depth_reached'], $result);
     }

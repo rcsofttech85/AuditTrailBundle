@@ -11,7 +11,7 @@ use Symfony\Component\HttpKernel\KernelInterface;
 
 use function assert;
 
-class PrependExtensionTest extends KernelTestCase
+final class PrependExtensionTest extends KernelTestCase
 {
     protected static function getKernelClass(): string
     {

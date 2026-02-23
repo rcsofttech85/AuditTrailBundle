@@ -10,11 +10,11 @@ use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\CooldownPost;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 
-class AuditAccessCooldownTest extends AbstractFunctionalTestCase
+final class AuditAccessCooldownTest extends AbstractFunctionalTestCase
 {
     public function testRequestLevelDeduplication(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
         $this->clearTestCache();
 
@@ -52,7 +52,7 @@ class AuditAccessCooldownTest extends AbstractFunctionalTestCase
     public function testPersistentCooldown(): void
     {
         // Persistent cooldown test
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
         $this->clearTestCache();
 
@@ -81,7 +81,7 @@ class AuditAccessCooldownTest extends AbstractFunctionalTestCase
         self::assertCount(1, $logs, 'First access should create exactly one log');
 
         // Shutdown and reboot to simulate new request
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         // Second access (within cooldown)

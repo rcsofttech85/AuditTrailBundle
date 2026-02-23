@@ -9,20 +9,17 @@ use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
-use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 
 #[AllowMockObjectsWithoutExpectations]
-#[CoversClass(AuditService::class)]
 final class AuditServiceTimezoneTest extends TestCase
 {
     public function testCreateAuditLogWithCustomTimezone(): void
@@ -81,7 +78,6 @@ final class AuditServiceTimezoneTest extends TestCase
     public function testCreateAuditLogWithDefaultTimezone(): void
     {
         $entityManager = self::createStub(EntityManagerInterface::class);
-        $userResolver = self::createStub(UserResolverInterface::class);
         $clock = self::createStub(ClockInterface::class);
 
         $now = new DateTimeImmutable('2023-01-01 12:00:00', new DateTimeZone('UTC'));

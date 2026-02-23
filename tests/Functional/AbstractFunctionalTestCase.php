@@ -37,16 +37,6 @@ abstract class AbstractFunctionalTestCase extends KernelTestCase
     }
 
     /**
-     * Helper to boot the kernel with optional custom configurations.
-     *
-     * @param array<string, mixed> $options
-     */
-    protected function bootTestKernel(array $options = []): void
-    {
-        self::bootKernel($options);
-    }
-
-    /**
      * @param array<mixed> $options
      */
     protected static function createKernel(array $options = []): KernelInterface

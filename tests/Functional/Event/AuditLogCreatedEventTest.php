@@ -27,7 +27,7 @@ class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
             ],
         ];
 
-        $this->bootTestKernel($options);
+        self::bootKernel($options);
         $container = self::getContainer();
 
         $integrityService = $container->get(AuditIntegrityService::class);

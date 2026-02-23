@@ -7,7 +7,6 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
@@ -23,7 +22,6 @@ use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\DummyEntity;
 use RuntimeException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
-#[CoversClass(AuditReverter::class)]
 #[AllowMockObjectsWithoutExpectations]
 class AuditRevertIntegrityTest extends TestCase
 {

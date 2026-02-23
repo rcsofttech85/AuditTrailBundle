@@ -13,7 +13,7 @@ use Symfony\Component\HttpKernel\KernelInterface;
 use function assert;
 use function is_array;
 
-class ConfigurationTest extends KernelTestCase
+final class ConfigurationTest extends KernelTestCase
 {
     protected static function getKernelClass(): string
     {

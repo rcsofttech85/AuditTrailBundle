@@ -12,6 +12,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use RuntimeException;
 use Stringable;
 
+use function count;
 use function in_array;
 use function is_array;
 use function is_scalar;
@@ -105,16 +106,10 @@ final readonly class AuditExporter implements AuditExporterInterface
     }
 
     /**
-     * @param AuditLog|array<string, mixed> $audit
-     *
      * @return array<string, mixed>
      */
-    public function auditToArray(AuditLog|array $audit): array
+    public function auditToArray(AuditLog $audit): array
     {
-        if (is_array($audit)) {
-            return $audit;
-        }
-
         return [
             'id' => $audit->id?->toRfc4122(),
             'entity_class' => $audit->entityClass,
@@ -138,10 +133,11 @@ final readonly class AuditExporter implements AuditExporterInterface
             return '0 B';
         }
 
-        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
         $i = (int) floor(log($bytes, 1024));
+        $i = min($i, count($units) - 1);
 
-        return sprintf('%.2f %s', $bytes / (1024 ** $i), $units[$i] ?? 'B');
+        return sprintf('%.2f %s', $bytes / (1024 ** $i), $units[$i]);
     }
 
     private function sanitizeCsvValue(string $value): string

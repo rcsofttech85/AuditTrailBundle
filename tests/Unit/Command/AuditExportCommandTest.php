@@ -6,7 +6,6 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditExportCommand;
@@ -16,10 +15,11 @@ use ReflectionClass;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Uid\Uuid;
 
-#[CoversClass(AuditExportCommand::class)]
 #[AllowMockObjectsWithoutExpectations]
 class AuditExportCommandTest extends TestCase
 {
+    use ConsoleOutputTestTrait;
+
     private AuditLogRepository&MockObject $repository;
 
     private CommandTester $commandTester;
@@ -41,8 +41,13 @@ class AuditExportCommandTest extends TestCase
         $this->commandTester->execute([]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('No audit logs found matching the criteria.', $output);
+
+        // Verify early return — no export data is shown
+        self::assertStringNotContainsString('Found', $output);
+        self::assertStringNotContainsString('Exported', $output);
+        self::assertStringNotContainsString('entity_class', $output);
     }
 
     public function testExportToJson(): void
@@ -59,7 +64,7 @@ class AuditExportCommandTest extends TestCase
         ]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Found 1 audit logs', $output);
         self::assertStringContainsString('"entity_class"', $output);
         self::assertStringContainsString('User', $output);
@@ -83,7 +88,7 @@ class AuditExportCommandTest extends TestCase
         ]);
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Exported 1 audit logs to', $output);
         self::assertFileExists($tempFile);
         self::assertStringContainsString('"entity_class"', (string) file_get_contents($tempFile));
@@ -121,7 +126,7 @@ class AuditExportCommandTest extends TestCase
         ]);
 
         self::assertSame(1, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Invalid format', $this->normalizeOutput());
+        self::assertStringContainsString('Invalid format', $this->normalizeOutput($this->commandTester));
     }
 
     public function testExportWithLimitBoundaries(): void
@@ -129,12 +134,12 @@ class AuditExportCommandTest extends TestCase
         // Test lower boundary
         $this->commandTester->execute(['--limit' => '0']);
         self::assertSame(1, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Limit must be between 1 and 100000', $this->normalizeOutput());
+        self::assertStringContainsString('Limit must be between 1 and 100000', $this->normalizeOutput($this->commandTester));
 
         // Test upper boundary
         $this->commandTester->execute(['--limit' => '100001']);
         self::assertSame(1, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Limit must be between 1 and 100000', $this->normalizeOutput());
+        self::assertStringContainsString('Limit must be between 1 and 100000', $this->normalizeOutput($this->commandTester));
     }
 
     public function testExportWithInvalidAction(): void
@@ -148,7 +153,7 @@ class AuditExportCommandTest extends TestCase
         ]);
 
         self::assertSame(1, $this->commandTester->getStatusCode());
-        self::assertStringContainsString('Invalid action', $this->normalizeOutput());
+        self::assertStringContainsString('Invalid action', $this->normalizeOutput($this->commandTester));
     }
 
     public function testExportWithFilters(): void
@@ -196,46 +201,14 @@ class AuditExportCommandTest extends TestCase
         self::assertSame(0, $this->commandTester->getStatusCode());
     }
 
-    private function normalizeOutput(): string
-    {
-        $output = $this->commandTester->getDisplay();
-        $regex = '/\x1b[[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/';
-        $output = (string) preg_replace($regex, '', $output);
-        $output = (string) preg_replace('/[!\[\]]+/', ' ', $output);
-
-        return (string) preg_replace('/\s+/', ' ', trim($output));
-    }
-
     private function createAuditLog(string $id, string $entityClass, string $entityId, string $action): AuditLog
     {
         $log = new AuditLog($entityClass, $entityId, $action, new DateTimeImmutable('2024-01-01 12:00:00'));
         $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
-        $property->setAccessible(true);
         $property->setValue($log, Uuid::fromString($id));
 
         return $log;
-    }
-
-    public function testExportNoResultsEarlyReturn(): void
-    {
-        $this->repository
-            ->expects($this->once())
-            ->method('findWithFilters')
-            ->willReturn([]);
-
-        $this->commandTester->execute([]);
-
-        self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
-
-        // Verify warning is shown
-        self::assertStringContainsString('No audit logs found matching the criteria.', $output);
-
-        // Verify no export data is shown (the early return prevents further processing)
-        self::assertStringNotContainsString('Found', $output);
-        self::assertStringNotContainsString('Exported', $output);
-        self::assertStringNotContainsString('entity_class', $output);
     }
 
     /**
@@ -252,7 +225,7 @@ class AuditExportCommandTest extends TestCase
         ]);
 
         self::assertSame(1, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Invalid "from" date', $output);
     }
 
@@ -270,7 +243,7 @@ class AuditExportCommandTest extends TestCase
         ]);
 
         self::assertSame(1, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Invalid "to" date', $output);
     }
 }

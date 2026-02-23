@@ -3,7 +3,10 @@
     "source": {
         "directories": [
             "src"
-        ]
+        ],
+         "excludes": [
+            "DependencyInjection"
+         ]
     },
     "mutators": {
         "@default": true

@@ -19,7 +19,7 @@ class AuditCommandTest extends AbstractFunctionalTestCase
 {
     public function testAuditListCommand(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         // Create some audit logs
@@ -42,7 +42,7 @@ class AuditCommandTest extends AbstractFunctionalTestCase
 
     public function testAuditDiffCommand(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         $entity = new TestEntity('Initial Name');
@@ -70,7 +70,7 @@ class AuditCommandTest extends AbstractFunctionalTestCase
 
     public function testAuditRevertCommand(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         $entity = new TestEntity('Original');
@@ -112,7 +112,7 @@ class AuditCommandTest extends AbstractFunctionalTestCase
 
     public function testAuditExportCommand(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         $entity = new TestEntity('Export Test');
@@ -140,7 +140,7 @@ class AuditCommandTest extends AbstractFunctionalTestCase
 
     public function testAuditPurgeCommand(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         $entity = new TestEntity('Purge Test');

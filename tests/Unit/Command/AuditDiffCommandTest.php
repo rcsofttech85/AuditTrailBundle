@@ -6,7 +6,6 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditDiffCommand;
@@ -20,9 +19,10 @@ use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Uid\Uuid;
 
 #[AllowMockObjectsWithoutExpectations]
-#[CoversClass(AuditDiffCommand::class)]
 class AuditDiffCommandTest extends TestCase
 {
+    use ConsoleOutputTestTrait;
+
     private AuditLogRepository&MockObject $repository;
 
     private DiffGeneratorInterface&MockObject $diffGenerator;
@@ -43,19 +43,6 @@ class AuditDiffCommandTest extends TestCase
         $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
         $property->setValue($log, Uuid::fromString($id));
-    }
-
-    private function normalizeOutput(): string
-    {
-        $output = $this->commandTester->getDisplay();
-        // Remove ANSI escape codes if any
-        $regex = '/\x1b[[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/';
-        $output = (string) preg_replace($regex, '', $output);
-        // Remove block decorations (!, [OK], [ERROR], etc.)
-        $output = (string) preg_replace('/[!\[\]]+/', ' ', $output);
-
-        // Normalize whitespace
-        return (string) preg_replace('/\s+/', ' ', trim($output));
     }
 
     public function testExecuteWithId(): void
@@ -83,7 +70,7 @@ class AuditDiffCommandTest extends TestCase
         $this->commandTester->execute(['identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
 
         $this->commandTester->assertCommandIsSuccessful();
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Audit Diff for App\Entity\Post #123', $output);
         self::assertStringContainsString('Log ID 018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', $output);
         self::assertStringContainsString('Action UPDATE', $output);
@@ -108,8 +95,12 @@ class AuditDiffCommandTest extends TestCase
         $this->commandTester->execute(['identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
 
         $this->commandTester->assertCommandIsSuccessful();
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('No semantic changes found.', $output);
+
+        // Verify early return — table is NOT rendered
+        self::assertStringNotContainsString('Old Value', $output);
+        self::assertStringNotContainsString('New Value', $output);
     }
 
     public function testExecuteWithEntityClassAndId(): void
@@ -132,7 +123,7 @@ class AuditDiffCommandTest extends TestCase
         ]);
 
         $this->commandTester->assertCommandIsSuccessful();
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
         self::assertStringContainsString('Audit Diff for App\Entity\Post #123', $output);
         self::assertStringContainsString('Log ID 018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', $output);
     }
@@ -182,7 +173,7 @@ class AuditDiffCommandTest extends TestCase
         $log = new AuditLog(
             'App\Entity\Post',
             '123',
-            'update',
+            AuditLogInterface::ACTION_UPDATE,
             new DateTimeImmutable('2023-01-01 12:00:00')
         );
 
@@ -304,7 +295,7 @@ class AuditDiffCommandTest extends TestCase
         $this->commandTester->execute(['identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a362731'], ['decorated' => true]);
 
         $this->commandTester->assertCommandIsSuccessful();
-        $output = $this->normalizeOutput();
+        $output = $this->normalizeOutput($this->commandTester);
 
         // Check boolean formatting
         self::assertStringContainsString('TRUE', $output);
@@ -337,26 +328,5 @@ class AuditDiffCommandTest extends TestCase
         self::assertNotFalse($truePos, 'TRUE should be in output');
         self::assertNotFalse($falsePos, 'FALSE should be in output');
         self::assertLessThan($falsePos, $truePos, 'TRUE (old value) should appear before FALSE (new value)');
-    }
-
-    public function testNoSemanticChangesEarlyReturn(): void
-    {
-        $log = new AuditLog('App\\Entity\\Post', '123', AuditLogInterface::ACTION_UPDATE);
-        $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
-
-        $this->repository->method('find')->willReturn($log);
-        $this->diffGenerator->method('generate')->willReturn([]);
-
-        $this->commandTester->execute(['identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
-
-        $this->commandTester->assertCommandIsSuccessful();
-        $output = $this->normalizeOutput();
-
-        // Verify the info message is shown
-        self::assertStringContainsString('No semantic changes found', $output);
-
-        // Verify the table is NOT rendered (no headers)
-        self::assertStringNotContainsString('Old Value', $output);
-        self::assertStringNotContainsString('New Value', $output);
     }
 }

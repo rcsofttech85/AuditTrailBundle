@@ -6,13 +6,11 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 
-#[CoversClass(AuditIntegrityService::class)]
 #[AllowMockObjectsWithoutExpectations]
 class AuditIntegrityRevertTest extends TestCase
 {

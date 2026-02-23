@@ -7,11 +7,11 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 
-class MultiEntityTransactionTest extends AbstractFunctionalTestCase
+final class MultiEntityTransactionTest extends AbstractFunctionalTestCase
 {
     public function testMultipleEntitiesInSingleTransactionHaveSameHash(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         $entity1 = new TestEntity('Entity 1');
@@ -30,7 +30,7 @@ class MultiEntityTransactionTest extends AbstractFunctionalTestCase
 
     public function testMultipleFlushesHaveDifferentHashes(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         $entity1 = new TestEntity('Entity 1');

@@ -16,11 +16,11 @@ use Symfony\Component\HttpKernel\KernelInterface;
 
 use function assert;
 
-class AuditAccessNoFlushTest extends AbstractFunctionalTestCase
+final class AuditAccessNoFlushTest extends AbstractFunctionalTestCase
 {
     public function testAccessLogNotSavedWithoutFlush(): void
     {
-        $this->bootTestKernel();
+        self::bootKernel();
         $em = $this->getEntityManager();
 
         // Simulate a GET request to allow access logs
