@@ -7,6 +7,9 @@ namespace Rcsofttech\AuditTrailBundle\DependencyInjection;
 use LogicException;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
+use Rcsofttech\AuditTrailBundle\MessageHandler\PersistAuditLogHandler;
+use Rcsofttech\AuditTrailBundle\Transport\AsyncDatabaseAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\ChainAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
@@ -47,8 +50,10 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
          *   integrity: array{enabled: bool, secret: ?string, algorithm: string},
          *   cache_pool: ?string,
          *   audited_methods: array<string>,
+         *   collection_serialization_mode: string,
+         *   max_collection_items: int,
          *   transports: array{
-         *     doctrine: bool,
+         *     database: array{enabled: bool, async: bool},
          *     http: array{enabled: bool, endpoint: string, headers: array<string, string>, timeout: int},
          *     queue: array{enabled: bool, api_key: ?string, bus: ?string}
          *   }
@@ -72,6 +77,8 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         $container->setParameter('audit_trail.fallback_to_database', $config['fallback_to_database']);
         $container->setParameter('audit_trail.cache_pool', $config['cache_pool']);
         $container->setParameter('audit_trail.audited_methods', $config['audited_methods']);
+        $container->setParameter('audit_trail.collection_serialization_mode', $config['collection_serialization_mode']);
+        $container->setParameter('audit_trail.max_collection_items', $config['max_collection_items']);
 
         if ($config['cache_pool'] !== null) {
             $container->setAlias('rcsofttech_audit_trail.cache', $config['cache_pool']);
@@ -110,7 +117,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     /**
      * @param array{
      *   transports: array{
-     *     doctrine: bool,
+     *     database: array{enabled: bool, async: bool},
      *     http: array{enabled: bool, endpoint: string, headers: array<string, string>, timeout: int},
      *     queue: array{enabled: bool, api_key: ?string, bus: ?string}
      *   }
@@ -120,8 +127,8 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     {
         $transports = [];
 
-        if ($config['transports']['doctrine'] === true) {
-            $transports[] = $this->registerDoctrineTransport($container);
+        if ($config['transports']['database']['enabled'] === true) {
+            $transports[] = $this->registerDatabaseTransport($container, $config['transports']['database']);
         }
 
         if ($config['transports']['http']['enabled'] === true) {
@@ -135,14 +142,52 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         $this->registerMainTransport($container, $transports);
     }
 
-    private function registerDoctrineTransport(ContainerBuilder $container): string
+    /**
+     * @param array{enabled: bool, async: bool} $config
+     */
+    private function registerDatabaseTransport(ContainerBuilder $container, array $config): string
     {
-        $id = 'rcsofttech_audit_trail.transport.doctrine';
+        if ($config['async']) {
+            return $this->registerAsyncDatabaseTransport($container);
+        }
+
+        $id = 'rcsofttech_audit_trail.transport.database';
         $container->register($id, DoctrineAuditTransport::class)
             ->setAutowired(true)
             ->addTag('audit_trail.transport');
 
         return $id;
+    }
+
+    private function registerAsyncDatabaseTransport(ContainerBuilder $container): string
+    {
+        if (!interface_exists(MessageBusInterface::class)) {
+            throw new LogicException('To use async database transport, you must install the symfony/messenger package.');
+        }
+
+        $this->registerMessageFactory($container);
+
+        $handlerId = 'rcsofttech_audit_trail.handler.persist_audit_log';
+        $container->register($handlerId, PersistAuditLogHandler::class)
+            ->setAutowired(true)
+            ->addTag('messenger.message_handler');
+
+        $id = 'rcsofttech_audit_trail.transport.async_database';
+        $container->register($id, AsyncDatabaseAuditTransport::class)
+            ->setAutowired(true)
+            ->addTag('audit_trail.transport');
+
+        return $id;
+    }
+
+    private function registerMessageFactory(ContainerBuilder $container): void
+    {
+        if ($container->has(AuditLogMessageFactory::class)) {
+            return;
+        }
+
+        $container->register(AuditLogMessageFactory::class, AuditLogMessageFactory::class)
+            ->setAutowired(true);
     }
 
     /**
@@ -173,6 +218,8 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         if (!interface_exists(MessageBusInterface::class)) {
             throw new LogicException('To use the Queue transport, you must install the symfony/messenger package.');
         }
+
+        $this->registerMessageFactory($container);
 
         $id = 'rcsofttech_audit_trail.transport.queue';
         $definition = $container->register($id, QueueAuditTransport::class)

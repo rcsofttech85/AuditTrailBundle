@@ -14,6 +14,13 @@ use DAMA\DoctrineTestBundle\Doctrine\DBAL\StaticDriver;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\TestKernel;
+use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\DummySoftDeleteableFilter;
+
+// Register dummy Gedmo filter if the real package is not installed.
+// This alias is used by AuditReverterTest and related soft-delete tests.
+if (!class_exists('Gedmo\SoftDeleteable\Filter\SoftDeleteableFilter')) {
+    class_alias(DummySoftDeleteableFilter::class, 'Gedmo\SoftDeleteable\Filter\SoftDeleteableFilter');
+}
 
 // This ensures that even after kernel shutdown, the underlying database connection
 // (especially for in-memory SQLite) persists in DAMA's static registry.

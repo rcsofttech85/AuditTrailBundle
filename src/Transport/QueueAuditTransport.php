@@ -7,10 +7,9 @@ namespace Rcsofttech\AuditTrailBundle\Transport;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
-use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;
-use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
+use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -24,7 +23,7 @@ final class QueueAuditTransport implements AuditTransportInterface
         private readonly MessageBusInterface $bus,
         private readonly EventDispatcherInterface $eventDispatcher,
         private readonly AuditIntegrityServiceInterface $integrityService,
-        private readonly EntityIdResolverInterface $idResolver,
+        private readonly AuditLogMessageFactory $messageFactory,
         private readonly ?string $apiKey = null,
     ) {
     }
@@ -35,9 +34,7 @@ final class QueueAuditTransport implements AuditTransportInterface
     #[Override]
     public function send(AuditLog $log, array $context = []): void
     {
-        $entityId = $this->idResolver->resolve($log, $context) ?? $log->entityId;
-
-        $message = AuditLogMessage::createFromAuditLog($log, $entityId);
+        $message = $this->messageFactory->createQueueMessage($log, $context);
 
         $event = new AuditMessageStampEvent($message);
         $this->eventDispatcher->dispatch($event);

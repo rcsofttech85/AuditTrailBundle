@@ -143,7 +143,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
         $auditConfig = array_merge([
             'enabled' => true,
             'transports' => [
-                'doctrine' => true,
+                'database' => ['enabled' => true],
             ],
             'cache_pool' => 'audit_test.cache',
             'defer_transport_until_commit' => true, // Default

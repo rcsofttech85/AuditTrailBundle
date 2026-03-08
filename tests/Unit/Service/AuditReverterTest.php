@@ -10,17 +10,17 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query\FilterCollection;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
-use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditReverter;
 use Rcsofttech\AuditTrailBundle\Service\RevertValueDenormalizer;
-use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\DummySoftDeleteableFilter;
+use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\RevertTestUser;
 use ReflectionClass;
 use RuntimeException;
@@ -29,14 +29,8 @@ use Symfony\Component\Validator\ConstraintViolation;
 use Symfony\Component\Validator\ConstraintViolationList;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
-// Mock class ChangeProcessor implements ChangeProcessorInterface
-// Mock class for testing if not present
-if (!class_exists('Gedmo\SoftDeleteable\Filter\SoftDeleteableFilter')) {
-    class_alias(DummySoftDeleteableFilter::class, 'Gedmo\SoftDeleteable\Filter\SoftDeleteableFilter');
-}
-
-#[AllowMockObjectsWithoutExpectations()]
-class AuditReverterTest extends TestCase
+#[AllowMockObjectsWithoutExpectations]
+class AuditReverterTest extends AbstractAuditTestCase
 {
     private EntityManagerInterface&MockObject $em;
 
@@ -52,6 +46,8 @@ class AuditReverterTest extends TestCase
 
     private AuditDispatcherInterface&MockObject $dispatcher;
 
+    private ScheduledAuditManagerInterface&MockObject $auditManager;
+
     private AuditReverter $reverter;
 
     protected function setUp(): void
@@ -63,6 +59,7 @@ class AuditReverterTest extends TestCase
         $this->softDeleteHandler = $this->createMock(SoftDeleteHandlerInterface::class);
         $this->integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
         $this->dispatcher = $this->createMock(AuditDispatcherInterface::class);
+        $this->auditManager = $this->createMock(ScheduledAuditManagerInterface::class);
 
         $this->em->method('getFilters')->willReturn($this->filterCollection);
 
@@ -77,7 +74,8 @@ class AuditReverterTest extends TestCase
             $this->softDeleteHandler,
             $this->integrityService,
             $this->dispatcher,
-            $serializer
+            $serializer,
+            $this->auditManager
         );
     }
 
@@ -244,11 +242,44 @@ class AuditReverterTest extends TestCase
         $this->em->expects($this->once())->method('persist'); // Only Entity (RevertLog is dispatched)
         $this->em->expects($this->once())->method('flush');
 
+        $this->auditManager->expects($this->once())->method('disable');
+        $this->auditManager->expects($this->once())->method('enable');
+
         $changes = $this->reverter->revert($log);
 
         self::assertEquals(['changed' => 'old'], $changes);
         self::assertArrayNotHasKey('id', $changes);
         self::assertArrayNotHasKey('unchanged', $changes);
+    }
+
+    public function testRevertNoisy(): void
+    {
+        $log = new AuditLog(
+            entityClass: RevertTestUser::class,
+            entityId: '1',
+            action: AuditLogInterface::ACTION_UPDATE,
+            oldValues: ['name' => 'Old']
+        );
+
+        $entity = new RevertTestUser();
+        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
+        $this->em->method('find')->willReturn($entity);
+
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('hasField')->willReturn(true);
+        $this->em->method('getClassMetadata')->willReturn($metadata);
+
+        $this->em->method('wrapInTransaction')->willReturnCallback(static fn ($c) => $c());
+        $this->validator->method('validate')->willReturn(new ConstraintViolationList());
+
+        $revertLog = new AuditLog(RevertTestUser::class, '1', AuditLogInterface::ACTION_REVERT, oldValues: ['name' => 'Old']);
+        $this->auditService->method('createAuditLog')->willReturn($revertLog);
+
+        // Expectations: disable() and enable() should NEVER be called
+        $this->auditManager->expects($this->never())->method('disable');
+        $this->auditManager->expects($this->never())->method('enable');
+
+        $this->reverter->revert($log, false, false, [], false); // silenceSubscriber = false
     }
 
     public function testRevertCreateSuccess(): void
@@ -262,7 +293,12 @@ class AuditReverterTest extends TestCase
         $this->em->method('wrapInTransaction')->willReturnCallback(static fn ($c) => $c());
         $this->em->expects($this->once())->method('remove')->with($entity);
 
-        $this->auditService->method('createAuditLog')->willReturn(new AuditLog(RevertTestUser::class, '1', AuditLogInterface::ACTION_REVERT));
+        $revertLog = new AuditLog(RevertTestUser::class, 'pending', AuditLogInterface::ACTION_REVERT);
+        $this->auditService->method('createAuditLog')->willReturn($revertLog);
+
+        $this->dispatcher->expects($this->once())->method('dispatch')->with(self::callback(static function (AuditLog $arg) {
+            return $arg->action === AuditLogInterface::ACTION_REVERT && $arg->entityId === '1';
+        }), $this->em, 'post_flush');
 
         $changes = $this->reverter->revert($log, false, true);
         self::assertEquals(['action' => 'delete'], $changes);

@@ -42,7 +42,7 @@ final class TransactionSafetyTest extends AbstractFunctionalTestCase
             'audit_config' => [
                 'defer_transport_until_commit' => false,
                 'fail_on_transport_error' => true,
-                'transports' => ['doctrine' => true],
+                'transports' => ['database' => ['enabled' => true]],
             ],
         ];
 
@@ -74,7 +74,7 @@ final class TransactionSafetyTest extends AbstractFunctionalTestCase
         $options = [
             'audit_config' => [
                 'defer_transport_until_commit' => true,
-                'transports' => ['doctrine' => true],
+                'transports' => ['database' => ['enabled' => true]],
             ],
         ];
 
@@ -97,7 +97,7 @@ final class TransactionSafetyTest extends AbstractFunctionalTestCase
             'audit_config' => [
                 'defer_transport_until_commit' => true,
                 'fail_on_transport_error' => true,
-                'transports' => ['doctrine' => true],
+                'transports' => ['database' => ['enabled' => true]],
             ],
         ];
 

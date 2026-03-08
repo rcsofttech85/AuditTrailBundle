@@ -24,10 +24,10 @@ final readonly class ValueSerializer implements ValueSerializerInterface
 {
     private const int MAX_SERIALIZATION_DEPTH = 5;
 
-    private const int MAX_COLLECTION_ITEMS = 100;
-
     public function __construct(
         private ?LoggerInterface $logger = null,
+        private string $collectionSerializationMode = 'lazy',
+        private int $maxCollectionItems = 100,
     ) {
     }
 
@@ -76,40 +76,46 @@ final readonly class ValueSerializer implements ValueSerializerInterface
      */
     private function serializeCollection(Collection $value, int $depth, bool $onlyIdentifiers = false): mixed
     {
-        // Optimization: Prevent N+1 queries by checking if the collection is initialized.
         if ($value instanceof PersistentCollection && !$value->isInitialized()) {
-            return [
-                '_state' => 'uninitialized',
-                '_total_count' => 'unknown',
-            ];
+            if ($this->collectionSerializationMode === 'lazy') {
+                return [
+                    '_state' => 'uninitialized',
+                    '_total_count' => 'unknown',
+                ];
+            }
+
+            if ($this->collectionSerializationMode === 'eager') {
+                $value->initialize();
+            }
         }
 
         $count = $value->count();
 
-        if ($count > self::MAX_COLLECTION_ITEMS) {
+        $forceOnlyIdentifiers = $onlyIdentifiers || $this->collectionSerializationMode === 'ids_only';
+
+        if ($count > $this->maxCollectionItems) {
             $this->logger?->warning('Collection exceeds max items for audit', [
                 'count' => $count,
-                'max' => self::MAX_COLLECTION_ITEMS,
+                'max' => $this->maxCollectionItems,
             ]);
 
-            $sample = $value->slice(0, self::MAX_COLLECTION_ITEMS);
+            $sample = $value->slice(0, $this->maxCollectionItems);
 
             return [
                 '_truncated' => true,
                 '_total_count' => $count,
                 '_sample' => array_map(
-                    fn ($item) => $onlyIdentifiers && is_object($item)
+                    fn ($item) => $forceOnlyIdentifiers && is_object($item)
                     ? $this->extractEntityIdentifier($item)
                     : $this->serialize($item, $depth + 1),
                     $sample
                 ),
             ];
         }
-
         $items = $value->toArray();
 
         return array_map(
-            fn ($item) => $onlyIdentifiers && is_object($item)
+            fn ($item) => $forceOnlyIdentifiers && is_object($item)
             ? $this->extractEntityIdentifier($item)
             : $this->serialize($item, $depth + 1),
             $items

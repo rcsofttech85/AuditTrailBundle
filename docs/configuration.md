@@ -27,9 +27,16 @@ audit_trail:
     enable_soft_delete: true
     soft_delete_field: 'deletedAt'
 
+    # Collection Serialization Performance
+    # -----------------------------------
+    collection_serialization_mode: 'lazy'
+    max_collection_items: 100
+
     transports:
         # Store logs in the local database
-        doctrine: true
+        database:
+            enabled: true
+            async: false   # Set to true to persist via Messenger worker (requires 'audit_trail_database' transport)
 
         # Send logs to an external API
         http:
@@ -66,3 +73,13 @@ audit_trail:
     # If false (default), transport errors are logged but execution continues.
     fail_on_transport_error: false
 ```
+
+## Collection Serialization Guide
+
+Choose the mode that best fits your performance and audit requirements:
+
+| Mode | Database Impact | Audit Detail | Recommended Use Case |
+| :--- | :--- | :--- | :--- |
+| **`lazy`** (Default) | **None** (Zero queries) | Low (shows placeholder) | High-traffic apps where performance is the #1 priority. |
+| **`ids_only`** | **Low** (1 targeted query) | High (shows all item IDs) | **Best for most apps.** Relationship visibility with low memory. |
+| **`eager`** | **Medium** (Full hydration) | High (Full entities) | Only if custom code needs to inspect full entity state. |

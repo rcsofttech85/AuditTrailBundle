@@ -9,8 +9,12 @@ use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 #[Auditable(enabled: true)]
 class TestEntity
 {
+    public function __construct(private int $id = 1)
+    {
+    }
+
     public function getId(): int
     {
-        return 1;
+        return $this->id;
     }
 }

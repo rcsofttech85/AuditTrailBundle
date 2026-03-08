@@ -33,7 +33,7 @@ class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
         $integrityService = $container->get(AuditIntegrityService::class);
         self::assertInstanceOf(AuditIntegrityServiceInterface::class, $integrityService);
 
-        $transport = $container->get('rcsofttech_audit_trail.transport.doctrine');
+        $transport = $container->get('rcsofttech_audit_trail.transport.database');
         self::assertInstanceOf(AuditTransportInterface::class, $transport);
 
         $eventDispatcher = new EventDispatcher();

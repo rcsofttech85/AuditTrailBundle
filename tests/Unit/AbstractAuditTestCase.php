@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit;
 
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
+use Doctrine\Common\Collections\Selectable;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\PersistentCollection;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
@@ -114,5 +118,25 @@ abstract class AbstractAuditTestCase extends TestCase
         );
 
         return $metadata;
+    }
+
+    /**
+     * @param ClassMetadata<object>               $metadata
+     * @param Collection<int|string, object>|null $inner
+     *
+     * @return PersistentCollection<int|string, object>
+     */
+    protected function createUninitializedCollection(
+        EntityManagerInterface $em,
+        ClassMetadata $metadata,
+        ?Collection $inner = null
+    ): PersistentCollection {
+        /** @var Collection<int|string, object>&Selectable<int|string, object> $actualInner */
+        $actualInner = $inner ?? new ArrayCollection();
+
+        $coll = new PersistentCollection($em, $metadata, $actualInner);
+        $coll->setInitialized(false);
+
+        return $coll;
     }
 }

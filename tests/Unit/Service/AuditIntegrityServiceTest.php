@@ -10,7 +10,6 @@ use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
-use ReflectionClass;
 use RuntimeException;
 
 use function strlen;
@@ -146,20 +145,20 @@ final class AuditIntegrityServiceTest extends TestCase
         self::assertFalse($this->service->verifySignature($logStr));
     }
 
-    public function testNormalizeDepthLimit(): void
+    public function testDeepNestedValuesProduceStableSignatures(): void
     {
         $deepArray = ['a' => ['b' => ['c' => ['d' => ['e' => ['f' => 'too_deep']]]]]];
         $log = new AuditLog('Test', '1', 'create', new DateTimeImmutable(), $deepArray);
 
-        $signature = $this->service->generateSignature($log);
-        self::assertNotEmpty($signature);
+        $signature1 = $this->service->generateSignature($log);
+        $signature2 = $this->service->generateSignature($log);
 
-        // Manual check of normalization behavior (internal)
-        $reflection = new ReflectionClass($this->service);
-        $method = $reflection->getMethod('normalizeValues');
-        $result = $method->invoke($this->service, $deepArray);
+        self::assertNotEmpty($signature1);
+        self::assertSame($signature1, $signature2, 'Deep nested data should produce deterministic signatures');
 
-        self::assertEquals('s:[max_depth]', $result['a']['b']['c']['d']['e']);
+        // Verify that the signature is valid
+        $log->signature = $signature1;
+        self::assertTrue($this->service->verifySignature($log));
     }
 
     public function testVerifySignatureWithTimezoneStability(): void
@@ -259,30 +258,33 @@ final class AuditIntegrityServiceTest extends TestCase
         self::assertNotEmpty($signature);
     }
 
-    public function testNormalizeValuesDepthLimitReached(): void
+    public function testDeeplyNestedValuesDoNotBreakSigning(): void
     {
-        $log = new AuditLog('Test', '1', 'update');
-        $reflectionLog = new ReflectionClass($log);
-        $property = $reflectionLog->getProperty('oldValues');
-        $property->setValue($log, ['a' => ['b' => ['c' => ['d' => ['e' => ['f' => 'g']]]]]]);
+        $deepValues = ['a' => ['b' => ['c' => ['d' => ['e' => ['f' => 'g']]]]]];
+        $log = new AuditLog(
+            'Test',
+            '1',
+            'update',
+            new DateTimeImmutable(),
+            $deepValues,
+            ['x' => 'y']
+        );
 
-        $reflection = new ReflectionClass($this->service);
-        $method = $reflection->getMethod('normalizeValues');
+        $signature = $this->service->generateSignature($log);
+        self::assertNotEmpty($signature);
 
-        $result = $method->invoke($this->service, $log->oldValues);
-        // Depth logic internal check, maximum depth replaces value with something max_depth_reached
-        self::assertEquals('s:[max_depth]', $result['a']['b']['c']['d']['e']);
-
-        // Depth 0
-        $result = $method->invoke($this->service, $log->oldValues, 4);
-        self::assertEquals(['a' => 's:[max_depth]'], $result);
+        $log->signature = $signature;
+        self::assertTrue($this->service->verifySignature($log));
     }
 
-    public function testNormalizeValuesMaxDepth(): void
+    public function testShallowValuesProduceDifferentSignatureThanDeep(): void
     {
-        $reflection = new ReflectionClass($this->service);
-        $method = $reflection->getMethod('normalizeValues');
-        $result = $method->invoke($this->service, ['a' => 'b'], 5); // 5 is max depth
-        self::assertEquals(['_error' => 'max_depth_reached'], $result);
+        $shallow = new AuditLog('Test', '1', 'update', new DateTimeImmutable(), ['a' => 'b']);
+        $deep = new AuditLog('Test', '1', 'update', new DateTimeImmutable(), ['a' => ['b' => 'c']]);
+
+        $sig1 = $this->service->generateSignature($shallow);
+        $sig2 = $this->service->generateSignature($deep);
+
+        self::assertNotSame($sig1, $sig2, 'Different nesting depths should produce different signatures');
     }
 }

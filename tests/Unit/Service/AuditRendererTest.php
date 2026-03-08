@@ -7,7 +7,6 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditRenderer;
-use ReflectionClass;
 use stdClass;
 use Symfony\Component\Console\Output\BufferedOutput;
 
@@ -22,27 +21,21 @@ class AuditRendererTest extends TestCase
         $this->renderer = new AuditRenderer();
     }
 
-    public function testTruncateAndStripAnsi(): void
+    public function testFormatValueStripsAnsiSequences(): void
     {
         $ansiString = "\x1b[31mRed Content\x1b[0m";
-        $reflection = new ReflectionClass($this->renderer);
-        $method = $reflection->getMethod('truncateString');
-        $method->setAccessible(true);
 
-        $result = $method->invoke($this->renderer, $ansiString);
+        $result = $this->renderer->formatValue($ansiString);
 
         self::assertEquals('Red Content', $result);
         self::assertStringNotContainsString("\x1b", $result);
     }
 
-    public function testTruncateLongString(): void
+    public function testFormatValueTruncatesLongStrings(): void
     {
         $longString = str_repeat('a', 60);
-        $reflection = new ReflectionClass($this->renderer);
-        $method = $reflection->getMethod('truncateString');
-        $method->setAccessible(true);
 
-        $result = $method->invoke($this->renderer, $longString);
+        $result = $this->renderer->formatValue($longString);
 
         self::assertEquals(50, strlen($result));
         self::assertStringEndsWith('...', $result);

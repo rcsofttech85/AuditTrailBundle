@@ -60,6 +60,12 @@ class AuditRevertCommand extends BaseAuditCommand
                 InputOption::VALUE_REQUIRED,
                 'Custom context for the revert audit log (JSON string)',
                 '{}'
+            )
+            ->addOption(
+                'noisy',
+                null,
+                InputOption::VALUE_NONE,
+                'Do not silence the AuditSubscriber (useful for strict compliance or debugging)'
             );
     }
 
@@ -111,7 +117,8 @@ class AuditRevertCommand extends BaseAuditCommand
         }
 
         try {
-            $changes = $this->auditReverter->revert($log, $dryRun, $force, $context);
+            $silence = !((bool) $input->getOption('noisy'));
+            $changes = $this->auditReverter->revert($log, $dryRun, $force, $context, $silence);
             $this->displayRevertResult($io, $changes, $raw);
 
             return Command::SUCCESS;

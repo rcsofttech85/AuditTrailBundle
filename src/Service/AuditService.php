@@ -24,29 +24,29 @@ use function strlen;
 
 use const JSON_THROW_ON_ERROR;
 
-final class AuditService implements AuditServiceInterface
+final readonly class AuditService implements AuditServiceInterface
 {
     private const string PENDING_ID = 'pending';
 
     private const int MAX_CONTEXT_BYTES = 65_536;
 
-    private readonly DateTimeZone $tz;
+    private DateTimeZone $tz;
 
     /**
      * @param iterable<AuditVoterInterface> $voters
      */
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
-        private readonly ClockInterface $clock,
-        private readonly TransactionIdGenerator $transactionIdGenerator,
-        private readonly EntityDataExtractor $dataExtractor,
-        private readonly AuditMetadataManagerInterface $metadataManager,
-        private readonly ContextResolverInterface $contextResolver,
-        private readonly EntityIdResolverInterface $idResolver,
-        private readonly ?LoggerInterface $logger = null,
-        private readonly string $timezone = 'UTC',
+        private EntityManagerInterface $entityManager,
+        private ClockInterface $clock,
+        private TransactionIdGenerator $transactionIdGenerator,
+        private EntityDataExtractor $dataExtractor,
+        private AuditMetadataManagerInterface $metadataManager,
+        private ContextResolverInterface $contextResolver,
+        private EntityIdResolverInterface $idResolver,
+        private ?LoggerInterface $logger = null,
+        private string $timezone = 'UTC',
         #[AutowireIterator('audit_trail.voter')]
-        private readonly iterable $voters = [],
+        private iterable $voters = [],
     ) {
         $this->tz = new DateTimeZone($this->timezone);
     }

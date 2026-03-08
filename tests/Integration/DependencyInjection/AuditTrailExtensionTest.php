@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Integration\DependencyInjection;
 
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\DependencyInjection\AuditTrailExtension;
@@ -11,6 +12,7 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
+#[AllowMockObjectsWithoutExpectations]
 class AuditTrailExtensionTest extends TestCase
 {
     public function testDefaultConfigurationLoadsDoctrineTransport(): void
@@ -21,10 +23,10 @@ class AuditTrailExtensionTest extends TestCase
         $config = [];
         $extension->load($config, $container);
 
-        self::assertTrue($container->hasDefinition('rcsofttech_audit_trail.transport.doctrine'));
+        self::assertTrue($container->hasDefinition('rcsofttech_audit_trail.transport.database'));
         self::assertTrue($container->hasAlias(AuditTransportInterface::class));
         self::assertEquals(
-            'rcsofttech_audit_trail.transport.doctrine',
+            'rcsofttech_audit_trail.transport.database',
             (string) $container->getAlias(AuditTransportInterface::class)
         );
     }
@@ -41,7 +43,7 @@ class AuditTrailExtensionTest extends TestCase
         $config = [
             'audit_trail' => [
                 'transports' => [
-                    'doctrine' => false,
+                    'database' => ['enabled' => false],
                     'http' => [
                         'enabled' => true,
                         'endpoint' => 'http://example.com',
@@ -71,7 +73,7 @@ class AuditTrailExtensionTest extends TestCase
         $config = [
             'audit_trail' => [
                 'transports' => [
-                    'doctrine' => false,
+                    'database' => ['enabled' => false],
                     'queue' => [
                         'enabled' => true,
                     ],
@@ -100,7 +102,7 @@ class AuditTrailExtensionTest extends TestCase
         $config = [
             'audit_trail' => [
                 'transports' => [
-                    'doctrine' => true,
+                    'database' => ['enabled' => true],
                     'http' => [
                         'enabled' => true,
                         'endpoint' => 'http://example.com',

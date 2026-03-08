@@ -12,6 +12,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -32,6 +33,7 @@ final readonly class AuditReverter implements AuditReverterInterface
         private AuditIntegrityServiceInterface $integrityService,
         private AuditDispatcherInterface $dispatcher,
         private ValueSerializerInterface $serializer,
+        private ScheduledAuditManagerInterface $auditManager,
     ) {
     }
 
@@ -46,6 +48,7 @@ final readonly class AuditReverter implements AuditReverterInterface
         bool $dryRun = false,
         bool $force = false,
         array $context = [],
+        bool $silenceSubscriber = true,
     ): array {
         if ($this->integrityService->isEnabled() && !$this->integrityService->verifySignature($log)) {
             throw new RuntimeException(sprintf('Audit log #%s has been tampered with and cannot be reverted.', $log->id?->toRfc4122() ?? 'unknown'));
@@ -63,7 +66,7 @@ final readonly class AuditReverter implements AuditReverterInterface
             return $changes;
         }
 
-        $this->applyAndPersist($entity, $log, $changes, $context);
+        $this->applyAndPersist($entity, $log, $changes, $context, $silenceSubscriber);
 
         return $changes;
     }
@@ -85,11 +88,16 @@ final readonly class AuditReverter implements AuditReverterInterface
      * @param array<string, mixed> $changes
      * @param array<string, mixed> $context
      */
-    private function applyAndPersist(object $entity, AuditLog $log, array $changes, array $context): void
-    {
+    private function applyAndPersist(
+        object $entity,
+        AuditLog $log,
+        array $changes,
+        array $context,
+        bool $silenceSubscriber,
+    ): void {
         $isDelete = isset($changes['action']) && $changes['action'] === 'delete';
 
-        $this->em->wrapInTransaction(function () use ($entity, $isDelete, $log, $changes, $context) {
+        $this->em->wrapInTransaction(function () use ($entity, $isDelete, $log, $changes, $context, $silenceSubscriber) {
             if ($isDelete) {
                 $this->em->remove($entity);
             } else {
@@ -97,7 +105,18 @@ final readonly class AuditReverter implements AuditReverterInterface
                 $this->em->persist($entity);
             }
 
-            $this->em->flush();
+            if ($silenceSubscriber) {
+                $this->auditManager->disable();
+            }
+
+            try {
+                $this->em->flush();
+            } finally {
+                if ($silenceSubscriber) {
+                    $this->auditManager->enable();
+                }
+            }
+
             $this->createRevertAuditLog($entity, $log, $changes, $isDelete, $context);
         });
     }
@@ -138,6 +157,10 @@ final readonly class AuditReverter implements AuditReverterInterface
             null,
             $revertContext
         );
+
+        if ($revertLog->entityId === AuditLogInterface::PENDING_ID) {
+            $revertLog->entityId = $log->entityId;
+        }
 
         $this->dispatcher->dispatch($revertLog, $this->em, 'post_flush');
     }

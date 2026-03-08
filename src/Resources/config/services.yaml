@@ -17,6 +17,8 @@ services:
       $cache: '@?rcsofttech_audit_trail.cache'
       $auditedMethods: '%audit_trail.audited_methods%'
       $fallbackToDatabase: '%audit_trail.fallback_to_database%'
+      $collectionSerializationMode: '%audit_trail.collection_serialization_mode%'
+      $maxCollectionItems: '%audit_trail.max_collection_items%'
 
   _instanceof:
     Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface:

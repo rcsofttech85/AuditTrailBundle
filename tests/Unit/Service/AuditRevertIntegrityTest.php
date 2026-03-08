@@ -13,6 +13,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -53,6 +54,7 @@ class AuditRevertIntegrityTest extends TestCase
             $this->integrityService,
             $this->createMock(AuditDispatcherInterface::class),
             $serializer,
+            $this->createMock(ScheduledAuditManagerInterface::class)
         );
     }
 

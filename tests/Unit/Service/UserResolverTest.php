@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Service\UserResolver;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubUserWithId;
@@ -19,168 +18,146 @@ use Symfony\Component\Security\Core\User\UserInterface;
 
 use function strlen;
 
-#[AllowMockObjectsWithoutExpectations]
 class UserResolverTest extends TestCase
 {
-    private Security&MockObject $security;
-
-    private RequestStack&MockObject $requestStack;
-
-    protected function setUp(): void
+    public function testGetUserIdFallsBackToCliWhenNoUser(): void
     {
-        $this->security = $this->createMock(Security::class);
-        $this->requestStack = $this->createMock(RequestStack::class);
+        $resolver = $this->createResolver();
+        self::assertStringStartsWith('cli:', (string) $resolver->getUserId());
     }
 
-    public function testGetUserId(): void
+    public function testGetUserIdReturnsIdFromUserWithIdMethod(): void
     {
-        $resolver = new UserResolver($this->security, $this->requestStack);
-
-        // No User -> Fallback to CLI in this environment
-        $this->security->method('getUser')->willReturn(null);
-        self::assertStringStartsWith('cli:', (string) $resolver->getUserId());
-
-        // User with ID
-        $this->security = $this->createMock(Security::class);
-        $this->security->method('getUser')->willReturn(new StubUserWithId());
-        $resolver = new UserResolver($this->security, $this->requestStack);
+        $resolver = $this->createResolver(user: new StubUserWithId());
         self::assertEquals(123, $resolver->getUserId());
+    }
 
-        // User without ID -> returns identifier
-        $this->security = $this->createMock(Security::class);
-        $this->security->method('getUser')->willReturn(new StubUserWithoutId());
-        $resolver = new UserResolver($this->security, $this->requestStack);
+    public function testGetUserIdReturnsIdentifierWhenNoIdMethod(): void
+    {
+        $resolver = $this->createResolver(user: new StubUserWithoutId());
         self::assertEquals('user', $resolver->getUserId());
     }
 
-    public function testGetUsername(): void
+    public function testGetUsernameFallsBackToCliWhenNoUser(): void
     {
-        $resolver = new UserResolver($this->security, $this->requestStack);
-
-        $this->security->method('getUser')->willReturn(null);
+        $resolver = $this->createResolver();
         self::assertStringStartsWith('cli:', (string) $resolver->getUsername());
+    }
 
-        $this->security = $this->createMock(Security::class);
-        $user = $this->createMock(UserInterface::class);
+    public function testGetUsernameReturnsUserIdentifier(): void
+    {
+        $user = self::createStub(UserInterface::class);
         $user->method('getUserIdentifier')->willReturn('test_user');
-        $this->security->method('getUser')->willReturn($user);
 
-        $resolver = new UserResolver($this->security, $this->requestStack);
+        $resolver = $this->createResolver(user: $user);
         self::assertEquals('test_user', $resolver->getUsername());
     }
 
-    public function testGetIpAddress(): void
+    public function testGetIpAddressReturnsClientIpWhenTrackingEnabled(): void
     {
-        // Tracking enabled
-        $resolver = new UserResolver($this->security, $this->requestStack, true, true);
-
         $request = new Request([], [], [], [], [], ['REMOTE_ADDR' => '127.0.0.1']);
-        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+        $resolver = $this->createResolver(
+            request: $request,
+            trackIp: true,
+            trackUserAgent: true
+        );
 
         self::assertEquals('127.0.0.1', $resolver->getIpAddress());
+    }
 
-        // Tracking disabled
-        $resolver = new UserResolver($this->security, $this->requestStack, false, true);
+    public function testGetIpAddressReturnsNullWhenTrackingDisabled(): void
+    {
+        $resolver = $this->createResolver(trackIp: false, trackUserAgent: true);
         self::assertNull($resolver->getIpAddress());
+    }
 
-        // No request -> fallback to machine IP in CLI
-        $this->requestStack = $this->createMock(RequestStack::class);
-        $this->requestStack->method('getCurrentRequest')->willReturn(null);
-        $resolver = new UserResolver($this->security, $this->requestStack, true, true);
+    public function testGetIpAddressFallsBackToHostnameInCli(): void
+    {
+        $resolver = $this->createResolver(trackIp: true, trackUserAgent: true);
 
         self::assertEquals(gethostbyname((string) gethostname()), $resolver->getIpAddress());
     }
 
-    public function testGetUserAgent(): void
+    public function testGetUserAgentReturnsHeaderWhenTrackingEnabled(): void
     {
-        // Tracking enabled
-        $resolver = new UserResolver($this->security, $this->requestStack, true, true);
-
         $request = new Request([], [], [], [], [], ['HTTP_USER_AGENT' => 'Mozilla/5.0']);
-        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+        $resolver = $this->createResolver(
+            request: $request,
+            trackIp: true,
+            trackUserAgent: true
+        );
 
         self::assertEquals('Mozilla/5.0', $resolver->getUserAgent());
+    }
 
-        // Tracking disabled
-        $resolver = new UserResolver($this->security, $this->requestStack, true, false);
+    public function testGetUserAgentReturnsNullWhenTrackingDisabled(): void
+    {
+        $resolver = $this->createResolver(trackIp: true, trackUserAgent: false);
         self::assertNull($resolver->getUserAgent());
+    }
 
-        // Truncation
+    public function testGetUserAgentTruncatesLongStrings(): void
+    {
         $longUa = str_repeat('a', 600);
         $request = new Request([], [], [], [], [], ['HTTP_USER_AGENT' => $longUa]);
-        $this->requestStack = $this->createMock(RequestStack::class);
-        $this->requestStack->method('getCurrentRequest')->willReturn($request);
-        $resolver = new UserResolver($this->security, $this->requestStack, true, true);
+        $resolver = $this->createResolver(
+            request: $request,
+            trackIp: true,
+            trackUserAgent: true
+        );
 
         $ua = $resolver->getUserAgent();
         self::assertNotNull($ua);
         self::assertEquals(500, strlen($ua));
+    }
 
-        // Empty UA -> fallback to CLI UA in CLI
+    public function testGetUserAgentFallsBackToCliInCliEnvironment(): void
+    {
         $request = new Request([], [], [], [], [], []);
-        $this->requestStack = $this->createMock(RequestStack::class);
-        $this->requestStack->method('getCurrentRequest')->willReturn($request);
-        $resolver = new UserResolver($this->security, $this->requestStack, true, true);
+        $resolver = $this->createResolver(
+            request: $request,
+            trackIp: true,
+            trackUserAgent: true
+        );
+
         self::assertStringContainsString('cli-console', (string) $resolver->getUserAgent());
     }
 
-    public function testGetImpersonatorId(): void
+    public function testGetImpersonatorIdReturnsNullWhenNoToken(): void
     {
-        $resolver = new UserResolver($this->security, $this->requestStack);
-        $this->security->method('getToken')->willReturn(null);
+        $resolver = $this->createResolver();
         self::assertNull($resolver->getImpersonatorId());
+    }
 
-        $token = $this->createMock(SwitchUserToken::class);
-        $originalToken = $this->createMock(TokenInterface::class);
-        $originalToken->method('getUser')->willReturn(new StubUserWithId());
-        $token->method('getOriginalToken')->willReturn($originalToken);
-
-        $this->security = $this->createMock(Security::class);
-        $this->security->method('getToken')->willReturn($token);
-
-        $resolver = new UserResolver($this->security, $this->requestStack);
+    public function testGetImpersonatorIdReturnsSwitchUserOriginalId(): void
+    {
+        $resolver = $this->createResolverWithImpersonation(new StubUserWithId());
         self::assertEquals('123', $resolver->getImpersonatorId());
     }
 
-    public function testGetImpersonatorUsername(): void
+    public function testGetImpersonatorUsernameReturnsNullWhenNoToken(): void
     {
-        $resolver = new UserResolver($this->security, $this->requestStack);
-        $this->security->method('getToken')->willReturn(null);
+        $resolver = $this->createResolver();
         self::assertNull($resolver->getImpersonatorUsername());
+    }
 
-        $token = $this->createMock(SwitchUserToken::class);
-        $originalToken = $this->createMock(TokenInterface::class);
-        $user = $this->createMock(UserInterface::class);
+    public function testGetImpersonatorUsernameReturnsSwitchUserOriginalIdentifier(): void
+    {
+        $user = self::createStub(UserInterface::class);
         $user->method('getUserIdentifier')->willReturn('superadmin');
-        $originalToken->method('getUser')->willReturn($user);
-        $token->method('getOriginalToken')->willReturn($originalToken);
 
-        $this->security = $this->createMock(Security::class);
-        $this->security->method('getToken')->willReturn($token);
-
-        $resolver = new UserResolver($this->security, $this->requestStack);
+        $resolver = $this->createResolverWithImpersonation($user);
         self::assertEquals('superadmin', $resolver->getImpersonatorUsername());
     }
 
-    public function testGetImpersonatorIdWithoutIdMethod(): void
+    public function testGetImpersonatorIdReturnsNullWithoutIdMethod(): void
     {
-        $token = $this->createMock(SwitchUserToken::class);
-        $originalToken = $this->createMock(TokenInterface::class);
-        $user = new StubUserWithoutId();
-        $originalToken->method('getUser')->willReturn($user);
-        $token->method('getOriginalToken')->willReturn($originalToken);
-
-        $security = $this->createMock(Security::class);
-        $security->method('getToken')->willReturn($token);
-
-        $resolver = new UserResolver($security, new RequestStack());
+        $resolver = $this->createResolverWithImpersonation(new StubUserWithoutId());
         self::assertNull($resolver->getImpersonatorId());
     }
 
-    public function testGetImpersonatorIdWhenIdNotScalarOrStringable(): void
+    public function testGetImpersonatorIdReturnsNullWhenIdNotScalarOrStringable(): void
     {
-        $token = $this->createMock(SwitchUserToken::class);
-        $originalToken = $this->createMock(TokenInterface::class);
         $user = new class implements UserInterface {
             /** @return array<mixed> */
             public function getId(): array
@@ -203,19 +180,13 @@ class UserResolverTest extends TestCase
             {
             }
         };
-        $originalToken->method('getUser')->willReturn($user);
-        $token->method('getOriginalToken')->willReturn($originalToken);
 
-        $security = $this->createMock(Security::class);
-        $security->method('getToken')->willReturn($token);
-
-        $resolver = new UserResolver($security, new RequestStack());
+        $resolver = $this->createResolverWithImpersonation($user);
         self::assertNull($resolver->getImpersonatorId());
     }
 
-    public function testGetUserIdWhenIdNotScalarOrStringable(): void
+    public function testGetUserIdReturnsIdentifierWhenIdNotScalarOrStringable(): void
     {
-        $security = $this->createMock(Security::class);
         $user = new class implements UserInterface {
             /** @return array<mixed> */
             public function getId(): array
@@ -238,26 +209,57 @@ class UserResolverTest extends TestCase
             {
             }
         };
-        $security->method('getUser')->willReturn($user);
 
-        $resolver = new UserResolver($security, new RequestStack());
+        $resolver = $this->createResolver(user: $user);
         self::assertEquals('user_identifier', $resolver->getUserId());
     }
 
     public function testGetIpAddressInCliWithoutRequestUsesHostname(): void
     {
-        $resolver = new UserResolver($this->createMock(Security::class), new RequestStack(), true, true);
+        $resolver = $this->createResolver(trackIp: true, trackUserAgent: true);
 
         $ip = $resolver->getIpAddress();
-        self::assertIsString($ip); // In CLI it uses gethostbyname
+        self::assertIsString($ip);
     }
 
     public function testGetUserAgentInCliWithoutRequestUsesHostname(): void
     {
-        $resolver = new UserResolver($this->createMock(Security::class), new RequestStack(), true, true);
+        $resolver = $this->createResolver(trackIp: true, trackUserAgent: true);
 
         $ua = $resolver->getUserAgent();
         self::assertIsString($ua);
         self::assertStringContainsString('cli-console', $ua);
+    }
+
+    private function createResolver(
+        ?UserInterface $user = null,
+        ?Request $request = null,
+        bool $trackIp = false,
+        bool $trackUserAgent = false,
+    ): UserResolver {
+        $security = self::createStub(Security::class);
+        $security->method('getUser')->willReturn($user);
+
+        $requestStack = new RequestStack();
+        if ($request !== null) {
+            $requestStack->push($request);
+        }
+
+        return new UserResolver($security, $requestStack, $trackIp, $trackUserAgent);
+    }
+
+    private function createResolverWithImpersonation(UserInterface $originalUser): UserResolver
+    {
+        $originalToken = self::createStub(TokenInterface::class);
+        $originalToken->method('getUser')->willReturn($originalUser);
+
+        /** @var SwitchUserToken&Stub $token */
+        $token = self::createStub(SwitchUserToken::class);
+        $token->method('getOriginalToken')->willReturn($originalToken);
+
+        $security = self::createStub(Security::class);
+        $security->method('getToken')->willReturn($token);
+
+        return new UserResolver($security, new RequestStack());
     }
 }
