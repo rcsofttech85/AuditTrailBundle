@@ -23,4 +23,10 @@ interface ScheduledAuditManagerInterface
     public function addPendingDeletion(object $entity, array $data, bool $isManaged): void;
 
     public function clear(): void;
+
+    public function disable(): void;
+
+    public function enable(): void;
+
+    public function isEnabled(): bool;
 }

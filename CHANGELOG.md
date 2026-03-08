@@ -7,11 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0]
+
+### 2.1.0 Breaking Changes
+
+- **Transport Configuration**: The `doctrine` transport config key has been replaced with `database`. The new `database` key strictly requires an options array: `database: { enabled: true, async: false }` rather than a scalar boolean.
+
+### 2.1.0 New Features
+
+- **Asynchronous Database Transport**: Audit logs can now be dispatched to the database asynchronously via Symfony Messenger by configuring `database: { enabled: true, async: true }`. This utilizes a dedicated `audit_trail_database` route and a built-in `PersistAuditLogHandler` to insert the records, preventing conflict with the external `queue` transport.
+- **Collection Serialization Tuning**: Introduced a tiered strategy for Doctrine collections (`lazy`, `ids_only`, `eager`) with configurable `max_collection_items` (default 100). This allows developers to balance audit detail against N+1 query safety and log bloat.
+
+---
+
 ## [2.0.0]
 
 This major release represents a complete architectural modernization of the bundle, leveraging **PHP 8.4** features and introducing a **Strict Contract Layer** for better extensibility and performance.
 
-### Breaking Changes
+### 2.0.0 Breaking Changes
 
 - **PHP 8.4 Required**: The bundle now requires PHP 8.4+ for property hooks, asymmetric visibility, and typed class constants.
 - **Symfony 7.4+ Required**: Updated to leverage modern Symfony DI attributes and framework features.
@@ -25,7 +38,7 @@ This major release represents a complete architectural modernization of the bund
 - **Transport Interface**: `AuditTransportInterface::send()` now requires a mandatory `$context` array parameter for phase-aware dispatching (`on_flush` / `post_flush`). The `supports(string $phase, array $context)` method was added.
 - **Configuration Defaults**: `audited_methods` defaults to `['GET']`. `defer_transport_until_commit` defaults to `true`. `fallback_to_database` defaults to `true`.
 
-### New Features
+### 2.0.0 New Features
 
 - **PHP 8.4 Native Features**:
   - **Property Hooks**: Used throughout `AuditLog` for real-time validation of IP addresses, action types, and entity class names directly on the entity. `AuditEntry` uses read-only property hooks for all accessors.

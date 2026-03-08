@@ -9,7 +9,6 @@ use Doctrine\ORM\EntityManagerInterface;
 use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
-use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
@@ -20,10 +19,11 @@ use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
-class AuditServiceTest extends TestCase
+class AuditServiceTest extends AbstractAuditTestCase
 {
     private EntityManagerInterface&MockObject $entityManager;
 

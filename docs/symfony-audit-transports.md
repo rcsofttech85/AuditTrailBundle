@@ -2,9 +2,47 @@
 
 AuditTrailBundle supports multiple transports to dispatch audit logs. This allows you to offload audit processing to external services or queues, keeping your main application fast.
 
-## 1. Queue Transport (Symfony Messenger)
+> [!NOTE]
+> **Messenger Confusion Warning:** The bundle utilizes Symfony Messenger for **two different features**.
+>
+> 1. `database: { async: true }`: Designed to save logs to your *local database* asynchronously via an internal worker.
+> 2. `queue: { enabled: true }`: Designed to publish logs to an *external system* (so other microservices or tools like ELK can consume them).
+>
+> They can be used simultaneously without conflict because they route to different internal queues.
 
-The Queue transport dispatches audit logs as messages via Symfony Messenger. This is the recommended way to handle audits in high-traffic applications.
+## 1. Database Transport (Async)
+
+By default, the `database` transport persists logs synchronously at the end of the Doctrine transaction. For high-traffic applications, you can offload this database write to a background worker.
+
+### Configuration
+
+Enable async mode in `config/packages/audit_trail.yaml`:
+
+```yaml
+audit_trail:
+    transports:
+        database:
+            enabled: true
+            async: true # Offloads inserts to Messenger
+```
+
+You must explicitly define a transport named `audit_trail_database` in `config/packages/messenger.yaml`:
+
+```yaml
+framework:
+    messenger:
+        transports:
+            # Internal bundle worker will consume from this transport
+            audit_trail_database: '%env(MESSENGER_TRANSPORT_DSN)%'
+```
+
+*(The bundle auto-registers `PersistAuditLogHandler` to consume from this transport and insert the records into the database).*
+
+---
+
+## 2. Queue Transport (External Delivery)
+
+The `queue` transport acts as a webhook publisher. It dispatches a strictly-typed DTO (`AuditLogMessage`) to the bus. You must write your own external consumer to ingest these messages (e.g., Logstash, another microservice).
 
 ### Configuration for Queue transport
 
@@ -24,9 +62,8 @@ You must define a transport named `audit_trail` in `config/packages/messenger.ya
 framework:
     messenger:
         transports:
+            # Your external service/worker will consume from this transport
             audit_trail: '%env(MESSENGER_TRANSPORT_DSN)%'
-
-
 ```
 
 ### Advanced Usage: Messenger Stamps
@@ -145,14 +182,42 @@ The transport sends a `POST` request with a JSON body:
 
 ---
 
-## 3. Doctrine Transport (Default)
+## 3. Database Transport (Default)
 
-The Doctrine transport stores logs in your local database. It is enabled by default.
+The Database transport stores logs in your local database. It is enabled by default.
+
+### Sync Mode (Default)
+
+Logs are persisted directly during the Doctrine lifecycle:
 
 ```yaml
 audit_trail:
     transports:
-        doctrine: true
+        database:
+            enabled: true
+            async: false
+```
+
+### Async Mode
+
+Logs are dispatched via Symfony Messenger and persisted by a built-in handler (`PersistAuditLogHandler`).
+This is useful for high-traffic applications where you want to offload DB writes to a worker.
+
+```yaml
+audit_trail:
+    transports:
+        database:
+            enabled: true
+            async: true
+```
+
+You must define a transport named `audit_trail_database` in `config/packages/messenger.yaml`:
+
+```yaml
+framework:
+    messenger:
+        transports:
+            audit_trail_database: '%env(MESSENGER_TRANSPORT_DSN)%'
 ```
 
 ---
@@ -164,7 +229,8 @@ You can enable multiple transports simultaneously. The bundle will automatically
 ```yaml
 audit_trail:
     transports:
-        doctrine: true
+        database:
+            enabled: true
         queue:
             enabled: true
 ```

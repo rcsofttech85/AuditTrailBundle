@@ -5,16 +5,16 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
 use DateTimeImmutable;
-use Doctrine\ORM\EntityManagerInterface;
+use DateTimeInterface;
 use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
-use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;
+use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
@@ -35,20 +35,20 @@ class QueueAuditTransportTest extends TestCase
 
     private AuditIntegrityServiceInterface&MockObject $integrityService;
 
-    private EntityIdResolverInterface&MockObject $idResolver;
+    private AuditLogMessageFactory&MockObject $messageFactory;
 
     protected function setUp(): void
     {
         $this->bus = $this->createMock(MessageBusInterface::class);
         $this->eventDispatcher = $this->createMock(EventDispatcherInterface::class);
         $this->integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $this->idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $this->messageFactory = $this->createMock(AuditLogMessageFactory::class);
 
         $this->transport = new QueueAuditTransport(
             $this->bus,
             $this->eventDispatcher,
             $this->integrityService,
-            $this->idResolver,
+            $this->messageFactory,
             'test_api_key'
         );
     }
@@ -56,6 +56,23 @@ class QueueAuditTransportTest extends TestCase
     public function testSendDispatchesMessageWithStamps(): void
     {
         $log = new AuditLog('TestEntity', '1', AuditLogInterface::ACTION_CREATE, new DateTimeImmutable());
+
+        $queueMessage = new AuditLogMessage(
+            entityClass: 'TestEntity',
+            entityId: '1',
+            action: 'create',
+            oldValues: null,
+            newValues: null,
+            changedFields: null,
+            userId: null,
+            username: null,
+            ipAddress: null,
+            userAgent: null,
+            transactionHash: null,
+            createdAt: $log->createdAt->format(DateTimeInterface::ATOM),
+        );
+
+        $this->messageFactory->method('createQueueMessage')->willReturn($queueMessage);
 
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->integrityService->method('signPayload')->willReturn('test_signature');
@@ -94,6 +111,23 @@ class QueueAuditTransportTest extends TestCase
     {
         $log = new AuditLog('TestEntity', '1', AuditLogInterface::ACTION_CREATE, new DateTimeImmutable());
 
+        $queueMessage = new AuditLogMessage(
+            entityClass: 'TestEntity',
+            entityId: '1',
+            action: 'create',
+            oldValues: null,
+            newValues: null,
+            changedFields: null,
+            userId: null,
+            username: null,
+            ipAddress: null,
+            userAgent: null,
+            transactionHash: null,
+            createdAt: $log->createdAt->format(DateTimeInterface::ATOM),
+        );
+
+        $this->messageFactory->method('createQueueMessage')->willReturn($queueMessage);
+
         $this->bus->method('dispatch')->willThrowException(new Exception('Bus error'));
 
         $this->expectException(Exception::class);
@@ -106,14 +140,22 @@ class QueueAuditTransportTest extends TestCase
     {
         $log = new AuditLog('TestEntity', 'pending', AuditLogInterface::ACTION_CREATE);
 
-        // pass context that EntityIdResolver understands.
-        $context = ['is_insert' => true];
+        $queueMessage = new AuditLogMessage(
+            entityClass: 'TestEntity',
+            entityId: '123',
+            action: 'create',
+            oldValues: null,
+            newValues: null,
+            changedFields: null,
+            userId: null,
+            username: null,
+            ipAddress: null,
+            userAgent: null,
+            transactionHash: null,
+            createdAt: $log->createdAt->format(DateTimeInterface::ATOM),
+        );
 
-        $this->idResolver->method('resolve')->willReturn('123');
-
-        $entity = new stdClass();
-        $em = $this->createMock(EntityManagerInterface::class);
-        $context = ['entity' => $entity, 'em' => $em];
+        $this->messageFactory->method('createQueueMessage')->willReturn($queueMessage);
 
         $this->bus->expects($this->once())
             ->method('dispatch')
@@ -122,12 +164,29 @@ class QueueAuditTransportTest extends TestCase
             }))
             ->willReturn(new Envelope(new stdClass()));
 
-        $this->transport->send($log, $context);
+        $this->transport->send($log);
     }
 
     public function testSendIsCancelledByStoppingPropagation(): void
     {
         $log = new AuditLog('TestEntity', '1', AuditLogInterface::ACTION_CREATE, new DateTimeImmutable());
+
+        $queueMessage = new AuditLogMessage(
+            entityClass: 'TestEntity',
+            entityId: '1',
+            action: 'create',
+            oldValues: null,
+            newValues: null,
+            changedFields: null,
+            userId: null,
+            username: null,
+            ipAddress: null,
+            userAgent: null,
+            transactionHash: null,
+            createdAt: $log->createdAt->format(DateTimeInterface::ATOM),
+        );
+
+        $this->messageFactory->method('createQueueMessage')->willReturn($queueMessage);
 
         $this->eventDispatcher->expects($this->once())
             ->method('dispatch')

@@ -9,16 +9,16 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
-use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
+use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
-class EntityDataExtractorTest extends TestCase
+class EntityDataExtractorTest extends AbstractAuditTestCase
 {
     private EntityManagerInterface&MockObject $em;
 

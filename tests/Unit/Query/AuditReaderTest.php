@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Query;
 
 use Exception;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
@@ -14,80 +12,80 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditReader;
 use stdClass;
 
-#[AllowMockObjectsWithoutExpectations]
 class AuditReaderTest extends TestCase
 {
-    private AuditLogRepositoryInterface&MockObject $repository;
-
-    private EntityIdResolverInterface&MockObject $idResolver;
-
-    private AuditReader $reader;
-
-    protected function setUp(): void
+    public function testCreateQueryReturnsAuditQuery(): void
     {
-        $this->repository = $this->createMock(AuditLogRepositoryInterface::class);
-        $this->idResolver = $this->createMock(EntityIdResolverInterface::class);
-        $this->reader = new AuditReader($this->repository, $this->idResolver);
-    }
-
-    public function testCreateQuery(): void
-    {
-        $this->reader->createQuery();
+        $reader = new AuditReader(self::createStub(AuditLogRepositoryInterface::class), self::createStub(EntityIdResolverInterface::class));
+        $reader->createQuery();
         $this->expectNotToPerformAssertions();
     }
 
-    public function testForEntity(): void
+    public function testForEntityReturnsAuditQuery(): void
     {
-        $this->reader->forEntity('App\Entity\User', '123');
+        $reader = new AuditReader(self::createStub(AuditLogRepositoryInterface::class), self::createStub(EntityIdResolverInterface::class));
+        $reader->forEntity('App\Entity\User', '123');
         $this->expectNotToPerformAssertions();
     }
 
-    public function testByUser(): void
+    public function testByUserReturnsAuditQuery(): void
     {
-        $this->reader->byUser('1');
+        $reader = new AuditReader(self::createStub(AuditLogRepositoryInterface::class), self::createStub(EntityIdResolverInterface::class));
+        $reader->byUser('1');
         $this->expectNotToPerformAssertions();
     }
 
-    public function testByTransaction(): void
+    public function testByTransactionReturnsAuditQuery(): void
     {
-        $this->reader->byTransaction('hash');
+        $reader = new AuditReader(self::createStub(AuditLogRepositoryInterface::class), self::createStub(EntityIdResolverInterface::class));
+        $reader->byTransaction('hash');
         $this->expectNotToPerformAssertions();
     }
 
     public function testGetHistoryFor(): void
     {
         $entity = new stdClass();
-        $this->idResolver->method('resolveFromEntity')->with($entity)->willReturn('123');
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolveFromEntity')->willReturn('123');
 
-        $this->repository->expects($this->once())
+        $repository = self::createMock(AuditLogRepositoryInterface::class);
+        $repository->expects($this->once())
             ->method('findWithFilters')
-            ->with(self::callback(static fn ($f) => $f['entityClass'] === 'stdClass' && $f['entityId'] === '123'), 30)
+            ->with(self::callback(static fn ($f) => $f['entityClass'] === stdClass::class && $f['entityId'] === '123'), 30)
             ->willReturn([]);
 
-        $this->reader->getHistoryFor($entity);
+        $reader = new AuditReader($repository, $idResolver);
+        $reader->getHistoryFor($entity);
     }
 
     public function testGetHistoryForFailure(): void
     {
         $entity = new stdClass();
-        $this->idResolver->method('resolveFromEntity')->willThrowException(new Exception());
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolveFromEntity')->willThrowException(new Exception());
 
-        $this->repository->expects($this->never())->method('findWithFilters');
+        $repository = self::createMock(AuditLogRepositoryInterface::class);
+        $repository->expects($this->never())->method('findWithFilters');
 
-        $collection = $this->reader->getHistoryFor($entity);
+        $reader = new AuditReader($repository, $idResolver);
+        $collection = $reader->getHistoryFor($entity);
         self::assertCount(0, $collection);
     }
 
     public function testGetTimelineFor(): void
     {
         $entity = new stdClass();
-        $this->idResolver->method('resolveFromEntity')->willReturn('123');
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolveFromEntity')->willReturn('123');
 
         $log = new AuditLog(stdClass::class, '123', 'create', transactionHash: 'tx1');
 
-        $this->repository->method('findWithFilters')->willReturn([$log]);
+        $repository = self::createStub(AuditLogRepositoryInterface::class);
+        $repository->method('findWithFilters')->willReturn([$log]);
 
-        $timeline = $this->reader->getTimelineFor($entity);
+        $reader = new AuditReader($repository, $idResolver);
+        $timeline = $reader->getTimelineFor($entity);
+
         self::assertArrayHasKey('tx1', $timeline);
         self::assertCount(1, $timeline['tx1']);
     }
@@ -95,22 +93,29 @@ class AuditReaderTest extends TestCase
     public function testGetLatestFor(): void
     {
         $entity = new stdClass();
-        $this->idResolver->method('resolveFromEntity')->willReturn('123');
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolveFromEntity')->willReturn('123');
 
         $log = new AuditLog(stdClass::class, '123', 'create');
-        $this->repository->method('findWithFilters')->willReturn([$log]);
+        $repository = self::createStub(AuditLogRepositoryInterface::class);
+        $repository->method('findWithFilters')->willReturn([$log]);
 
-        $result = $this->reader->getLatestFor($entity);
+        $reader = new AuditReader($repository, $idResolver);
+        $result = $reader->getLatestFor($entity);
+
         self::assertNotNull($result);
     }
 
     public function testHasHistoryFor(): void
     {
         $entity = new stdClass();
-        $this->idResolver->method('resolveFromEntity')->willReturn('123');
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolveFromEntity')->willReturn('123');
 
-        $this->repository->method('findWithFilters')->willReturn([new AuditLog(stdClass::class, '123', 'create')]);
+        $repository = self::createStub(AuditLogRepositoryInterface::class);
+        $repository->method('findWithFilters')->willReturn([new AuditLog(stdClass::class, '123', 'create')]);
 
-        self::assertTrue($this->reader->hasHistoryFor($entity));
+        $reader = new AuditReader($repository, $idResolver);
+        self::assertTrue($reader->hasHistoryFor($entity));
     }
 }

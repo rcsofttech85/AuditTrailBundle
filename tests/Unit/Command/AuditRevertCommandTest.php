@@ -114,6 +114,28 @@ class AuditRevertCommandTest extends TestCase
         self::assertEquals(0, $this->commandTester->getStatusCode());
     }
 
+    public function testExecuteRevertNoisy(): void
+    {
+        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_UPDATE);
+
+        $this->repository->expects($this->once())
+            ->method('find')
+            ->willReturn($log);
+
+        // Expectations: silenceSubscriber should be FALSE
+        $this->reverter->expects($this->once())
+            ->method('revert')
+            ->with($log, false, false, [], false)
+            ->willReturn(['name' => 'Old Name']);
+
+        $this->commandTester->execute([
+            'auditId' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a',
+            '--noisy' => true,
+        ]);
+
+        self::assertEquals(0, $this->commandTester->getStatusCode());
+    }
+
     public function testExecuteAuditNotFound(): void
     {
         $this->repository->expects($this->once())

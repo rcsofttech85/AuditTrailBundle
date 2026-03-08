@@ -46,18 +46,17 @@ final class AuditSubscriber implements ResetInterface
         private readonly EntityIdResolverInterface $idResolver,
         private readonly ?LoggerInterface $logger = null,
         private readonly bool $enableHardDelete = true,
-        private readonly bool $enabled = true,
     ) {
     }
 
     public function isEnabled(): bool
     {
-        return $this->enabled;
+        return $this->auditManager->isEnabled();
     }
 
     public function onFlush(OnFlushEventArgs $args): void
     {
-        if (!$this->enabled || $this->isFlushing || $this->recursionDepth > 0) {
+        if (!$this->auditManager->isEnabled() || $this->isFlushing || $this->recursionDepth > 0) {
             return;
         }
 
@@ -81,7 +80,7 @@ final class AuditSubscriber implements ResetInterface
 
     public function postLoad(PostLoadEventArgs $args): void
     {
-        if (!$this->enabled) {
+        if (!$this->auditManager->isEnabled()) {
             return;
         }
 
@@ -90,7 +89,7 @@ final class AuditSubscriber implements ResetInterface
 
     public function postFlush(PostFlushEventArgs $args): void
     {
-        if (!$this->enabled || $this->isFlushing || $this->recursionDepth > 0) {
+        if (!$this->auditManager->isEnabled() || $this->isFlushing || $this->recursionDepth > 0) {
             return;
         }
 

@@ -13,13 +13,13 @@ use Throwable;
 use function array_key_exists;
 use function in_array;
 
-class EntityDataExtractor
+readonly class EntityDataExtractor
 {
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
+        private EntityManagerInterface $entityManager,
         private ValueSerializerInterface $serializer,
-        private readonly MetadataCache $metadataCache,
-        private readonly ?LoggerInterface $logger = null,
+        private MetadataCache $metadataCache,
+        private ?LoggerInterface $logger = null,
     ) {
     }
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use ArrayObject;
+use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
@@ -11,6 +13,8 @@ use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\ChildAuditable;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\NotAuditable;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\ParentAuditable;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\SensitiveEntity;
+use RuntimeException;
+use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 class MetadataCacheTest extends TestCase
@@ -67,23 +71,23 @@ class MetadataCacheTest extends TestCase
         self::assertSame($fields, $fields2);
     }
 
-    public function testCacheEviction(): void
+    public function testCacheReturnsConsistentResultsForManyClasses(): void
     {
-        // Reflection to access private cache or just add > 100 items
-        // Adding 101 items
-        for ($i = 0; $i < 105; ++$i) {
-            $class = "Class$i";
-            if (!class_exists($class)) {
-                eval("class $class {}");
-            }
-            $this->cache->getAuditableAttribute($class);
+        // Verifies the cache handles many lookups without issues
+        // and always returns null for non-auditable classes
+        $classes = [
+            NotAuditable::class,
+            stdClass::class,
+            DateTimeImmutable::class,
+            RuntimeException::class,
+            ArrayObject::class,
+        ];
+
+        foreach ($classes as $class) {
+            $result1 = $this->cache->getAuditableAttribute($class);
+            $result2 = $this->cache->getAuditableAttribute($class);
+            self::assertSame($result1, $result2, "Cache should return identical result for {$class}");
+            self::assertNull($result1, "{$class} should not be auditable");
         }
-
-        // The first one should be evicted
-        // But we can't easily verify eviction without reflection or checking if it re-computes.
-        // Since resolveAuditableAttribute is fast for empty classes, it's hard to tell.
-        // But we can check coverage of ensureCacheSize.
-
-        $this->expectNotToPerformAssertions();
     }
 }

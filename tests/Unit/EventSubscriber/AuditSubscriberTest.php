@@ -82,12 +82,12 @@ final class AuditSubscriberTest extends TestCase
 
     public function testOnFlushDisabled(): void
     {
-        $subscriber = $this->createDisabledSubscriber();
+        $this->auditManager->disable();
 
         $args = $this->createMock(OnFlushEventArgs::class);
         $args->expects($this->never())->method('getObjectManager');
 
-        $subscriber->onFlush($args);
+        $this->subscriber->onFlush($args);
     }
 
     public function testOnFlushRecursion(): void
@@ -216,14 +216,14 @@ final class AuditSubscriberTest extends TestCase
 
     public function testPostLoadDisabled(): void
     {
-        $subscriber = $this->createDisabledSubscriber();
+        $this->auditManager->disable();
 
         $entity = new stdClass();
         $em = $this->createMock(EntityManagerInterface::class);
         $args = new PostLoadEventArgs($entity, $em);
         $this->accessHandler->expects($this->never())->method('handleAccess');
 
-        $subscriber->postLoad($args);
+        $this->subscriber->postLoad($args);
     }
 
     public function testPostLoadEnabled(): void
@@ -239,7 +239,7 @@ final class AuditSubscriberTest extends TestCase
 
     public function testPostFlushDisabled(): void
     {
-        $subscriber = $this->createDisabledSubscriber();
+        $this->auditManager->disable();
 
         $args = $this->createMock(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($this->createMock(EntityManagerInterface::class));
@@ -247,7 +247,7 @@ final class AuditSubscriberTest extends TestCase
         $this->auditManager->pendingDeletions = [['entity' => new stdClass(), 'data' => [], 'is_managed' => true]];
         $this->auditService->expects($this->never())->method('createAuditLog');
 
-        $subscriber->postFlush($args);
+        $this->subscriber->postFlush($args);
     }
 
     public function testPostFlushProcessPendingDeletionsSkipped(): void
@@ -404,23 +404,6 @@ final class AuditSubscriberTest extends TestCase
             }));
 
         $subscriber->postFlush($args);
-    }
-
-    private function createDisabledSubscriber(): AuditSubscriber
-    {
-        return new AuditSubscriber(
-            $this->auditService,
-            $this->changeProcessor,
-            $this->dispatcher,
-            $this->auditManager,
-            $this->entityProcessor,
-            $this->transactionIdGenerator,
-            $this->accessHandler,
-            $this->idResolver,
-            null,
-            true,
-            false,
-        );
     }
 
     private function createSubscriberWithLogger(?LoggerInterface $logger): AuditSubscriber

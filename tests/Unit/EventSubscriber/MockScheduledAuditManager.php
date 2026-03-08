@@ -30,4 +30,21 @@ class MockScheduledAuditManager implements ScheduledAuditManagerInterface
         $this->scheduledAudits = [];
         $this->pendingDeletions = [];
     }
+
+    private bool $enabled = true;
+
+    public function disable(): void
+    {
+        $this->enabled = false;
+    }
+
+    public function enable(): void
+    {
+        $this->enabled = true;
+    }
+
+    public function isEnabled(): bool
+    {
+        return $this->enabled;
+    }
 }

@@ -8,6 +8,9 @@ php bin/console audit:revert 123
 
 # Revert with custom context (JSON)
 php bin/console audit:revert 123 --context='{"reason": "Accidental deletion", "ticket": "T-101"}'
+
+# Revert without silencing automatic audit logs (Keep technical logs)
+php bin/console audit:revert 123 --noisy
 ```
 
 ## Custom Context on Revert
@@ -22,6 +25,17 @@ $auditReverter->revert($log, false, false, [
 ```
 
 The bundle also **automatically** adds `reverted_log_id` to the context of the new audit log, linking it back to the original entry.
+
+## Controlling Log Redundancy
+
+By default, `AuditReverter` **silences** the standard `AuditSubscriber` during a revert. This prevents a duplicate `update` log from being created alongside the explicit `revert` log.
+
+For scenarios requiring full technical transparency (e.g., strict forensic compliance), you can disable this silencing:
+
+```php
+// Pass 'false' as the 5th parameter to keep standard update logs enabled
+$auditReverter->revert($log, false, false, [], false);
+```
 
 ## Why it's "Safe"
 

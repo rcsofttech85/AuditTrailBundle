@@ -29,5 +29,6 @@ interface AuditReverterInterface
         bool $dryRun = false,
         bool $force = false,
         array $context = [],
+        bool $silenceSubscriber = true,
     ): array;
 }

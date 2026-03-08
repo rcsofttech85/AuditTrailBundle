@@ -29,9 +29,28 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
     /** @var list<array{entity: object, data: array<string, mixed>, is_managed: bool}> */
     public private(set) array $pendingDeletions = [];
 
+    private bool $enabled;
+
     public function __construct(
         private readonly ?EventDispatcherInterface $eventDispatcher = null,
+        bool $enabled = true,
     ) {
+        $this->enabled = $enabled;
+    }
+
+    public function disable(): void
+    {
+        $this->enabled = false;
+    }
+
+    public function enable(): void
+    {
+        $this->enabled = true;
+    }
+
+    public function isEnabled(): bool
+    {
+        return $this->enabled;
     }
 
     public function schedule(

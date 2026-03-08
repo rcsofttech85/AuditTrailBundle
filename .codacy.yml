@@ -14,6 +14,8 @@ exclude_paths: # Global static analysis ignores
   - "src/Resources/**"
   - "src/AuditTrailBundle.php"
   - "src/Entity/AuditLog.php"
+  - "src/Message/AuditLogMessage.php"
+  - "src/Message/PersistAuditLogMessage.php"
   - "vendor/**"
   - "var/**"
   - "bin/**"
