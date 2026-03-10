@@ -1,0 +1,16 @@
+{# Transaction Link Field — makes transactionHash clickable for drill-down #}
+{% set hash = field.value %}
+
+{% if hash %}
+    <a href="{{ ea_url()
+        .setController('Rcsofttech\\AuditTrailBundle\\Controller\\Admin\\AuditLogCrudController')
+        .setAction('transactionDrilldown')
+        .set('transactionHash', hash) }}"
+       class="audit-transaction-link"
+       title="View all changes in this transaction">
+        <i class="fa fa-link"></i>
+        {{ hash|length > 12 ? hash[:12] ~ '…' : hash }}
+    </a>
+{% else %}
+    <span class="text-muted"><em>N/A</em></span>
+{% endif %}

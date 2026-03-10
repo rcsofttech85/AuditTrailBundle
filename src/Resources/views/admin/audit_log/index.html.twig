@@ -1,0 +1,26 @@
+{# Custom Index Template — adds Statistics Summary Widget above the data table #}
+{% extends '@EasyAdmin/crud/index.html.twig' %}
+
+
+
+{% block filters %}
+    {{ parent() }}
+
+    <div class="btn-group action-export ms-2">
+        <button type="button" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fa fa-download me-1"></i> Export
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0">
+            <li>
+                <a class="dropdown-item py-2" href="{{ ea_url().setAction('exportJson') }}">
+                    <i class="fa fa-file-code me-2 text-info"></i> JSON Format
+                </a>
+            </li>
+            <li>
+                <a class="dropdown-item py-2" href="{{ ea_url().setAction('exportCsv') }}">
+                    <i class="fa fa-file-csv me-2 text-success"></i> CSV Spreadsheet
+                </a>
+            </li>
+        </ul>
+    </div>
+{% endblock %}

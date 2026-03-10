@@ -126,7 +126,7 @@ class AuditLogRepositoryTest extends TestCase
             'transactionHash' => 'tx1',
             'from' => new DateTimeImmutable(),
             'to' => new DateTimeImmutable(),
-            'afterId' => Uuid::v4()->toString(),
+            'afterId' => Uuid::v7()->toString(),
         ];
 
         // Verify filter application
@@ -139,7 +139,7 @@ class AuditLogRepositoryTest extends TestCase
     {
         $this->setupQueryBuilderDefaults(false); // Don't mock getResult yet
 
-        $filters = ['beforeId' => Uuid::v4()->toString()];
+        $filters = ['beforeId' => Uuid::v7()->toString()];
 
         $this->qb->expects($this->once())->method('andWhere')->with('a.id > :beforeId');
         $this->qb->expects($this->once())->method('orderBy')->with('a.id', 'ASC');
@@ -166,13 +166,13 @@ class AuditLogRepositoryTest extends TestCase
     {
         $this->setupQueryBuilderDefaults(false);
 
-        $uuid = Uuid::v4()->toString();
+        $uuid = Uuid::v7()->toString();
         $filters = ['beforeId' => $uuid];
 
         $log1 = new AuditLog('Class', '1', 'create');
-        $this->setLogId($log1, Uuid::v4()->toString());
+        $this->setLogId($log1, Uuid::v7()->toString());
         $log2 = new AuditLog('Class', '2', 'create');
-        $this->setLogId($log2, Uuid::v4()->toString());
+        $this->setLogId($log2, Uuid::v7()->toString());
 
         // Results from DB will be ASC: [11, 12]
         $this->query->method('getResult')->willReturn([$log1, $log2]);
@@ -284,6 +284,30 @@ class AuditLogRepositoryTest extends TestCase
         $this->query->method('getSingleScalarResult')->willReturn(10);
 
         self::assertEquals(10, $this->repository->countOlderThan(new DateTimeImmutable()));
+    }
+
+    public function testIsReverted(): void
+    {
+        $this->setupQueryBuilderDefaults(false);
+
+        $log = new AuditLog('Class', '1', 'update');
+        $this->setLogId($log, Uuid::v7()->toString());
+
+        $this->query->method('getSingleScalarResult')->willReturn(1);
+
+        self::assertTrue($this->repository->isReverted($log));
+    }
+
+    public function testIsRevertedFalse(): void
+    {
+        $this->setupQueryBuilderDefaults(false);
+
+        $log = new AuditLog('Class', '1', 'update');
+        $this->setLogId($log, Uuid::v7()->toString());
+
+        $this->query->method('getSingleScalarResult')->willReturn(0);
+
+        self::assertFalse($this->repository->isReverted($log));
     }
 
     private function setLogId(AuditLog $log, string $id): void

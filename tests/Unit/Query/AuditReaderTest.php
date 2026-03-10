@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Query;
 
 use Exception;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
@@ -12,6 +13,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditReader;
 use stdClass;
 
+#[AllowMockObjectsWithoutExpectations]
 class AuditReaderTest extends TestCase
 {
     public function testCreateQueryReturnsAuditQuery(): void

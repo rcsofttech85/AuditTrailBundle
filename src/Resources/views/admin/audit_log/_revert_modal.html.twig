@@ -1,0 +1,95 @@
+{# Revert Confirmation Modal — shows dry-run preview before applying revert #}
+<div class="modal fade" id="revertConfirmModal" tabindex="-1" aria-labelledby="revertConfirmLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header audit-modal-header">
+                <h5 class="modal-title audit-modal-title" id="revertConfirmLabel">
+                    <i class="fa fa-history"></i> Revert Audit Log
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning d-flex align-items-start gap-2">
+                    <i class="fa fa-exclamation-triangle mt-1"></i>
+                    <div>
+                        <strong>Warning:</strong> This will revert the entity to its previous state.
+                        Review the changes below before confirming.
+                    </div>
+                </div>
+
+                <div id="revertPreviewContent">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="text-muted mt-2">Loading revert preview…</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fa fa-times"></i> Cancel
+                </button>
+                <form id="revertForm" method="POST" style="display: inline;">
+                    <input type="hidden" name="_token" value="{{ csrf_token('revert') }}">
+                    <button type="submit" class="audit-revert-btn audit-revert-btn--danger" id="confirmRevertBtn">
+                        <i class="fa fa-history"></i> Confirm Revert
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var modalEl = document.getElementById('revertConfirmModal');
+    if (!modalEl || modalEl.dataset.initialized) return;
+    modalEl.dataset.initialized = 'true';
+
+    modalEl.addEventListener('show.bs.modal', function(event) {
+        var button = event.relatedTarget;
+        if (!button) return;
+
+        var previewUrl = button.getAttribute('data-preview-url');
+        var revertUrl = button.getAttribute('data-revert-url');
+        var content = document.getElementById('revertPreviewContent');
+        var form = document.getElementById('revertForm');
+
+        if (revertUrl) {
+            form.action = revertUrl;
+        }
+
+        if (previewUrl) {
+            // Reset content to loading spinner
+            content.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="text-muted mt-2">Loading revert preview…</p></div>';
+            document.getElementById('confirmRevertBtn').disabled = false;
+
+            fetch(previewUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+                .then(function(r) { 
+                    if (!r.ok) {
+                        return r.text().then(function(errHtml) { 
+                            throw new Error(r.status + ' Request failed', { cause: errHtml }); 
+                        });
+                    }
+                    return r.text(); 
+                })
+                .then(function(html) {
+                    content.innerHTML = html;
+                    
+                    // Disable revert button if there are no changes
+                    if (html.indexOf('No Changes Detected') !== -1) {
+                        document.getElementById('confirmRevertBtn').disabled = true;
+                    }
+                })
+                .catch(function(err) {
+                    content.innerHTML = err.cause || '<div class="alert alert-danger border-0 shadow-sm d-flex align-items-start gap-2">' +
+                        '<i class="fa fa-times-circle fs-4 mt-1"></i>' +
+                        '<div><strong>Failed to load preview</strong><br><small>' + err.message + '</small></div>' +
+                        '</div>';
+                    document.getElementById('confirmRevertBtn').disabled = true;
+                });
+        }
+    });
+})();
+</script>

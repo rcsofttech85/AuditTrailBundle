@@ -90,3 +90,4 @@ services:
       - '../../DependencyInjection/'
       - '../../Service/AuditIntegrityService.php'
       - '../../Transport/'
+      - '../../Controller/'

@@ -9,9 +9,9 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 interface AuditExporterInterface
 {
     /**
-     * @param array<AuditLog> $audits
+     * @param iterable<AuditLog> $audits
      */
-    public function formatAudits(array $audits, string $format): string;
+    public function formatAudits(iterable $audits, string $format): string;
 
     public function formatFileSize(int $bytes): string;
 }

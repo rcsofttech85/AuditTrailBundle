@@ -9,6 +9,7 @@ use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
 use Override;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
@@ -90,6 +91,21 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
             ->execute();
 
         return $count;
+    }
+
+    #[Override]
+    public function findAllWithFilters(array $filters = []): iterable
+    {
+        $qb = $this->createQueryBuilder('a');
+
+        $this->applyEntityClassFilter($qb, $filters);
+        $this->applyScalarFilters($qb, $filters);
+        $this->applyDateRangeFilters($qb, $filters);
+
+        // For export, we always want the newest first by default
+        $qb->orderBy('a.createdAt', 'DESC');
+
+        return $qb->getQuery()->toIterable();
     }
 
     /**
@@ -192,13 +208,13 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
         if (isset($filters['afterId'])) {
             // Next page: get records with ID less than the cursor
             $qb->andWhere('a.id < :afterId')
-                ->setParameter('afterId', $filters['afterId']);
+                ->setParameter('afterId', $filters['afterId'], 'uuid');
         }
 
         if (isset($filters['beforeId'])) {
             // Previous page: get records with ID greater than the cursor
             $qb->andWhere('a.id > :beforeId')
-                ->setParameter('beforeId', $filters['beforeId']);
+                ->setParameter('beforeId', $filters['beforeId'], 'uuid');
 
             // Temporarily reverse order to fetch correct records
             $order = 'ASC';
@@ -238,5 +254,27 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
             ->setParameter('before', $before)
             ->getQuery()
             ->getSingleScalarResult();
+    }
+
+    #[Override]
+    public function isReverted(AuditLog $log): bool
+    {
+        if ($log->id === null) {
+            return false;
+        }
+
+        return (int) $this->createQueryBuilder('a')
+            ->select('COUNT(a.id)')
+            ->where('a.entityClass = :class')
+            ->andWhere('a.entityId = :entityId')
+            ->andWhere('a.action = :action')
+            ->andWhere('a.context LIKE :revertedId')
+            ->setParameter('class', $log->entityClass)
+            ->setParameter('entityId', $log->entityId)
+            ->setParameter('action', AuditLogInterface::ACTION_REVERT)
+            ->setParameter('revertedId', '%'.$log->id->toRfc4122().'%')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getSingleScalarResult() > 0;
     }
 }

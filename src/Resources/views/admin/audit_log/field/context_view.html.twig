@@ -1,0 +1,42 @@
+{# Structured Context View — renders context as key-value table + collapsible raw JSON #}
+{% set context = entity.instance.context ?? {} %}
+
+{% if context|length > 0 %}
+<div class="audit-context-container">
+    <table class="audit-context-table">
+        {% for key, value in context %}
+            <tr>
+                <td>{{ key }}</td>
+                <td>
+                    {% if value is iterable %}
+                        <pre class="audit-context-pre">{{ audit_format_json(value) }}</pre>
+                    {% elseif value is same as(true) %}
+                        <span class="badge bg-success">true</span>
+                    {% elseif value is same as(false) %}
+                        <span class="badge bg-danger">false</span>
+                    {% elseif value is null %}
+                        <span class="text-muted"><em>null</em></span>
+                    {% else %}
+                        {{ value }}
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+    </table>
+</div>
+
+<div class="audit-context-raw mt-3">
+    <button class="audit-context-raw-toggle" type="button"
+            data-bs-toggle="collapse" data-bs-target="#rawContextJson"
+            aria-expanded="false" aria-controls="rawContextJson">
+        <i class="fa fa-code"></i> Raw JSON
+    </button>
+    <div class="collapse" id="rawContextJson">
+        <pre>{{ audit_format_json(context) }}</pre>
+    </div>
+</div>
+{% else %}
+<div class="text-muted">
+    <em>No context metadata recorded.</em>
+</div>
+{% endif %}
