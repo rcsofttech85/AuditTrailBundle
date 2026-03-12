@@ -1,0 +1,73 @@
+{# Diff View Field Template — renders side-by-side old/new values with highlights #}
+{% set old_values = entity.instance.oldValues ?? {} %}
+{% set new_values = entity.instance.newValues ?? {} %}
+{% set changed = entity.instance.changedFields ?? [] %}
+
+{% set all_fields = changed|merge(old_values|keys)|merge(new_values|keys)|unique %}
+
+{% if all_fields is not empty %}
+<div class="audit-diff-container">
+    <div class="audit-diff-header">
+        <i class="fa fa-exchange-alt"></i>
+        Changes ({{ all_fields|length }} field{{ all_fields|length > 1 ? 's' : '' }})
+    </div>
+    <table class="audit-diff-table">
+        <thead>
+            <tr>
+                <th>Field</th>
+                <th>Old Value</th>
+                <th>New Value</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in all_fields %}
+                {% set old_val = old_values[f] ?? null %}
+                {% set new_val = new_values[f] ?? null %}
+                <tr>
+                    <td class="audit-diff-field">
+                        {{ f }}
+                        {% if old_val is null and new_val is not null %}
+                            <span class="audit-diff-badge-added">added</span>
+                        {% elseif old_val is not null and new_val is null %}
+                            <span class="audit-diff-badge-removed">removed</span>
+                        {% endif %}
+                    </td>
+                    <td class="{% if old_val is not null %}audit-diff-old{% else %}audit-diff-unchanged{% endif %}">
+                        {% if old_val is not null %}
+                            <span class="audit-diff-value">
+                                {% if old_val is iterable %}
+                                    {{ audit_format_json(old_val) }}
+                                {% else %}
+                                    {{ old_val }}
+                                {% endif %}
+                            </span>
+                        {% else %}
+                            <em>—</em>
+                        {% endif %}
+                    </td>
+                    <td class="{% if new_val is not null %}audit-diff-new{% else %}audit-diff-unchanged{% endif %}">
+                        {% if new_val is not null %}
+                            <span class="audit-diff-value">
+                                {% if new_val is iterable %}
+                                    {{ audit_format_json(new_val) }}
+                                {% else %}
+                                    {{ new_val }}
+                                {% endif %}
+                            </span>
+                        {% else %}
+                            <em>—</em>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="audit-diff-container">
+    <div class="audit-diff-empty">
+        <i class="fa fa-check-circle"></i>
+        No field changes recorded for this audit event.
+    </div>
+</div>
+{% endif %}

@@ -103,7 +103,7 @@ class ChangeProcessorTest extends TestCase
             $this->processor->determineUpdateAction(['deletedAt' => [new DateTime(), null]])
         );
         self::assertEquals(
-            AuditLogInterface::ACTION_UPDATE,
+            AuditLogInterface::ACTION_SOFT_DELETE,
             $this->processor->determineUpdateAction(['deletedAt' => [null, new DateTime()]])
         );
     }

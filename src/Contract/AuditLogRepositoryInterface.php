@@ -34,9 +34,25 @@ interface AuditLogRepositoryInterface
     public function findWithFilters(array $filters = [], int $limit = 30): array;
 
     /**
+     * @param array<string, mixed> $filters
+     *
+     * @return iterable<AuditLog>
+     */
+    public function findAllWithFilters(array $filters = []): iterable;
+
+    /**
      * @return array<AuditLog>
      */
     public function findOlderThan(DateTimeImmutable $before): array;
 
     public function countOlderThan(DateTimeImmutable $before): int;
+
+    /**
+     * @param array<string, mixed> $criteria
+     */
+    public function count(array $criteria = []): int;
+
+    public function find(mixed $id): ?object;
+
+    public function isReverted(AuditLog $log): bool;
 }

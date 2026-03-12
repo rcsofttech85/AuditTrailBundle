@@ -86,6 +86,9 @@ final class ChangeProcessor implements ChangeProcessorInterface
         }
 
         [$oldValue, $newValue] = $changeSet[$this->softDeleteField];
+        if ($oldValue === null && $newValue !== null) {
+            return AuditLogInterface::ACTION_SOFT_DELETE;
+        }
 
         return ($oldValue !== null && $newValue === null)
             ? AuditLogInterface::ACTION_RESTORE

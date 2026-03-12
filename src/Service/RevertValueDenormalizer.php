@@ -27,7 +27,7 @@ final class RevertValueDenormalizer
     /**
      * @param ClassMetadata<object> $metadata
      */
-    public function denormalize(ClassMetadata $metadata, string $field, mixed $value): mixed
+    public function denormalize(ClassMetadata $metadata, string $field, mixed $value, bool $dryRun = false): mixed
     {
         if ($value === null) {
             return null;
@@ -50,7 +50,7 @@ final class RevertValueDenormalizer
         }
 
         if ($metadata->hasAssociation($field)) {
-            return $this->denormalizeAssociation($metadata, $field, $value);
+            return $this->denormalizeAssociation($metadata, $field, $value, $dryRun);
         }
 
         return $value;
@@ -118,7 +118,7 @@ final class RevertValueDenormalizer
     /**
      * @param ClassMetadata<object> $metadata
      */
-    private function denormalizeAssociation(ClassMetadata $metadata, string $field, mixed $value): ?object
+    private function denormalizeAssociation(ClassMetadata $metadata, string $field, mixed $value, bool $dryRun): ?object
     {
         $targetClass = $metadata->getAssociationTargetClass($field);
 
@@ -127,7 +127,11 @@ final class RevertValueDenormalizer
         }
 
         if (is_scalar($value) || is_array($value)) {
-            /* @var class-string $targetClass */
+            /** @var class-string $targetClass */
+            if ($dryRun) {
+                return $this->em->getReference($targetClass, $value);
+            }
+
             return $this->em->find($targetClass, $value);
         }
 

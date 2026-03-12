@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.0]
+
+### 2.2.0 Installation Note
+
+**Important for UI updates**: Please run the following command to publish the newly added CSS file for the EasyAdmin integration:
+
+```bash
+php bin/console assets:install
+```
+
+### 2.2.0 New Features
+
+- **JSON & CSV Export**: Added ability to export filtered audit logs to JSON or CSV directly from the index page via a dropdown action menu. Uses memory-efficient `toIterable()` streaming for large datasets through the new `findAllWithFilters()` repository method.
+- **Transaction Drill-down Pagination**: The transaction drill-down view now supports cursor-based (keyset) pagination using `afterId`/`beforeId` for deterministic, offset-free navigation through large transaction groups.
+- **Integrity Signature Badge**: Visual integrity verification on the Changes tab — displays "Verified Authentic", "Tampered / Invalid", or "Integrity Disabled" badges with corresponding icons and color coding to instantly alert admins to tampered logs.
+- **"Reverted" UI State Protection**: Added an `isReverted()` repository check that powers a new "REVERTED" badge on the detail page. The revert button is now dynamically disabled with an "Already Reverted" state to prevent duplicate reverts of the same log.
+- **Conditional EasyAdmin Registration**: The `AuditLogCrudController` is now conditionally registered as a service only when `EasyAdminBundle` is actively installed, checked via `kernel.bundles` at compile time in `AuditTrailExtension`.
+
+### 2.2.0 Improvements
+
+- **Optimized `isReverted()` Query**: Replaced N+1 entity hydration with a single `COUNT` + `LIKE` query against the JSON `context` column, eliminating full result set loading for the "Reverted" UI check.
+- **Keyset Pagination UUID Typing**: `afterId`/`beforeId` parameters now explicitly use the `'uuid'` Doctrine type constraint for proper cross-database UUID comparison in cursor-based pagination.
+- **Soft Delete Detection Fix**: `ChangeProcessor::determineUpdateAction()` now correctly detects soft-deletes when `oldValue` is `null` and `newValue` is not (previously only detected restores).
+- **Revert Subscriber Silencing**: Wrapped the entire revert operation in a `try/finally` block to ensure the `ScheduledAuditManagerInterface` subscriber is reliably re-enabled even if the revert fails mid-transaction.
+- **Revert Dry-Run Associations**: `RevertValueDenormalizer` now uses `EntityManager::getReference()` instead of `find()` during dry-runs to avoid unnecessary database query overhead for associated entities.
+- **Revert Access Action**: `AuditReverter::determineChanges()` now gracefully handles `ACTION_ACCESS` (read-tracking) logs by returning empty changes instead of throwing an exception.
+
+---
+
 ## [2.1.0]
 
 ### 2.1.0 Breaking Changes

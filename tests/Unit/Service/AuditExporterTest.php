@@ -42,7 +42,7 @@ final class AuditExporterTest extends TestCase
         $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
         $property->setAccessible(true);
-        $property->setValue($log, Uuid::v4());
+        $property->setValue($log, Uuid::v7());
 
         $audits = [$log];
 

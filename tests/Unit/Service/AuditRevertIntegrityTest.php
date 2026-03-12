@@ -12,6 +12,7 @@ use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
@@ -54,7 +55,8 @@ class AuditRevertIntegrityTest extends TestCase
             $this->integrityService,
             $this->createMock(AuditDispatcherInterface::class),
             $serializer,
-            $this->createMock(ScheduledAuditManagerInterface::class)
+            $this->createMock(ScheduledAuditManagerInterface::class),
+            $this->createMock(AuditLogRepositoryInterface::class)
         );
     }
 

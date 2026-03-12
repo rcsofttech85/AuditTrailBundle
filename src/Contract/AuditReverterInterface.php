@@ -30,5 +30,6 @@ interface AuditReverterInterface
         bool $force = false,
         array $context = [],
         bool $silenceSubscriber = true,
+        bool $verifySignature = true,
     ): array;
 }

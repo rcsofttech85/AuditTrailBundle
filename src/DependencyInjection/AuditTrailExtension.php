@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\DependencyInjection;
 use LogicException;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Controller\Admin\AuditLogCrudController;
 use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
 use Rcsofttech\AuditTrailBundle\MessageHandler\PersistAuditLogHandler;
 use Rcsofttech\AuditTrailBundle\Transport\AsyncDatabaseAuditTransport;
@@ -90,6 +91,14 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         new YamlFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'))->load('services.yaml');
 
         $this->configureTransports($config, $container);
+
+        $bundles = $container->hasParameter('kernel.bundles') ? $container->getParameter('kernel.bundles') : [];
+        if (isset($bundles['EasyAdminBundle'])) {
+            $container->register(AuditLogCrudController::class)
+                ->setAutowired(true)
+                ->setAutoconfigured(true)
+                ->addTag('controller.service_arguments');
+        }
     }
 
     #[Override]

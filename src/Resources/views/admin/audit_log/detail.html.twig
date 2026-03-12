@@ -1,0 +1,46 @@
+{# Custom Detail Template — adds revert button and enhanced title #}
+{% extends '@EasyAdmin/crud/detail.html.twig' %}
+
+{% block content_title %}
+    {{ parent() }}
+    {% if entity is defined and entity.instance is defined %}
+        <span class="audit-action-badge audit-action-badge-{{ audit_action_badge_class(entity.instance.action) }} audit-detail-title-badge">
+            <i class="fa {{ audit_action_icon(entity.instance.action) }}"></i>
+            {{ entity.instance.action|upper }}
+        </span>
+        {% if is_reverted|default(false) %}
+            <span class="badge bg-secondary ms-2" style="font-size: 0.8rem; vertical-align: middle;">
+                <i class="fa fa-history me-1"></i> REVERTED
+            </span>
+        {% endif %}
+    {% endif %}
+{% endblock %}
+
+{% block main %}
+    {# ── Revert Button (for update/create/soft_delete actions only) ── #}
+    {% if entity is defined and entity.instance is defined %}
+        {% set revertable_actions = ['update', 'create', 'soft_delete'] %}
+        {% if entity.instance.action in revertable_actions %}
+            <div class="mb-3 d-flex justify-content-end">
+                {% if is_reverted|default(false) %}
+                    <button type="button" class="btn btn-secondary" disabled title="This change has already been reverted.">
+                        <i class="fa fa-check-circle"></i> Already Reverted
+                    </button>
+                {% else %}
+                    <button type="button" class="audit-revert-btn"
+                            data-bs-toggle="modal"
+                            data-bs-target="#revertConfirmModal"
+                            data-preview-url="{{ ea_url().setAction('previewRevert').setEntityId(entity.primaryKeyValue) }}"
+                            data-revert-url="{{ ea_url().setAction('revertAuditLog').setEntityId(entity.primaryKeyValue) }}">
+                        <i class="fa fa-history"></i> Revert This Change
+                    </button>
+                {% endif %}
+            </div>
+        {% endif %}
+    {% endif %}
+
+    {{ parent() }}
+
+    {# ── Revert Confirmation Modal ── #}
+    {% include '@AuditTrail/admin/audit_log/_revert_modal.html.twig' %}
+{% endblock %}

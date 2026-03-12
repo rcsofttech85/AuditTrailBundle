@@ -10,6 +10,7 @@ use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
@@ -34,6 +35,7 @@ final readonly class AuditReverter implements AuditReverterInterface
         private AuditDispatcherInterface $dispatcher,
         private ValueSerializerInterface $serializer,
         private ScheduledAuditManagerInterface $auditManager,
+        private AuditLogRepositoryInterface $repository,
     ) {
     }
 
@@ -49,37 +51,53 @@ final readonly class AuditReverter implements AuditReverterInterface
         bool $force = false,
         array $context = [],
         bool $silenceSubscriber = true,
+        bool $verifySignature = true,
     ): array {
-        if ($this->integrityService->isEnabled() && !$this->integrityService->verifySignature($log)) {
+        if ($verifySignature && $this->integrityService->isEnabled() && !$this->integrityService->verifySignature($log)) {
             throw new RuntimeException(sprintf('Audit log #%s has been tampered with and cannot be reverted.', $log->id?->toRfc4122() ?? 'unknown'));
         }
 
-        $entity = $this->findEntity($log->entityClass, $log->entityId);
-
-        if ($entity === null) {
-            throw new RuntimeException(sprintf('Entity %s:%s not found.', $log->entityClass, $log->entityId));
+        if ($this->repository->isReverted($log)) {
+            throw new RuntimeException(sprintf('Audit log #%s has already been reverted.', $log->id?->toRfc4122() ?? 'unknown'));
         }
 
-        $changes = $this->determineChanges($log, $entity, $force);
+        if ($silenceSubscriber) {
+            $this->auditManager->disable();
+        }
 
-        if ($dryRun) {
+        try {
+            $entity = $this->findEntity($log->entityClass, $log->entityId);
+
+            if ($entity === null) {
+                throw new RuntimeException(sprintf('Entity %s:%s not found.', $log->entityClass, $log->entityId));
+            }
+
+            $changes = $this->determineChanges($log, $entity, $force, $dryRun);
+
+            if ($dryRun) {
+                return $changes;
+            }
+
+            $this->applyAndPersist($entity, $log, $changes, $context);
+
             return $changes;
+        } finally {
+            if ($silenceSubscriber) {
+                $this->auditManager->enable();
+            }
         }
-
-        $this->applyAndPersist($entity, $log, $changes, $context, $silenceSubscriber);
-
-        return $changes;
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function determineChanges(AuditLog $log, object $entity, bool $force): array
+    private function determineChanges(AuditLog $log, object $entity, bool $force, bool $dryRun): array
     {
         return match ($log->action) {
             AuditLogInterface::ACTION_CREATE => $this->handleRevertCreate($force),
-            AuditLogInterface::ACTION_UPDATE => $this->handleRevertUpdate($log, $entity),
+            AuditLogInterface::ACTION_UPDATE => $this->handleRevertUpdate($log, $entity, $dryRun),
             AuditLogInterface::ACTION_SOFT_DELETE => $this->handleRevertSoftDelete($entity),
+            AuditLogInterface::ACTION_ACCESS => [], // Ignore access attribute during revert
             default => throw new RuntimeException(sprintf('Reverting action "%s" is not supported.', $log->action)),
         };
     }
@@ -93,11 +111,10 @@ final readonly class AuditReverter implements AuditReverterInterface
         AuditLog $log,
         array $changes,
         array $context,
-        bool $silenceSubscriber,
     ): void {
         $isDelete = isset($changes['action']) && $changes['action'] === 'delete';
 
-        $this->em->wrapInTransaction(function () use ($entity, $isDelete, $log, $changes, $context, $silenceSubscriber) {
+        $this->em->wrapInTransaction(function () use ($entity, $isDelete, $log, $changes, $context) {
             if ($isDelete) {
                 $this->em->remove($entity);
             } else {
@@ -105,17 +122,7 @@ final readonly class AuditReverter implements AuditReverterInterface
                 $this->em->persist($entity);
             }
 
-            if ($silenceSubscriber) {
-                $this->auditManager->disable();
-            }
-
-            try {
-                $this->em->flush();
-            } finally {
-                if ($silenceSubscriber) {
-                    $this->auditManager->enable();
-                }
-            }
+            $this->em->flush();
 
             $this->createRevertAuditLog($entity, $log, $changes, $isDelete, $context);
         });
@@ -180,14 +187,14 @@ final readonly class AuditReverter implements AuditReverterInterface
     /**
      * @return array<string, mixed>
      */
-    private function handleRevertUpdate(AuditLog $log, object $entity): array
+    private function handleRevertUpdate(AuditLog $log, object $entity, bool $dryRun): array
     {
         $oldValues = $log->oldValues ?? [];
         if ($oldValues === []) {
             throw new RuntimeException('No old values found in audit log to revert to.');
         }
 
-        return $this->applyChanges($entity, $oldValues);
+        return $this->applyChanges($entity, $oldValues, $dryRun);
     }
 
     /**
@@ -225,13 +232,13 @@ final readonly class AuditReverter implements AuditReverterInterface
      *
      * @return array<string, mixed>
      */
-    private function applyChanges(object $entity, array $values): array
+    private function applyChanges(object $entity, array $values, bool $dryRun): array
     {
         $metadata = $this->em->getClassMetadata($entity::class);
         $appliedChanges = [];
 
         foreach ($values as $field => $value) {
-            $denormalizedValue = $this->denormalizer->denormalize($metadata, $field, $value);
+            $denormalizedValue = $this->denormalizer->denormalize($metadata, $field, $value, $dryRun);
 
             if ($this->shouldSkipField($metadata, $field, $entity, $denormalizedValue)) {
                 continue;

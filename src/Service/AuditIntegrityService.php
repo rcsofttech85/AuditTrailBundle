@@ -149,7 +149,10 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
             $normalized[$key] = $this->normalizeValue($value, $depth + 1);
         }
 
-        ksort($normalized, SORT_STRING);
+        /** @var array<mixed> $normalized */
+        if (!array_is_list($normalized)) {
+            ksort($normalized, SORT_STRING);
+        }
 
         return $normalized;
     }

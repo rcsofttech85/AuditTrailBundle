@@ -1,0 +1,39 @@
+{% if changes is empty %}
+    <div class="alert alert-info border-0 shadow-sm d-flex align-items-center gap-2">
+        <i class="fa fa-info-circle fs-4"></i>
+        <div>
+            <strong>No Changes Detected:</strong> The current entity state already matches this audit point. Nothing to revert.
+        </div>
+    </div>
+{% else %}
+    <div class="audit-revert-preview">
+        <div class="audit-revert-preview-header">
+            <i class="fa fa-search"></i> 
+            Preview of Changes ({{ changes|length }})
+        </div>
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th>Field</th>
+                    <th>Will Be Restored To</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for field, value in changes %}
+                    <tr>
+                        <td style="font-weight:600; font-family:var(--font-family-monospace);">{{ field }}</td>
+                        <td>
+                            {% if value is null %}
+                                <em class="text-muted">null</em>
+                            {% elseif value is iterable %}
+                                <pre class="mb-0" style="background:transparent; padding:0; border:none; font-size:inherit;">{{ audit_format_json(value) }}</pre>
+                            {% else %}
+                                {{ value }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endif %}

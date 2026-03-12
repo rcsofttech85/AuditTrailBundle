@@ -1,0 +1,629 @@
+/* ==========================================================================
+   AuditTrailBundle — EasyAdmin Theme-Aware Styles
+   Uses EasyAdmin CSS variables to support both light and dark themes.
+   ========================================================================== */
+
+:root {
+    --audit-primary: var(--color-primary);
+    --audit-success: var(--color-success);
+    --audit-warning: var(--color-warning);
+    --audit-danger: var(--color-danger);
+    --audit-radius: 12px;
+    --audit-radius-sm: 8px;
+    --audit-shadow: var(--shadow-md);
+    --audit-shadow-lg: var(--shadow-lg);
+}
+
+
+
+/* --------------------------------------------------------------------------
+   2. VISUAL DIFF VIEW
+   -------------------------------------------------------------------------- */
+
+.audit-diff-container {
+    border-radius: var(--audit-radius);
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--audit-shadow);
+    margin-block-end: 1rem;
+}
+
+.audit-diff-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-block: 0.75rem;
+    padding-inline: 1rem;
+    background: var(--secondary-bg);
+    border-block-end: 1px solid var(--border-color);
+    font-weight: 600;
+    font-size: .9rem;
+    color: var(--text-color);
+}
+
+.audit-diff-header i {
+    color: var(--audit-primary);
+}
+
+.audit-diff-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .875rem;
+}
+
+.audit-diff-table thead th {
+    padding-block: 0.625rem;
+    padding-inline: 1rem;
+    font-size: .75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-muted);
+    background: var(--tertiary-bg);
+    border-block-end: 2px solid var(--border-color);
+}
+
+.audit-diff-table thead th:first-child {
+    width: 20%;
+}
+
+.audit-diff-table tbody tr {
+    transition: background .15s ease;
+}
+
+.audit-diff-table tbody tr:hover {
+    background: var(--table-hover-cell-bg);
+}
+
+.audit-diff-table tbody td {
+    padding-block: 0.625rem;
+    padding-inline: 1rem;
+    border-block-end: 1px solid var(--border-color);
+    vertical-align: top;
+    word-break: break-word;
+}
+
+.audit-diff-table td.audit-diff-field {
+    font-weight: 600;
+    color: var(--text-color);
+    font-family: var(--font-family-monospace);
+    font-size: .8rem;
+    background: var(--tertiary-bg);
+}
+
+.audit-diff-table td.audit-diff-old {
+    background: rgba(239, 68, 68, .08);
+    color: var(--badge-danger-color, #991b1b);
+}
+
+.audit-diff-table td.audit-diff-old .audit-diff-value {
+    padding-block: 0.25rem;
+    padding-inline: 0.5rem;
+    border-radius: 4px;
+    background: rgba(239, 68, 68, .10);
+    border-inline-start: 3px solid var(--color-danger);
+    display: inline-block;
+    font-family: var(--font-family-monospace);
+    font-size: .8rem;
+}
+
+.audit-diff-table td.audit-diff-new {
+    background: rgba(16, 185, 129, .08);
+    color: var(--badge-success-color, #166534);
+}
+
+.audit-diff-table td.audit-diff-new .audit-diff-value {
+    padding-block: 0.25rem;
+    padding-inline: 0.5rem;
+    border-radius: 4px;
+    background: rgba(16, 185, 129, .10);
+    border-inline-start: 3px solid var(--color-success);
+    display: inline-block;
+    font-family: var(--font-family-monospace);
+    font-size: .8rem;
+}
+
+.audit-diff-table td.audit-diff-unchanged {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+:is(.audit-diff-badge-added, .audit-diff-badge-removed) {
+    display: inline-block;
+    padding-block: 0.125rem;
+    padding-inline: 0.5rem;
+    border-radius: 10px;
+    font-size: .7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-inline-start: 0.375rem;
+}
+
+.audit-diff-badge-added {
+    background: var(--badge-success-bg);
+    color: var(--badge-success-color);
+}
+
+.audit-diff-badge-removed {
+    background: var(--badge-danger-bg);
+    color: var(--badge-danger-color);
+}
+
+.audit-diff-empty {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted);
+}
+
+.audit-diff-empty i {
+    font-size: 2rem;
+    opacity: .4;
+    margin-block-end: 0.5rem;
+    display: block;
+}
+
+/* --------------------------------------------------------------------------
+   3. STRUCTURED CONTEXT VIEW
+   -------------------------------------------------------------------------- */
+
+.audit-context-container {
+    border-radius: var(--audit-radius);
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--audit-shadow);
+}
+
+.audit-context-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .875rem;
+}
+
+.audit-context-table tr {
+    transition: background .15s ease;
+}
+
+.audit-context-table tr:hover {
+    background: var(--table-hover-cell-bg);
+}
+
+.audit-context-table td {
+    padding-block: 0.625rem;
+    padding-inline: 1rem;
+    border-block-end: 1px solid var(--border-color);
+    vertical-align: top;
+}
+
+.audit-context-table td:first-child {
+    font-weight: 600;
+    color: var(--text-muted);
+    width: 35%;
+    font-family: var(--font-family-monospace);
+    font-size: .8rem;
+    background: var(--tertiary-bg);
+}
+
+.audit-context-table td:last-child {
+    color: var(--text-color);
+    word-break: break-word;
+}
+
+.audit-context-pre {
+    margin: 0;
+    padding: 8px;
+    border-radius: 6px;
+    font-size: .8rem;
+    background: var(--secondary-bg);
+    color: var(--text-color);
+    font-family: var(--font-family-monospace);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.audit-context-raw {
+    margin-block-start: 0.75rem;
+}
+
+.audit-context-raw-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding-block: 0.375rem;
+    padding-inline: 0.75rem;
+    border-radius: var(--audit-radius-sm);
+    border: 1px solid var(--border-color);
+    background: var(--secondary-bg);
+    color: var(--text-muted);
+    font-size: .8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s ease;
+}
+
+.audit-context-raw-toggle:hover {
+    background: var(--primary-bg);
+    color: var(--audit-primary);
+    border-color: var(--audit-primary);
+}
+
+.audit-context-raw-toggle i {
+    transition: transform .2s ease;
+}
+
+.audit-context-raw-toggle[aria-expanded="true"] i {
+    transform: rotate(90deg);
+}
+
+.audit-context-raw pre {
+    margin-block-start: 0.5rem;
+    padding: 16px;
+    border-radius: var(--audit-radius-sm);
+    background: var(--tertiary-bg);
+    color: var(--text-color);
+    font-family: var(--font-family-monospace);
+    font-size: .8rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+}
+
+/* --------------------------------------------------------------------------
+   4. TRANSACTION DRILL-DOWN
+   -------------------------------------------------------------------------- */
+
+.audit-transaction-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding-block: 0.25rem;
+    padding-inline: 0.625rem;
+    border-radius: var(--audit-radius-sm);
+    background: rgba(99, 102, 241, .08);
+    color: var(--audit-primary);
+    font-family: var(--font-family-monospace);
+    font-size: .8rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all .2s ease;
+    border: 1px solid rgba(99, 102, 241, .2);
+}
+
+.audit-transaction-link:hover {
+    background: rgba(99, 102, 241, .15);
+    border-color: var(--audit-primary);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(99, 102, 241, .25);
+    color: var(--audit-primary);
+    text-decoration: none;
+}
+
+.audit-transaction-link i {
+    font-size: .7rem;
+}
+
+.audit-drilldown-container {
+    margin-block: 1.25rem;
+    border-radius: 12px;
+    background: var(--secondary-bg, var(--body-bg));
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+}
+
+.ea-dark-scheme .audit-drilldown-container {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.audit-drilldown-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding-block: 1.5rem;
+    padding-inline: 1.75rem;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6, #d946ef);
+    color: #fff;
+}
+
+.audit-drilldown-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.audit-drilldown-header .badge {
+    background: rgba(255, 255, 255, 0.25);
+    backdrop-filter: blur(4px);
+    font-size: 0.85rem;
+    padding-block: 0.5rem;
+    padding-inline: 1rem;
+    border-radius: 20px;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.audit-drilldown-hash-code {
+    background: rgba(0, 0, 0, 0.25);
+    padding-block: 0.25rem;
+    padding-inline: 0.625rem;
+    border-radius: 6px;
+    font-family: var(--font-family-monospace);
+    font-size: 0.95em;
+    letter-spacing: 0.5px;
+    display: inline-block;
+    color: #fff;
+}
+
+.audit-drilldown-body {
+    background: var(--content-bg, var(--body-bg));
+}
+
+.audit-drilldown-table {
+    margin: 0;
+    width: 100%;
+}
+
+.audit-drilldown-table th {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    background: var(--tertiary-bg);
+    border-block-end: 2px solid var(--border-color);
+    padding-block: 0.75rem;
+    padding-inline: 1rem;
+    white-space: nowrap;
+}
+
+.audit-drilldown-table td {
+    padding-block: 0.875rem;
+    padding-inline: 1rem;
+    border-block-end: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+
+.ea-dark-scheme .audit-drilldown-table th {
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.audit-drilldown-row {
+    transition: all 0.2s ease;
+    background: transparent;
+}
+
+.audit-drilldown-row:hover {
+    background: var(--table-hover-cell-bg, rgba(99, 102, 241, 0.04));
+}
+
+.ea-dark-scheme .audit-drilldown-row:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.audit-drilldown-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    margin-inline: auto;
+    transition: transform 0.2s ease;
+}
+
+.audit-drilldown-row:hover .audit-drilldown-icon {
+    transform: scale(1.1);
+}
+
+.audit-drilldown-changes-compact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-width: 300px;
+}
+
+.audit-drilldown-changed-badge {
+    background: var(--tertiary-bg);
+    color: var(--text-color);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--font-family-monospace);
+    font-size: 0.75em;
+    border: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.audit-drilldown-pagination {
+    background: var(--content-bg, var(--body-bg));
+    border-block-start-color: var(--border-color) !important;
+}
+
+/* --------------------------------------------------------------------------
+   5. REVERT PREVIEW
+   -------------------------------------------------------------------------- */
+
+.audit-revert-preview {
+    border-radius: var(--audit-radius);
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    margin-block-end: 1rem;
+}
+
+.audit-revert-preview-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-block: 0.75rem;
+    padding-inline: 1rem;
+    background: var(--alert-warning-bg);
+    border-block-end: 1px solid var(--alert-warning-border-color);
+    font-weight: 600;
+    font-size: .9rem;
+    color: var(--alert-warning-color);
+}
+
+.audit-revert-preview table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .875rem;
+}
+
+.audit-revert-preview table th {
+    padding-block: 0.625rem;
+    padding-inline: 1rem;
+    font-size: .75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-muted);
+    background: var(--tertiary-bg);
+    border-block-end: 2px solid var(--border-color);
+}
+
+.audit-revert-preview table td {
+    padding-block: 0.625rem;
+    padding-inline: 1rem;
+    border-block-end: 1px solid var(--border-color);
+    vertical-align: top;
+    color: var(--text-color);
+}
+
+/* Revert Modal Header */
+.audit-modal-header {
+    background: var(--alert-warning-bg) !important;
+    border-block-end: 1px solid var(--alert-warning-border-color) !important;
+}
+
+.audit-modal-title {
+    color: var(--alert-warning-color) !important;
+}
+
+.audit-revert-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding-block: 0.5rem;
+    padding-inline: 1rem;
+    border-radius: var(--audit-radius-sm);
+    border: none;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #fff;
+    font-weight: 600;
+    font-size: .85rem;
+    cursor: pointer;
+    transition: all .2s ease;
+    box-shadow: 0 2px 8px rgba(245, 158, 11, .3);
+}
+
+.audit-revert-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, .4);
+    background: linear-gradient(135deg, #d97706, #b45309);
+}
+
+.audit-revert-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.audit-revert-btn--danger {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    box-shadow: 0 2px 8px rgba(239, 68, 68, .3);
+}
+
+.audit-revert-btn--danger:hover {
+    box-shadow: 0 4px 12px rgba(239, 68, 68, .4);
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+}
+
+/* --------------------------------------------------------------------------
+   6. ACTION BADGES (enhanced)
+   -------------------------------------------------------------------------- */
+
+.audit-action-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 50px;
+    font-size: .75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #fff !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.audit-action-badge i {
+    font-size: .8rem;
+}
+
+.audit-action-badge-success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.audit-action-badge-warning {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.audit-action-badge-danger {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+.audit-action-badge-info {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.audit-action-badge-primary {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+}
+
+.audit-action-badge-secondary {
+    background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+}
+
+.audit-action-badge-light {
+    background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+}
+
+/* --------------------------------------------------------------------------
+   7. DETAIL PAGE ENHANCEMENTS
+   -------------------------------------------------------------------------- */
+
+.audit-detail-title-badge {
+    vertical-align: middle;
+    margin-inline-start: 0.5rem;
+}
+
+/* Smooth panel transitions */
+.audit-panel {
+    border-radius: var(--audit-radius);
+    background: var(--content-bg, var(--body-bg));
+    box-shadow: var(--audit-shadow);
+    margin-block-end: 1.25rem;
+    overflow: hidden;
+}
+
+.audit-panel-header {
+    padding-block: 0.875rem;
+    padding-inline: 1.25rem;
+    background: var(--secondary-bg);
+    border-block-end: 1px solid var(--border-color);
+    font-weight: 600;
+    font-size: .9rem;
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.audit-panel-body {
+    padding: 1.25rem;
+}

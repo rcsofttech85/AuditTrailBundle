@@ -165,11 +165,11 @@ class AuditQueryTest extends TestCase
 
     public function testGetFirstResult(): void
     {
-        $uuid1 = Uuid::v4()->toString();
+        $uuid1 = Uuid::v7()->toString();
         $log1 = new AuditLog('Class', '1', 'create');
         $this->setLogId($log1, $uuid1);
         $log2 = new AuditLog('Class', '2', 'create');
-        $this->setLogId($log2, Uuid::v4()->toString());
+        $this->setLogId($log2, Uuid::v7()->toString());
 
         // Should call findWithFilters with limit 1
         $this->repository->expects($this->once())
@@ -196,10 +196,10 @@ class AuditQueryTest extends TestCase
 
     public function testGetNextCursor(): void
     {
-        $uuid1 = Uuid::v4()->toString();
+        $uuid1 = Uuid::v7()->toString();
         $log1 = new AuditLog('Class', '1', 'create');
         $this->setLogId($log1, $uuid1);
-        $uuid2 = Uuid::v4()->toString();
+        $uuid2 = Uuid::v7()->toString();
         $log2 = new AuditLog('Class', '2', 'create');
         $this->setLogId($log2, $uuid2);
 

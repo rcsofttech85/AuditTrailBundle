@@ -13,6 +13,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
@@ -46,6 +47,8 @@ class AuditReverterTest extends AbstractAuditTestCase
 
     private AuditDispatcherInterface&MockObject $dispatcher;
 
+    private AuditLogRepositoryInterface&MockObject $repository;
+
     private ScheduledAuditManagerInterface&MockObject $auditManager;
 
     private AuditReverter $reverter;
@@ -59,6 +62,7 @@ class AuditReverterTest extends AbstractAuditTestCase
         $this->softDeleteHandler = $this->createMock(SoftDeleteHandlerInterface::class);
         $this->integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
         $this->dispatcher = $this->createMock(AuditDispatcherInterface::class);
+        $this->repository = $this->createMock(AuditLogRepositoryInterface::class);
         $this->auditManager = $this->createMock(ScheduledAuditManagerInterface::class);
 
         $this->em->method('getFilters')->willReturn($this->filterCollection);
@@ -75,7 +79,8 @@ class AuditReverterTest extends AbstractAuditTestCase
             $this->integrityService,
             $this->dispatcher,
             $serializer,
-            $this->auditManager
+            $this->auditManager,
+            $this->repository
         );
     }
 
@@ -327,7 +332,7 @@ class AuditReverterTest extends AbstractAuditTestCase
 
     public function testRevertWithCustomContext(): void
     {
-        $id = Uuid::v4();
+        $id = Uuid::v7();
         $log = new AuditLog(
             entityClass: RevertTestUser::class,
             entityId: '1',
@@ -362,6 +367,35 @@ class AuditReverterTest extends AbstractAuditTestCase
         $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, 'post_flush');
 
         $this->reverter->revert($log, false, false, ['custom_key' => 'custom_val']);
+    }
+
+    public function testRevertAccessAction(): void
+    {
+        $log = new AuditLog(RevertTestUser::class, '1', AuditLogInterface::ACTION_ACCESS);
+
+        $entity = new RevertTestUser();
+        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
+        $this->em->method('find')->willReturn($entity);
+
+        $this->em->method('wrapInTransaction')->willReturnCallback(static fn ($c) => $c());
+
+        // ACTION_ACCESS should return empty changes and NOT throw exception
+        $changes = $this->reverter->revert($log);
+        self::assertEquals([], $changes);
+    }
+
+    public function testRevertAlreadyReverted(): void
+    {
+        $log = new AuditLog(RevertTestUser::class, '1', AuditLogInterface::ACTION_UPDATE, oldValues: ['name' => 'Old']);
+
+        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
+        $this->em->method('find')->willReturn(new RevertTestUser());
+        $this->repository->method('isReverted')->with($log)->willReturn(true);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('already been reverted');
+
+        $this->reverter->revert($log);
     }
 
     private function setLogId(AuditLog $log, Uuid $id): void
