@@ -150,4 +150,56 @@ final class AuditExporterTest extends TestCase
         $array = $this->exporter->auditToArray($log);
         self::assertArrayHasKey('action', $array);
     }
+
+    public function testExportToStreamJson(): void
+    {
+        $log1 = new AuditLog('User', '1', 'create', new DateTimeImmutable('2024-01-01 12:00:00'));
+        $log2 = new AuditLog('User', '2', 'update', new DateTimeImmutable('2024-01-02 12:00:00'));
+
+        $stream = fopen('php://temp', 'r+');
+        self::assertIsResource($stream);
+
+        $this->exporter->exportToStream([$log1, $log2], 'json', $stream);
+
+        rewind($stream);
+        $streamOutput = stream_get_contents($stream);
+        fclose($stream);
+
+        $stringOutput = $this->exporter->formatAsJson([$log1, $log2]);
+
+        self::assertSame($stringOutput, $streamOutput);
+    }
+
+    public function testExportToStreamCsv(): void
+    {
+        $log1 = new AuditLog('User', '1', 'create', new DateTimeImmutable('2024-01-01 12:00:00'));
+        $log2 = new AuditLog('Post', '99', 'delete', new DateTimeImmutable('2024-01-02 12:00:00'));
+
+        $stream = fopen('php://temp', 'r+');
+        self::assertIsResource($stream);
+
+        $this->exporter->exportToStream([$log1, $log2], 'csv', $stream);
+
+        rewind($stream);
+        $streamOutput = stream_get_contents($stream);
+        fclose($stream);
+
+        $stringOutput = $this->exporter->formatAsCsv([$log1, $log2]);
+
+        self::assertSame($stringOutput, $streamOutput);
+    }
+
+    public function testExportToStreamThrowsOnInvalidFormat(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        $stream = fopen('php://temp', 'r+');
+        self::assertIsResource($stream);
+
+        try {
+            $this->exporter->exportToStream([], 'xml', $stream);
+        } finally {
+            fclose($stream);
+        }
+    }
 }
