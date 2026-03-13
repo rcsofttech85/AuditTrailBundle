@@ -32,9 +32,11 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\RevertPreviewFormatter;
 use Rcsofttech\AuditTrailBundle\Service\TransactionDrilldownService;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
+use RuntimeException;
 use Stringable;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 use function is_scalar;
@@ -244,16 +246,27 @@ class AuditLogCrudController extends AbstractCrudController
     /**
      * @param AdminContext<AuditLog> $context
      */
-    private function doExport(AdminContext $context, string $format): Response
+    private function doExport(AdminContext $context, string $format): StreamedResponse
     {
         $filters = $this->getFiltersFromRequest($context);
-        /** @var iterable<AuditLog> $audits */
-        $audits = $this->repository->findAllWithFilters($filters);
-
-        $content = $this->exporter->formatAudits($audits, $format);
         $fileName = sprintf('audit_logs_%s.%s', new DateTimeImmutable()->format('Y-m-d_His'), $format);
 
-        $response = new Response($content);
+        $response = new StreamedResponse(function () use ($filters, $format): void {
+            /** @var iterable<AuditLog> $audits */
+            $audits = $this->repository->findAllWithFilters($filters);
+            $output = fopen('php://output', 'w');
+
+            if ($output === false) {
+                throw new RuntimeException('Failed to open output stream for export');
+            }
+
+            try {
+                $this->exporter->exportToStream($audits, $format, $output);
+            } finally {
+                fclose($output);
+            }
+        });
+
         $response->headers->set('Content-Type', $format === 'json' ? 'application/json' : 'text/csv');
         $response->headers->set('Content-Disposition', sprintf('attachment; filename="%s"', $fileName));
 
