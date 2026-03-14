@@ -5,6 +5,12 @@
 You can ignore specific properties or enable/disable auditing per entity via the class-level attribute.
 
 ```php
+<?php
+
+declare(strict_types=1);
+
+use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
+
 #[Auditable(enabled: true, ignoredProperties: ['internalCode'])]
 class Product
 {
@@ -21,6 +27,10 @@ Skip auditing based on runtime conditions using the `#[AuditCondition]` attribut
 Add the `#[AuditCondition]` attribute to your entity. You have access to `object`, `action`, `changeSet`, and `user`.
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 use Rcsofttech\AuditTrailBundle\Attribute\AuditCondition;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 
@@ -28,7 +38,10 @@ use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 #[AuditCondition("action == 'update' and object.getPrice() > 100")]
 class Product
 {
-    public function getPrice(): int { ... }
+    public function getPrice(): int
+    {
+        // ...
+    }
 }
 ```
 
@@ -44,6 +57,10 @@ class Product
 For complex logic, implement the `AuditVoterInterface`. Your voter will be automatically discovered if it's registered as a service.
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
 
 class MyCustomVoter implements AuditVoterInterface
@@ -78,6 +95,10 @@ if (isset($context['impersonation'])) {
 You can manually add custom metadata to your audit logs by implementing the `AuditContextContributorInterface`. This is the recommended way to add application-specific information like correlation IDs, app versions, or feature flags.
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 namespace App\Audit;
 
 use Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface;
@@ -109,6 +130,10 @@ Dispatched immediately after an `AuditLog` object is created but before it is pe
 - Trigger external notifications.
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 namespace App\EventSubscriber;
 
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
@@ -126,7 +151,7 @@ class AuditSubscriber implements EventSubscriberInterface
     public function onAuditLogCreated(AuditLogCreatedEvent $event): void
     {
         $log = $event->getAuditLog();
-        
+
         // Add custom metadata
         $context = $log->getContext();
         $context['server_id'] = 'node-01';

@@ -17,21 +17,29 @@ All query methods are chainable and return **new immutable query instances**.
 ## 1. Injecting the AuditReader
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 use Rcsofttech\AuditTrailBundle\Contract\AuditReaderInterface;
 
 class UserController extends AbstractController
 {
     public function __construct(
         private readonly AuditReaderInterface $auditReader
-    ) {}
+    ) {
+    }
 }
 ```
 
 ## Get complete audit history for a specific entity instance
 
 ```php
-$user = $userRepository->find(123);
+<?php
 
+declare(strict_types=1);
+
+$user = $userRepository->find(123);
 $history = $this->auditReader->getHistoryFor($user);
 
 foreach ($history as $entry) {
@@ -48,8 +56,13 @@ foreach ($history as $entry) {
 ## Building Custom Queries
 
 ```php
-//Find all updates to User entities in the last 30 days
+<?php
 
+declare(strict_types=1);
+
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+
+// Find all updates to User entities in the last 30 days
 $recentUpdates = $this->auditReader
     ->forEntity(User::class)
     ->updates()
@@ -57,10 +70,7 @@ $recentUpdates = $this->auditReader
     ->limit(50)
     ->getResults();
 
-//Find all deletions by a specific admin
-
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-
+// Find all deletions by a specific admin
 $deletions = $this->auditReader
     ->byUser(adminUserId: 1)
     ->action(
@@ -73,6 +83,10 @@ $deletions = $this->auditReader
 ## Find everything that happened in a single transaction
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 $transactionAudits = $this->auditReader
     ->byTransaction('019b5aca-60ed-70bf-b139-255aa96c96cb')
     ->getResults();
@@ -81,6 +95,10 @@ $transactionAudits = $this->auditReader
 ## Find updates where a specific field was changed
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 $emailChanges = $this->auditReader
     ->forEntity(User::class)
     ->updates()
@@ -91,6 +109,10 @@ $emailChanges = $this->auditReader
 ## Working with Diffs
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 $entry = $this->auditReader
     ->forEntity(User::class, '123')
     ->updates()
@@ -120,6 +142,10 @@ if ($entry) {
 ## Working with Collections
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 $audits = $this->auditReader
     ->forEntity(Order::class)
     ->between(
@@ -132,6 +158,10 @@ $audits = $this->auditReader
 ## Filter results in memory
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 $priceChanges = $audits->filter(
     fn ($entry) => $entry->hasFieldChanged('price')
 );
@@ -140,6 +170,10 @@ $priceChanges = $audits->filter(
 ## Grouping results
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 $byAction = $audits->groupByAction();
 // ['create' => [...], 'update' => [...], 'delete' => [...]
 
@@ -150,8 +184,12 @@ $byEntity = $audits->groupByEntity();
 ## Collection utilities
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 $first = $audits->first();
-$last  = $audits->last();
+$last = $audits->last();
 $count = $audits->count();
 $empty = $audits->isEmpty();
 ```
@@ -159,6 +197,10 @@ $empty = $audits->isEmpty();
 ## Pagination
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 $page1 = $this->auditReader
     ->forEntity(Product::class)
     ->limit(25)
@@ -169,6 +211,10 @@ $page1 = $this->auditReader
 ## Check if matching records exist
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 $hasDeletes = $this->auditReader
     ->forEntity(User::class)
     ->deletes()
