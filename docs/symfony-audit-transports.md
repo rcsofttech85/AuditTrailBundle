@@ -75,11 +75,15 @@ You can pass Messenger stamps (like `DelayStamp` or `DispatchAfterCurrentBusStam
 Pass them via the `$context` array when creating an audit log or performing a revert.
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 use Symfony\Component\Messenger\Stamp\DelayStamp;
 
 // Programmatic audit log with a 5-second delay
 $auditService->createAuditLog($entity, 'custom_action', null, null, [
-    'messenger_stamps' => [new DelayStamp(5000)]
+    'messenger_stamps' => [new DelayStamp(5000)],
 ]);
 ```
 
@@ -88,6 +92,10 @@ $auditService->createAuditLog($entity, 'custom_action', null, null, [
 Use the `AuditMessageStampEvent` to add stamps to the message right before it is dispatched to the bus. This is the recommended way to add transport-specific stamps.
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 namespace App\EventSubscriber;
 
 use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;
@@ -116,6 +124,10 @@ class AuditMessengerSubscriber implements EventSubscriberInterface
 When `audit_trail.integrity.enabled` is true, the bundle automatically signs the payload to ensure authenticity. The signature is added as a `SignatureStamp` to the Messenger envelope.
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
 
 // In your message handler
@@ -156,7 +168,11 @@ Content-Type: application/json
 
 ### Payload Structure
 
-The transport sends a `POST` request with a JSON body:
+Different transports send slightly different JSON payloads based on their delivery target.
+
+#### HTTP Transport
+
+The HTTP transport sends a flat JSON object including the entity signature and merged runtime context.
 
 ```json
 {
@@ -171,12 +187,36 @@ The transport sends a `POST` request with a JSON body:
     "ip_address": "127.0.0.1",
     "user_agent": "Mozilla/5.0...",
     "transaction_hash": "a1b2c3d4...",
-    "signature": "hmac-signature...",
+    "signature": "hmac-signature-here",
     "context": {
-        "app_version": "1.0.0",
-        "custom_meta": "value"
+        "is_impersonation": false,
+        "runtime_meta": "value"
     },
     "created_at": "2024-01-01T12:00:00+00:00"
+}
+```
+
+#### Queue Transport (AuditLogMessage)
+
+The Queue transport dispatches a strictly-typed DTO. It **omits** the entity signature from the body (it is sent as a transport-level header instead) and only contains the persisted entity context.
+
+```json
+{
+    "entity_class": "App\\Entity\\Product",
+    "entity_id": "123",
+    "action": "update",
+    "old_values": {"price": 100},
+    "new_values": {"price": 120},
+    "changed_fields": ["price"],
+    "user_id": "1",
+    "username": "admin",
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0...",
+    "transaction_hash": "a1b2c3d4...",
+    "created_at": "2024-01-01T12:00:00+00:00",
+    "context": {
+        "is_impersonation": false
+    }
 }
 ```
 

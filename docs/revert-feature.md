@@ -18,9 +18,13 @@ php bin/console audit:revert 123 --noisy
 You can pass custom context when programmatically reverting an entity. This is useful for tracking why a revert was performed.
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 $auditReverter->revert($log, false, false, [
     'reason' => 'Accidental deletion',
-    'ticket_id' => 'TICKET-456'
+    'ticket_id' => 'TICKET-456',
 ]);
 ```
 
@@ -33,6 +37,10 @@ By default, `AuditReverter` **silences** the standard `AuditSubscriber` during a
 For scenarios requiring full technical transparency (e.g., strict forensic compliance), you can disable this silencing:
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 // Pass 'false' as the 5th parameter to keep standard update logs enabled
 $auditReverter->revert($log, false, false, [], false);
 ```

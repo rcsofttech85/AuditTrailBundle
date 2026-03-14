@@ -5,6 +5,10 @@
 Add the `AuditLogCrudController` to your `DashboardController`:
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 use Rcsofttech\AuditTrailBundle\Controller\Admin\AuditLogCrudController;
 
 yield MenuItem::linkToCrud('Audit Logs', 'fas fa-history', AuditLog::class)
@@ -19,4 +23,4 @@ To ensure the custom styling for the Audit Log UI (diffs, action badges, and rev
 php bin/console assets:install
 ```
 
-![EasyAdmin Integration Showcase](../.github/assets/easyadmin_integration.png)
+![EasyAdmin Integration Showcase](../.github/assets/easyadmin_integration_dark.png)

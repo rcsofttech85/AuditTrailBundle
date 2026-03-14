@@ -14,6 +14,72 @@ AuditTrailBundle is a modern, lightweight bundle that automatically tracks and s
 
 ---
 
+## Why AuditTrailBundle?
+
+Most audit bundles capture changes synchronously, which can significantly slow down your application's write performance. AuditTrailBundle solves this by separating the **Capture** and **Persistence** phases.
+
+### Split-Phase Architecture
+
+```text
+  Application       Doctrine ORM       AuditTrailBundle       Queue / Storage
+       |                  |                    |                     |
+       | flush()          |                    |                     |
+       |----------------->|                    |                     |
+       |                  | onFlush (Capture)  |                     |
+       |                  |------------------->|                     |
+       |                  |                    | Compute Diffs       |
+       |                  |                    | Cache Payload       |
+       |                  |<-------------------|                     |
+       |                  |                    |                     |
+       |                  | Execute SQL        |                     |
+       |                  | (Transaction)      |                     |
+       |                  |                    |                     |
+       |                  | postFlush          |                     |
+       |                  |------------------->|                     |
+       |                  |                    | Dispatch Audit      |
+       |                  |                    |-------------------->|
+       | flush() returns  |                    |                     |
+       |<-----------------|                    |                     |
+                                                                     | Async Save
+```
+
+- **Non-blocking**: Audit capture happens during the flush, but storage is offloaded to a background process.
+- **Data Integrity**: Cryptographic signing ensures logs cannot be tampered with.
+- **Developer First**: Simple PHP 8 attributes, zero boilerplate.
+
+### Key Features
+
+- **High Performance**: Non-blocking audits using a **Split-Phase Architecture** (capture in `onFlush`, dispatch in `postFlush`).
+- **Multiple Transports**: Doctrine (Database), HTTP (ELK/Splunk), and Queue (RabbitMQ/Redis/Messenger).
+- **Deep Collection Tracking**: Tracks Many-to-Many and One-to-Many changes with precision.
+- **Sensitive Data Masking**: Native support for `#[SensitiveParameter]` and custom `#[Sensitive]` attributes.
+- **Safe Revert Support**: Easily roll back entities to any point in history.
+- **Access Auditing**: Track sensitive entity read operations (GET requests) with configurable cooldowns.
+- **Conditional Auditing**: Skip logs based on runtime conditions or Expressions.
+- **Rich Context**: Automatically tracks IP, User Agent, Impersonation, and custom metadata.
+
+---
+
+## Enterprise-Ready UI
+
+Native integration with **EasyAdmin** provides a professional dashboard for your audit logs out of the box.
+
+![EasyAdmin Integration Showcase](.github/assets/easyadmin_integration_dark.png)
+
+---
+
+## Security & Compliance
+
+Track not just what changed, but who did it and where they were.
+
+- **Sensitive Data Masking**: Native support for `#[SensitiveParameter]` and custom `#[Sensitive]` attributes.
+- **HMAC Signatures**: Every audit log is signed to prevent database tampering.
+- **Integrity Verification**: Command-line tools to audit your audit logs.
+
+![Integrity Check CLI](.github/assets/audit_integrity_check.png)
+
+---
+
 ## Documentation
 
 | Topic | Description |
@@ -31,17 +97,6 @@ AuditTrailBundle is a modern, lightweight bundle that automatically tracks and s
 | **[Benchmarks](docs/audit-log-benchmark.md)** | Performance report. |
 
 ---
-
-## Key Features
-
-- **High Performance**: Non-blocking audits using a **Split-Phase Architecture** (capture in `onFlush`, dispatch in `postFlush`).
-- **Multiple Transports**: Doctrine, HTTP (ELK/Splunk), Queue (RabbitMQ/Redis).
-- **Deep Collection Tracking**: Tracks Many-to-Many and One-to-Many changes with precision.
-- **Sensitive Data Masking**: Native support for `#[SensitiveParameter]` and custom `#[Sensitive]` attributes.
-- **Safe Revert Support**: Easily roll back entities to any point in history.
-- **Conditional Auditing**: Skip logs based on runtime conditions.
-- **Access Auditing**: Track entity read operations (GET requests) with high-performance caching and configurable cooldowns.
-- **Rich Context**: Tracks IP, User Agent, Impersonation, and custom metadata.
 
 ## Quick Start
 
@@ -65,65 +120,36 @@ php bin/console doctrine:migrations:migrate
 Add the `#[Auditable]` attribute to any Doctrine entity you want to track.
 
 ```php
+<?php
+
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 
 #[ORM\Entity]
 #[Auditable(ignoredProperties: ['internalCode'])]
 class Product
 {
-    #[ORM\Id, ORM\GeneratedValue, ORM\Column]
-    private ?int $id = null;
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column]
+    public private(set) ?int $id = null;
 
     #[ORM\Column]
-    private string $name;
+    public private(set) string $name;
 }
 ```
 
-### 4. Access Auditing (Read Tracking)
+### 4. Requirements
 
-To track when an entity is accessed (read), use the `#[AuditAccess]` attribute. This feature is strictly optimized for **GET requests** to minimize overhead.
-
-```php
-use Rcsofttech\AuditTrailBundle\Attribute\AuditAccess;
-
-#[ORM\Entity]
-#[AuditAccess(cooldown: 3600, level: 'info', message: 'User accessed sensitive record')]
-class SensitiveDocument
-{
-    // ...
-}
-```
-
-#### Parameters
-
-| Parameter | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `cooldown` | `int` | `0` | Prevent duplicate logs for the same user/entity within X seconds (requires PSR-6 cache). |
-| `level` | `string` | `'info'` | The log level for the access audit. |
-| `message` | `string?` | `null` | A custom message to include in the audit log. |
-
-> [!NOTE]
-> `#[AuditAccess]` does not require `#[Auditable]` — they are independent attributes.
-> However, if `#[AuditCondition]` is present on the same entity, it **is** respected for access logs.
-> The expression receives `action = "access"` for fine-grained control.
-
-#### Cache Configuration
-
-To use the `cooldown` feature, you must specify a PSR-6 cache pool in your configuration:
-
-```yaml
-# config/packages/audit_trail.yaml
-audit_trail:
-    cache_pool: 'cache.app' # Use any available PSR-6 cache pool
-```
+- **PHP**: 8.4+
+- **Symfony**: 7.4+ or 8.0+
+- **Doctrine ORM**: 3.0+
 
 ---
 
-## Requirements
+## Community & Support
 
-- PHP 8.4+
-- Symfony 7.4+
-- Doctrine ORM 3.0+
+- **Bugs & Features**: Please use the [GitHub Issue Tracker](https://github.com/rcsofttech85/AuditTrailBundle/issues).
+- **Contributing**: Check out our [Contributing Guide](https://github.com/rcsofttech85/AuditTrailBundle/blob/main/CONTRIBUTING.md).
 
 ## License
 

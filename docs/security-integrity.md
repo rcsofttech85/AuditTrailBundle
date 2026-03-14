@@ -7,14 +7,24 @@ Sensitive data is automatically masked in audit logs.
 ### Option 1: Use PHP's `#[SensitiveParameter]`
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 public function __construct(
-    #[\SensitiveParameter] private string $password,
-) {}
+    #[\SensitiveParameter]
+    private string $password,
+) {
+}
 ```
 
 ### Option 2: Use `#[Sensitive]`
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 use Rcsofttech\AuditTrailBundle\Attribute\Sensitive;
 
 #[Sensitive(mask: '****')]
@@ -59,6 +69,10 @@ Content-Type: application/json
 The bundle adds a `SignatureStamp` to the Messenger envelope containing the signature of the serialized `AuditLogMessage`.
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
 
 // In your message handler
