@@ -122,7 +122,6 @@ class TestKernel extends Kernel implements CompilerPassInterface
             ],
             'orm' => [
                 'naming_strategy' => 'doctrine.orm.naming_strategy.underscore_number_aware',
-                'auto_mapping' => true,
                 'mappings' => [
                     'TestEntity' => [
                         'is_bundle' => false,

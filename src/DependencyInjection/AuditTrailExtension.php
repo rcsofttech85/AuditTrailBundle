@@ -8,6 +8,8 @@ use LogicException;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Controller\Admin\AuditLogCrudController;
+use Rcsofttech\AuditTrailBundle\DataCollector\AuditDataCollector;
+use Rcsofttech\AuditTrailBundle\DataCollector\TraceableAuditCollector;
 use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
 use Rcsofttech\AuditTrailBundle\MessageHandler\PersistAuditLogHandler;
 use Rcsofttech\AuditTrailBundle\Transport\AsyncDatabaseAuditTransport;
@@ -15,6 +17,7 @@ use Rcsofttech\AuditTrailBundle\Transport\ChainAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
+use Symfony\Bundle\FrameworkBundle\DataCollector\AbstractDataCollector;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
@@ -92,6 +95,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
 
         $this->configureTransports($config, $container);
 
+        /** @var array<string, mixed> $bundles */
         $bundles = $container->hasParameter('kernel.bundles') ? $container->getParameter('kernel.bundles') : [];
         if (isset($bundles['EasyAdminBundle'])) {
             $container->register(AuditLogCrudController::class)
@@ -99,6 +103,8 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
                 ->setAutoconfigured(true)
                 ->addTag('controller.service_arguments');
         }
+
+        $this->registerProfilerIntegration($container, $bundles);
     }
 
     #[Override]
@@ -263,6 +269,29 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
 
             $container->setAlias(AuditTransportInterface::class, $id)->setPublic(true);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $bundles
+     */
+    private function registerProfilerIntegration(ContainerBuilder $container, array $bundles): void
+    {
+        if (!class_exists(AbstractDataCollector::class) || !isset($bundles['WebProfilerBundle'])) {
+            return;
+        }
+
+        $container->register(TraceableAuditCollector::class, TraceableAuditCollector::class)
+            ->setAutowired(true)
+            ->addTag('kernel.event_subscriber')
+            ->addTag('kernel.reset', ['method' => 'reset']);
+
+        $container->register(AuditDataCollector::class, AuditDataCollector::class)
+            ->setAutowired(true)
+            ->addTag('data_collector', [
+                'id' => 'audit_trail',
+                'template' => '@AuditTrail/Collector/audit.html.twig',
+                'priority' => 260,
+            ]);
     }
 
     #[Override]

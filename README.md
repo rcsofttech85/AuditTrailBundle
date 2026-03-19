@@ -57,6 +57,7 @@ Most audit bundles capture changes synchronously, which can significantly slow d
 - **Access Auditing**: Track sensitive entity read operations (GET requests) with configurable cooldowns.
 - **Conditional Auditing**: Skip logs based on runtime conditions or Expressions.
 - **Rich Context**: Automatically tracks IP, User Agent, Impersonation, and custom metadata.
+- **Web Profiler Integration**: Real-time audit log visibility in the Symfony debug toolbar and profiler panel.
 
 ---
 
@@ -92,7 +93,7 @@ Track not just what changed, but who did it and where they were.
 | **[Revert & Recovery](docs/revert-feature.md)** | Point-in-time restoration of entities. |
 | **[Security & Integrity](docs/security-integrity.md)** | Data masking, cryptographic signing, and verification. |
 | **[CLI Commands](docs/cli-commands.md)** | Console commands for listing, purging, and exporting logs. |
-| **[Integrations](docs/integrations.md)** | EasyAdmin support. |
+| **[Integrations](docs/integrations.md)** | EasyAdmin and Symfony Profiler support. |
 | **[Serialization](docs/serialization.md)** | Cross-platform JSON format. |
 | **[Benchmarks](docs/audit-log-benchmark.md)** | Performance report. |
 

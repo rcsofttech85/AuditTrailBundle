@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.3.0]
+
+### 2.3.0 New Features
+
+- **Symfony Web Profiler Integration**: The bundle now natively integrates with the Symfony Web Debug Toolbar and Profiler Panel.
+  - **Zero Configuration**: Automatically activates in `dev` and `test` environments when `WebProfilerBundle` is present. Adds zero overhead to production (services are strictly conditionally registered).
+  - **Toolbar Badge**: Displays a live count of audit logs generated during the current request.
+  - **Profiler Panel**: Provides a detailed tab showing every collected audit event (action, entity, changed fields, user, transaction hash, and timestamp) in a clean table format.
+  - **Memory Safe**: Built on a highly optimized, two-layer architecture (`TraceableAuditCollector` -> `AuditDataCollector`) ensuring complete serialization safety and no Doctrine memory leaks.
+
 ## [2.2.0]
 
 ### 2.2.0 Installation Note
