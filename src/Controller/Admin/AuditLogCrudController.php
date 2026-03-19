@@ -37,6 +37,7 @@ use Stringable;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Throwable;
 
 use function is_scalar;
@@ -168,6 +169,11 @@ class AuditLogCrudController extends AbstractCrudController
      */
     public function revertAuditLog(AdminContext $context): RedirectResponse
     {
+        $request = $context->getRequest();
+        if (!$request->isMethod('POST')) {
+            throw new MethodNotAllowedHttpException(['POST'], 'Reverting can only be performed via POST.');
+        }
+
         $auditLog = $this->loadEntityFromContext($context);
 
         if ($auditLog === null) {
@@ -351,7 +357,7 @@ class AuditLogCrudController extends AbstractCrudController
     private function configureOverviewTabFields(): iterable
     {
         yield FormField::addTab('Overview')->setIcon('fa fa-info-circle');
-        yield FormField::addPanel()->setHelp('Basic information about the audit event.');
+        yield FormField::addFieldset()->setHelp('Basic information about the audit event.');
 
         yield IdField::new('id', 'Audit Log ID')->onlyOnDetail();
         yield TextField::new('entityClass', 'Entity Class')->onlyOnDetail();
@@ -383,7 +389,7 @@ class AuditLogCrudController extends AbstractCrudController
     private function configureChangesTabFields(): iterable
     {
         yield FormField::addTab('Changes')->setIcon('fa fa-exchange-alt');
-        yield FormField::addPanel()->setHelp('Visual comparison of the entity state before and after the change.');
+        yield FormField::addFieldset()->setHelp('Visual comparison of the entity state before and after the change.');
 
         yield TextField::new('signature', 'Integrity Signature')
             ->formatValue(function ($value, AuditLog $log): string {
@@ -415,7 +421,7 @@ class AuditLogCrudController extends AbstractCrudController
     private function configureTechnicalContextTabFields(): iterable
     {
         yield FormField::addTab('Context')->setIcon('fa fa-cogs');
-        yield FormField::addPanel()->setHelp('Low-level transaction details and custom context metadata.');
+        yield FormField::addFieldset()->setHelp('Low-level transaction details and custom context metadata.');
 
         yield TextField::new('transactionHash', 'Transaction Hash')
             ->setTemplatePath('@AuditTrail/admin/audit_log/field/transaction_link.html.twig')
@@ -433,9 +439,10 @@ class AuditLogCrudController extends AbstractCrudController
      */
     private function loadEntityFromContext(AdminContext $context): ?AuditLog
     {
-        $entityId = $context->getRequest()->query->getString('entityId');
+        $request = $context->getRequest();
+        $entityId = $request->query->get('entityId') ?? $request->attributes->get('entityId');
 
-        if ($entityId === '') {
+        if ($entityId === null || $entityId === '') {
             return null;
         }
 

@@ -11,8 +11,7 @@ declare(strict_types=1);
 
 use Rcsofttech\AuditTrailBundle\Controller\Admin\AuditLogCrudController;
 
-yield MenuItem::linkToCrud('Audit Logs', 'fas fa-history', AuditLog::class)
-    ->setController(AuditLogCrudController::class);
+yield MenuItem::linkTo(AuditLogCrudController::class, 'Audit Logs', 'fas fa-history');
 ```
 
 ### Publishing Assets
