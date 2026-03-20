@@ -1,0 +1,134 @@
+{% extends '@WebProfiler/Profiler/layout.html.twig' %}
+
+{% block toolbar %}
+    {% set icon %}
+        {{ source('@AuditTrail/Icon/audit.svg') }}
+        <span class="sf-toolbar-value">{{ collector.auditCount }}</span>
+    {% endset %}
+
+    {% set text %}
+        <div class="sf-toolbar-info-piece">
+            <b>Audit Logs</b>
+            <span class="sf-toolbar-status {{ collector.auditCount > 0 ? 'sf-toolbar-status-green' : '' }}">{{ collector.auditCount }}</span>
+        </div>
+        {% for action, count in collector.actionBreakdown %}
+            <div class="sf-toolbar-info-piece">
+                <b>{{ action|capitalize }}</b>
+                <span>{{ count }}</span>
+            </div>
+        {% endfor %}
+    {% endset %}
+
+    {{ include('@WebProfiler/Profiler/toolbar_item.html.twig', { link: true }) }}
+{% endblock %}
+
+{% block menu %}
+    <span class="label {{ collector.auditCount == 0 ? 'disabled' : '' }}">
+        <span class="icon">
+            {{ source('@AuditTrail/Icon/audit.svg') }}
+        </span>
+        <strong>Audit Trail</strong>
+        <span class="count">
+            <span>{{ collector.auditCount }}</span>
+        </span>
+    </span>
+{% endblock %}
+
+{% block panel %}
+    <h2>Audit Trail
+        <span class="badge {{ collector.auditCount > 0 ? 'status-success' : '' }}">{{ collector.auditCount }} log{{ collector.auditCount != 1 ? 's' : '' }}</span>
+    </h2>
+
+    {% if collector.auditCount == 0 %}
+        <div class="empty">
+            <p>No audit logs were generated during this request.</p>
+        </div>
+    {% else %}
+        <div class="sf-tabs">
+            <div class="tab">
+                <h3 class="tab-title">
+                    Audit Logs
+                    <span class="badge">{{ collector.auditCount }}</span>
+                </h3>
+                <div class="tab-content">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Action</th>
+                                <th>Entity</th>
+                                <th>ID</th>
+                                <th>Changed Fields</th>
+                                <th>User</th>
+                                <th>Transaction</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for audit in collector.audits %}
+                                <tr>
+                                    <td class="font-normal text-muted text-small">{{ loop.index }}</td>
+                                    <td>
+                                        {% if audit.action == 'create' %}
+                                            <span class="badge status-success">{{ audit.action }}</span>
+                                        {% elseif audit.action == 'update' %}
+                                            <span class="badge status-warning">{{ audit.action }}</span>
+                                        {% elseif audit.action in ['delete', 'soft_delete'] %}
+                                            <span class="badge status-error">{{ audit.action }}</span>
+                                        {% elseif audit.action == 'access' %}
+                                            <span class="badge status-info">{{ audit.action }}</span>
+                                        {% else %}
+                                            <span class="badge">{{ audit.action }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="font-normal">
+                                        <span class="text-small text-bold">{{ audit.entity_class|split('\\')|last }}</span>
+                                        <br>
+                                        <span class="text-muted text-small">{{ audit.entity_class }}</span>
+                                    </td>
+                                    <td class="font-normal">{{ audit.entity_id }}</td>
+                                    <td class="font-normal">
+                                        {% if audit.changed_fields %}
+                                            {{ audit.changed_fields|map(f => f|e)|join(', ') }}
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="font-normal">{{ audit.user ?? '—' }}</td>
+                                    <td class="font-normal text-small">
+                                        {% if audit.transaction_hash %}
+                                            <code>{{ audit.transaction_hash|slice(0, 8) }}…</code>
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="font-normal text-small text-muted">{{ audit.created_at|date('Y-m-d H:i:s') }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="tab">
+                <h3 class="tab-title">
+                    Summary
+                </h3>
+                <div class="tab-content">
+                    <div class="metrics">
+                        <div class="metric">
+                            <span class="value">{{ collector.auditCount }}</span>
+                            <span class="label">Total Logs</span>
+                        </div>
+                        {% for action, count in collector.actionBreakdown %}
+                            <div class="metric">
+                                <span class="value">{{ count }}</span>
+                                <span class="label">{{ action|capitalize }}</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

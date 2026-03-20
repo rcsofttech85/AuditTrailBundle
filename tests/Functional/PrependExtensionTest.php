@@ -23,19 +23,10 @@ final class PrependExtensionTest extends KernelTestCase
      */
     protected static function createKernel(array $options = []): KernelInterface
     {
-        $kernel = parent::createKernel($options);
-        if ($kernel instanceof TestKernel) {
-            $kernel->setDoctrineConfig([
-                'orm' => [
-                    'auto_mapping' => false,
-                ],
-            ]);
-        }
-
-        return $kernel;
+        return parent::createKernel($options);
     }
 
-    public function testAuditLogIsMappedWithAutoMappingFalse(): void
+    public function testAuditLogIsMappedProperly(): void
     {
         self::bootKernel();
         try {
