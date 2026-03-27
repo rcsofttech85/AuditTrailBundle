@@ -19,6 +19,8 @@ services:
       $fallbackToDatabase: '%audit_trail.fallback_to_database%'
       $collectionSerializationMode: '%audit_trail.collection_serialization_mode%'
       $maxCollectionItems: '%audit_trail.max_collection_items%'
+      $trackIpAddress: '%audit_trail.track_ip_address%'
+      $trackUserAgent: '%audit_trail.track_user_agent%'
 
   _instanceof:
     Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface:
