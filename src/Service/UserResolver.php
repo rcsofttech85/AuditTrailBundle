@@ -6,12 +6,14 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
+use Stringable;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Security\Core\Authentication\Token\SwitchUserToken;
 
+use function array_key_exists;
 use function function_exists;
-use function is_object;
+use function get_object_vars;
 use function is_scalar;
 use function is_string;
 use function sprintf;
@@ -34,11 +36,9 @@ final readonly class UserResolver implements UserResolverInterface
         $user = $this->security->getUser();
 
         if ($user !== null) {
-            if (method_exists($user, 'getId')) {
-                $id = $user->getId();
-                if (is_scalar($id) || (is_object($id) && method_exists($id, '__toString'))) {
-                    return (string) $id;
-                }
+            $resolvedId = $this->resolveUserIdValue($user);
+            if ($resolvedId !== null) {
+                return $resolvedId;
             }
 
             return $user->getUserIdentifier();
@@ -106,15 +106,11 @@ final readonly class UserResolver implements UserResolverInterface
         }
 
         $originalUser = $token->getOriginalToken()->getUser();
-
-        if ($originalUser !== null && method_exists($originalUser, 'getId')) {
-            $id = $originalUser->getId();
-            if (is_scalar($id) || (is_object($id) && method_exists($id, '__toString'))) {
-                return (string) $id;
-            }
+        if ($originalUser === null) {
+            return null;
         }
 
-        return null;
+        return $this->resolveUserIdValue($originalUser);
     }
 
     #[Override]
@@ -154,6 +150,33 @@ final readonly class UserResolver implements UserResolverInterface
         $user = $_SERVER['USER'] ?? $_SERVER['USERNAME'] ?? null;
         if (is_string($user) && $user !== '') {
             return 'cli:'.$user;
+        }
+
+        return null;
+    }
+
+    private function resolveUserIdValue(object $user): ?string
+    {
+        if (method_exists($user, 'getId')) {
+            $resolved = $this->stringifyIdentifier($user->getId());
+            if ($resolved !== null) {
+                return $resolved;
+            }
+        }
+
+        $properties = get_object_vars($user);
+        if (array_key_exists('id', $properties)) {
+            // Supports accessible public properties and PHP 8.4 public property hooks.
+            return $this->stringifyIdentifier($properties['id']);
+        }
+
+        return null;
+    }
+
+    private function stringifyIdentifier(mixed $id): ?string
+    {
+        if (is_scalar($id) || $id instanceof Stringable) {
+            return (string) $id;
         }
 
         return null;

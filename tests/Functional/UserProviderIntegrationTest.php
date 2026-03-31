@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestUser;
+use Rcsofttech\AuditTrailBundle\Tests\Functional\Fixtures\PublicIdSecurityUser;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
@@ -16,6 +17,23 @@ use function assert;
 
 final class UserProviderIntegrationTest extends AbstractFunctionalTestCase
 {
+    protected function tearDown(): void
+    {
+        if (self::$booted) {
+            $tokenStorage = $this->getService(TokenStorageInterface::class);
+            assert($tokenStorage instanceof TokenStorageInterface);
+            $tokenStorage->setToken(null);
+
+            $requestStack = $this->getService(RequestStack::class);
+            assert($requestStack instanceof RequestStack);
+            while ($requestStack->getCurrentRequest() !== null) {
+                $requestStack->pop();
+            }
+        }
+
+        parent::tearDown();
+    }
+
     public function testAuditLogCapturesCurrentUser(): void
     {
         self::bootKernel();
@@ -59,9 +77,48 @@ final class UserProviderIntegrationTest extends AbstractFunctionalTestCase
         self::assertSame('TestAgent', $auditLog->userAgent);
     }
 
-    public function testAuditLogWithNoUser(): void
+    public function testAuditLogCapturesPublicIdSecurityUser(): void
     {
         self::bootKernel();
+        $em = $this->getEntityManager();
+
+        $user = new PublicIdSecurityUser('public-id-42', 'public_user');
+
+        $tokenStorage = $this->getService(TokenStorageInterface::class);
+        assert($tokenStorage instanceof TokenStorageInterface);
+        $tokenStorage->setToken(new UsernamePasswordToken($user, 'main', $user->getRoles()));
+
+        $requestStack = $this->getService(RequestStack::class);
+        assert($requestStack instanceof RequestStack);
+        $requestStack->push(new Request([], [], [], [], [], [
+            'REMOTE_ADDR' => '127.0.0.2',
+            'HTTP_USER_AGENT' => 'PublicIdAgent',
+        ]));
+
+        $entity = new TestEntity('Public ID User Test');
+        $em->persist($entity);
+        $em->flush();
+
+        $auditLog = $em->getRepository(AuditLog::class)->findOneBy([
+            'entityClass' => TestEntity::class,
+            'action' => 'create',
+            'entityId' => (string) $entity->getId(),
+        ]);
+
+        self::assertNotNull($auditLog);
+        self::assertSame('public-id-42', $auditLog->userId);
+        self::assertSame('public_user', $auditLog->username);
+        self::assertSame('127.0.0.2', $auditLog->ipAddress);
+        self::assertSame('PublicIdAgent', $auditLog->userAgent);
+    }
+
+    public function testAuditLogWithNoUser(): void
+    {
+        self::bootKernel([
+            'audit_config' => [
+                'track_ip_address' => false,
+            ],
+        ]);
         $em = $this->getEntityManager();
 
         // No token set
@@ -78,5 +135,6 @@ final class UserProviderIntegrationTest extends AbstractFunctionalTestCase
         self::assertNotNull($auditLog);
         self::assertStringStartsWith('cli:', (string) $auditLog->userId);
         self::assertStringStartsWith('cli:', (string) $auditLog->username);
+        self::assertNull($auditLog->ipAddress);
     }
 }

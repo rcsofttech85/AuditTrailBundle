@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Service\UserResolver;
@@ -29,13 +30,87 @@ class UserResolverTest extends TestCase
     public function testGetUserIdReturnsIdFromUserWithIdMethod(): void
     {
         $resolver = $this->createResolver(user: new StubUserWithId());
-        self::assertEquals(123, $resolver->getUserId());
+        self::assertSame('123', $resolver->getUserId());
     }
 
     public function testGetUserIdReturnsIdentifierWhenNoIdMethod(): void
     {
         $resolver = $this->createResolver(user: new StubUserWithoutId());
-        self::assertEquals('user', $resolver->getUserId());
+        self::assertSame('user', $resolver->getUserId());
+    }
+
+    #[DataProvider('publicIdUserProvider')]
+    public function testGetUserIdReturnsPublicIdPropertyWhenNoIdMethod(UserInterface $user, string $expectedId): void
+    {
+        $resolver = $this->createResolver(user: $user);
+        self::assertSame($expectedId, $resolver->getUserId());
+    }
+
+    public function testGetUserIdPrefersGetIdOverPublicIdProperty(): void
+    {
+        $user = new class implements UserInterface {
+            public string $id = 'public-id';
+
+            public function getId(): string
+            {
+                return 'method-id';
+            }
+
+            public function getUserIdentifier(): string
+            {
+                return 'user';
+            }
+
+            /** @return array<string> */
+            public function getRoles(): array
+            {
+                return [];
+            }
+
+            public function eraseCredentials(): void
+            {
+            }
+        };
+
+        $resolver = $this->createResolver(user: $user);
+        self::assertSame('method-id', $resolver->getUserId());
+    }
+
+    #[DataProvider('invalidPublicIdUserProvider')]
+    public function testGetUserIdFallsBackToIdentifierWhenPublicIdIsNotUsable(UserInterface $user): void
+    {
+        $resolver = $this->createResolver(user: $user);
+        self::assertSame('user_identifier', $resolver->getUserId());
+    }
+
+    public function testGetUserIdFallsBackToIdentifierWhenIdPropertyIsNotPublic(): void
+    {
+        $user = new class implements UserInterface {
+            private string $id = 'private-id';
+
+            public function hasHiddenId(): bool
+            {
+                return $this->id !== '';
+            }
+
+            public function getUserIdentifier(): string
+            {
+                return 'user_identifier';
+            }
+
+            /** @return array<string> */
+            public function getRoles(): array
+            {
+                return [];
+            }
+
+            public function eraseCredentials(): void
+            {
+            }
+        };
+
+        $resolver = $this->createResolver(user: $user);
+        self::assertSame('user_identifier', $resolver->getUserId());
     }
 
     public function testGetUsernameFallsBackToCliWhenNoUser(): void
@@ -50,7 +125,7 @@ class UserResolverTest extends TestCase
         $user->method('getUserIdentifier')->willReturn('test_user');
 
         $resolver = $this->createResolver(user: $user);
-        self::assertEquals('test_user', $resolver->getUsername());
+        self::assertSame('test_user', $resolver->getUsername());
     }
 
     public function testGetIpAddressReturnsClientIpWhenTrackingEnabled(): void
@@ -132,7 +207,7 @@ class UserResolverTest extends TestCase
     public function testGetImpersonatorIdReturnsSwitchUserOriginalId(): void
     {
         $resolver = $this->createResolverWithImpersonation(new StubUserWithId());
-        self::assertEquals('123', $resolver->getImpersonatorId());
+        self::assertSame('123', $resolver->getImpersonatorId());
     }
 
     public function testGetImpersonatorUsernameReturnsNullWhenNoToken(): void
@@ -147,12 +222,86 @@ class UserResolverTest extends TestCase
         $user->method('getUserIdentifier')->willReturn('superadmin');
 
         $resolver = $this->createResolverWithImpersonation($user);
-        self::assertEquals('superadmin', $resolver->getImpersonatorUsername());
+        self::assertSame('superadmin', $resolver->getImpersonatorUsername());
     }
 
     public function testGetImpersonatorIdReturnsNullWithoutIdMethod(): void
     {
         $resolver = $this->createResolverWithImpersonation(new StubUserWithoutId());
+        self::assertNull($resolver->getImpersonatorId());
+    }
+
+    #[DataProvider('publicIdUserProvider')]
+    public function testGetImpersonatorIdReturnsPublicIdPropertyWhenNoIdMethod(UserInterface $user, string $expectedId): void
+    {
+        $resolver = $this->createResolverWithImpersonation($user);
+        self::assertSame($expectedId, $resolver->getImpersonatorId());
+    }
+
+    public function testGetImpersonatorIdPrefersGetIdOverPublicIdProperty(): void
+    {
+        $user = new class implements UserInterface {
+            public string $id = 'public-id';
+
+            public function getId(): string
+            {
+                return 'method-id';
+            }
+
+            public function getUserIdentifier(): string
+            {
+                return 'user';
+            }
+
+            /** @return array<string> */
+            public function getRoles(): array
+            {
+                return [];
+            }
+
+            public function eraseCredentials(): void
+            {
+            }
+        };
+
+        $resolver = $this->createResolverWithImpersonation($user);
+        self::assertSame('method-id', $resolver->getImpersonatorId());
+    }
+
+    #[DataProvider('invalidPublicIdUserProvider')]
+    public function testGetImpersonatorIdFallsBackToNullWhenPublicIdIsNotUsable(UserInterface $user): void
+    {
+        $resolver = $this->createResolverWithImpersonation($user);
+        self::assertNull($resolver->getImpersonatorId());
+    }
+
+    public function testGetImpersonatorIdFallsBackToNullWhenIdPropertyIsNotPublic(): void
+    {
+        $user = new class implements UserInterface {
+            private string $id = 'private-id';
+
+            public function hasHiddenId(): bool
+            {
+                return $this->id !== '';
+            }
+
+            public function getUserIdentifier(): string
+            {
+                return 'user_identifier';
+            }
+
+            /** @return array<string> */
+            public function getRoles(): array
+            {
+                return [];
+            }
+
+            public function eraseCredentials(): void
+            {
+            }
+        };
+
+        $resolver = $this->createResolverWithImpersonation($user);
         self::assertNull($resolver->getImpersonatorId());
     }
 
@@ -211,7 +360,7 @@ class UserResolverTest extends TestCase
         };
 
         $resolver = $this->createResolver(user: $user);
-        self::assertEquals('user_identifier', $resolver->getUserId());
+        self::assertSame('user_identifier', $resolver->getUserId());
     }
 
     public function testGetIpAddressInCliWithoutRequestUsesHostname(): void
@@ -229,6 +378,111 @@ class UserResolverTest extends TestCase
         $ua = $resolver->getUserAgent();
         self::assertIsString($ua);
         self::assertStringContainsString('cli-console', $ua);
+    }
+
+    /**
+     * @return array<string, array{0: UserInterface, 1: string}>
+     */
+    public static function publicIdUserProvider(): array
+    {
+        return [
+            'plain public property' => [
+                new class implements UserInterface {
+                    public string $id = 'public-id';
+
+                    public function getUserIdentifier(): string
+                    {
+                        return 'user';
+                    }
+
+                    /** @return array<string> */
+                    public function getRoles(): array
+                    {
+                        return [];
+                    }
+
+                    public function eraseCredentials(): void
+                    {
+                    }
+                },
+                'public-id',
+            ],
+            'property hook' => [
+                new class implements UserInterface {
+                    public string $id {
+                        get => 'hooked-id';
+                    }
+
+                    public function getUserIdentifier(): string
+                    {
+                        return 'user';
+                    }
+
+                    /** @return array<string> */
+                    public function getRoles(): array
+                    {
+                        return [];
+                    }
+
+                    public function eraseCredentials(): void
+                    {
+                    }
+                },
+                'hooked-id',
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, array{0: UserInterface}>
+     */
+    public static function invalidPublicIdUserProvider(): array
+    {
+        return [
+            'array public property' => [
+                new class implements UserInterface {
+                    /** @var array<string> */
+                    public array $id = [];
+
+                    public function getUserIdentifier(): string
+                    {
+                        return 'user_identifier';
+                    }
+
+                    /** @return array<string> */
+                    public function getRoles(): array
+                    {
+                        return [];
+                    }
+
+                    public function eraseCredentials(): void
+                    {
+                    }
+                },
+            ],
+            'non-stringable hooked property' => [
+                new class implements UserInterface {
+                    public object $id {
+                        get => new class {};
+                    }
+
+                    public function getUserIdentifier(): string
+                    {
+                        return 'user_identifier';
+                    }
+
+                    /** @return array<string> */
+                    public function getRoles(): array
+                    {
+                        return [];
+                    }
+
+                    public function eraseCredentials(): void
+                    {
+                    }
+                },
+            ],
+        ];
     }
 
     private function createResolver(
