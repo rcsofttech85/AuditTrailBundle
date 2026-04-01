@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
+use LogicException;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
@@ -68,9 +69,7 @@ final class AuditDispatcher implements AuditDispatcherInterface
             }
 
             if ($this->fallbackToDatabase) {
-                $this->persistFallback($audit, $em);
-
-                return true;
+                return $this->persistFallback($audit, $em, $phase, $uow);
             }
 
             return false;
@@ -79,23 +78,41 @@ final class AuditDispatcher implements AuditDispatcherInterface
         return true;
     }
 
-    private function persistFallback(AuditLog $audit, EntityManagerInterface $em): void
-    {
+    private function persistFallback(
+        AuditLog $audit,
+        EntityManagerInterface $em,
+        string $phase,
+        ?UnitOfWork $uow = null,
+    ): bool {
         try {
             if (!$em->contains($audit)) {
                 $em->persist($audit);
             }
-            $em->flush();
+
+            if ($phase === 'on_flush') {
+                if ($uow === null) {
+                    throw new LogicException('UnitOfWork is required to persist fallback audit logs during on_flush.');
+                }
+
+                $uow->computeChangeSet($em->getClassMetadata(AuditLog::class), $audit);
+            } else {
+                $em->flush();
+            }
+
             $audit->seal();
 
             $this->logger?->warning(
                 sprintf('Audit log for %s#%s saved via database fallback.', $audit->entityClass, $audit->entityId),
             );
+
+            return true;
         } catch (Throwable $fallbackError) {
             $this->logger?->critical(
                 sprintf('AUDIT LOSS: Failed to persist fallback for %s#%s: %s', $audit->entityClass, $audit->entityId, $fallbackError->getMessage()),
                 ['exception' => $fallbackError],
             );
+
+            return false;
         }
     }
 }

@@ -89,6 +89,26 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
         $this->pendingDeletions = [];
     }
 
+    /**
+     * @internal retains only audits that still need delivery after a failed post-flush dispatch
+     *
+     * @param array<int, array{entity: object, audit: AuditLog, is_insert: bool}> $scheduledAudits
+     */
+    public function replaceScheduledAudits(array $scheduledAudits): void
+    {
+        $this->scheduledAudits = $scheduledAudits;
+    }
+
+    /**
+     * @internal retains only deletions that still need audit delivery after a failed post-flush dispatch
+     *
+     * @param list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $pendingDeletions
+     */
+    public function replacePendingDeletions(array $pendingDeletions): void
+    {
+        $this->pendingDeletions = $pendingDeletions;
+    }
+
     private function dispatchCreatedEvent(
         object $entity,
         AuditLog $audit,

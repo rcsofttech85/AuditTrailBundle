@@ -31,6 +31,18 @@ class MockScheduledAuditManager implements ScheduledAuditManagerInterface
         $this->pendingDeletions = [];
     }
 
+    /** @param array<int, array{entity: object, audit: AuditLog, is_insert: bool}> $scheduledAudits */
+    public function replaceScheduledAudits(array $scheduledAudits): void
+    {
+        $this->scheduledAudits = $scheduledAudits;
+    }
+
+    /** @param list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $pendingDeletions */
+    public function replacePendingDeletions(array $pendingDeletions): void
+    {
+        $this->pendingDeletions = $pendingDeletions;
+    }
+
     private bool $enabled = true;
 
     public function disable(): void

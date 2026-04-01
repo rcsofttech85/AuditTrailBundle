@@ -12,12 +12,15 @@ use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Security\Core\Authentication\Token\SwitchUserToken;
 
 use function array_key_exists;
+use function filter_var;
 use function function_exists;
 use function get_object_vars;
+use function getenv;
 use function is_scalar;
 use function is_string;
 use function sprintf;
 
+use const FILTER_VALIDATE_IP;
 use const PHP_SAPI;
 
 final readonly class UserResolver implements UserResolverInterface
@@ -63,10 +66,7 @@ final readonly class UserResolver implements UserResolverInterface
         }
 
         if ($this->trackIpAddress && PHP_SAPI === 'cli') {
-            $hostname = gethostname();
-            if ($hostname !== false) {
-                return gethostbyname($hostname);
-            }
+            return $this->resolveCliIpAddress();
         }
 
         return null;
@@ -153,6 +153,29 @@ final readonly class UserResolver implements UserResolverInterface
         }
 
         return null;
+    }
+
+    private function resolveCliIpAddress(): ?string
+    {
+        $hostname = gethostname();
+        if ($hostname !== false) {
+            $resolved = gethostbyname($hostname);
+            if ($this->isValidIpAddress($resolved)) {
+                return $resolved;
+            }
+        }
+
+        $environmentHost = getenv('HOSTNAME');
+        if (is_string($environmentHost) && $this->isValidIpAddress($environmentHost)) {
+            return $environmentHost;
+        }
+
+        return null;
+    }
+
+    private function isValidIpAddress(string $value): bool
+    {
+        return filter_var($value, FILTER_VALIDATE_IP) !== false;
     }
 
     private function resolveUserIdValue(object $user): ?string

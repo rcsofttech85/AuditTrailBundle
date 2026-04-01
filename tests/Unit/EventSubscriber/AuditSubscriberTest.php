@@ -143,7 +143,7 @@ final class AuditSubscriberTest extends TestCase
         $this->changeProcessor->method('determineDeletionAction')->willReturn('delete');
         $this->auditService->method('createAuditLog')->willReturn($audit);
 
-        $this->dispatcher->expects($this->once())->method('dispatch');
+        $this->dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
         $em->method('contains')->with($audit)->willReturn(true);
 
         // Expect flush because hasNewAudits will be true
@@ -168,13 +168,67 @@ final class AuditSubscriberTest extends TestCase
 
         $this->idResolver->method('resolveFromEntity')->willReturn('123');
 
-        $this->dispatcher->expects($this->once())->method('dispatch');
+        $this->dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
         $em->method('contains')->with($audit)->willReturn(true);
         $em->expects($this->once())->method('flush');
 
         $this->subscriber->postFlush($args);
 
         self::assertEquals('123', $audit->entityId);
+    }
+
+    public function testPostFlushRetainsScheduledAuditWhenDispatchFails(): void
+    {
+        $em = $this->createMock(EntityManagerInterface::class);
+        $args = $this->createMock(PostFlushEventArgs::class);
+        $args->method('getObjectManager')->willReturn($em);
+
+        $entity = new stdClass();
+        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $this->auditManager->pendingDeletions = [];
+        $this->auditManager->scheduledAudits = [
+            ['entity' => $entity, 'audit' => $audit, 'is_insert' => false],
+        ];
+
+        $this->dispatcher->expects($this->once())
+            ->method('dispatch')
+            ->with($audit, $em, 'post_flush')
+            ->willReturn(false);
+        $this->accessHandler->expects($this->never())->method('markAsAudited');
+        $em->expects($this->never())->method('flush');
+
+        $this->subscriber->postFlush($args);
+
+        self::assertNotEmpty($this->auditManager->scheduledAudits);
+        self::assertSame($audit, $this->auditManager->scheduledAudits[0]['audit']);
+    }
+
+    public function testPostFlushRetriesRetainedScheduledAuditOnNextFlushWithoutDuplication(): void
+    {
+        $em = $this->createMock(EntityManagerInterface::class);
+        $args = $this->createMock(PostFlushEventArgs::class);
+        $args->method('getObjectManager')->willReturn($em);
+
+        $entity = new stdClass();
+        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $this->auditManager->pendingDeletions = [];
+        $this->auditManager->scheduledAudits = [
+            ['entity' => $entity, 'audit' => $audit, 'is_insert' => false],
+        ];
+
+        $this->dispatcher->expects($this->exactly(2))
+            ->method('dispatch')
+            ->with($audit, $em, 'post_flush')
+            ->willReturnOnConsecutiveCalls(false, true);
+        $this->accessHandler->expects($this->once())->method('markAsAudited');
+        $em->method('contains')->with($audit)->willReturn(true);
+        $em->expects($this->once())->method('flush');
+
+        $this->subscriber->postFlush($args);
+        self::assertNotEmpty($this->auditManager->scheduledAudits);
+
+        $this->subscriber->postFlush($args);
+        self::assertEmpty($this->auditManager->scheduledAudits);
     }
 
     public function testPostFlushFlushException(): void
@@ -194,7 +248,7 @@ final class AuditSubscriberTest extends TestCase
             ],
         ];
 
-        $this->dispatcher->method('dispatch');
+        $this->dispatcher->method('dispatch')->willReturn(true);
         $em->method('contains')->with($audit)->willReturn(true);
 
         $em->method('flush')->willThrowException(new Exception('Flush failed'));
@@ -279,8 +333,59 @@ final class AuditSubscriberTest extends TestCase
 
         $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_SOFT_DELETE);
         $this->auditService->method('createAuditLog')->willReturn($audit);
+        $this->dispatcher->method('dispatch')->willReturn(true);
 
         $this->subscriber->postFlush($args);
+    }
+
+    public function testPostFlushRetainsPendingDeletionWhenDispatchFails(): void
+    {
+        $em = $this->createMock(EntityManagerInterface::class);
+        $args = $this->createMock(PostFlushEventArgs::class);
+        $args->method('getObjectManager')->willReturn($em);
+
+        $entity = new stdClass();
+        $this->auditManager->pendingDeletions = [['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true]];
+        $this->auditManager->scheduledAudits = [];
+
+        $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditLogInterface::ACTION_DELETE);
+        $this->auditService->method('createAuditLog')->willReturn(new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_DELETE));
+        $this->dispatcher->expects($this->once())->method('dispatch')->willReturn(false);
+        $this->accessHandler->expects($this->never())->method('markAsAudited');
+        $em->expects($this->never())->method('flush');
+
+        $this->subscriber->postFlush($args);
+
+        self::assertNotEmpty($this->auditManager->pendingDeletions);
+        self::assertSame($entity, $this->auditManager->pendingDeletions[0]['entity']);
+    }
+
+    public function testPostFlushRetriesRetainedPendingDeletionOnNextFlushWithoutDuplication(): void
+    {
+        $em = $this->createMock(EntityManagerInterface::class);
+        $args = $this->createMock(PostFlushEventArgs::class);
+        $args->method('getObjectManager')->willReturn($em);
+
+        $entity = new stdClass();
+        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_DELETE);
+        $this->auditManager->pendingDeletions = [['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true]];
+        $this->auditManager->scheduledAudits = [];
+
+        $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditLogInterface::ACTION_DELETE);
+        $this->auditService->method('createAuditLog')->willReturn($audit);
+        $this->dispatcher->expects($this->exactly(2))
+            ->method('dispatch')
+            ->with($audit, $em, 'post_flush')
+            ->willReturnOnConsecutiveCalls(false, true);
+        $this->accessHandler->expects($this->once())->method('markAsAudited');
+        $em->method('contains')->with($audit)->willReturn(true);
+        $em->expects($this->once())->method('flush');
+
+        $this->subscriber->postFlush($args);
+        self::assertNotEmpty($this->auditManager->pendingDeletions);
+
+        $this->subscriber->postFlush($args);
+        self::assertEmpty($this->auditManager->pendingDeletions);
     }
 
     public function testPostFlushProcessScheduledAuditsWithStaticId(): void
@@ -298,6 +403,7 @@ final class AuditSubscriberTest extends TestCase
 
         // resolveFromEntity returns something other than PENDING_ID
         $this->idResolver->method('resolveFromEntity')->willReturn('456');
+        $this->dispatcher->method('dispatch')->willReturn(true);
 
         $this->subscriber->postFlush($args);
 
@@ -321,6 +427,7 @@ final class AuditSubscriberTest extends TestCase
             ['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false],
         ];
 
+        $this->dispatcher->method('dispatch')->willReturn(true);
         $em->method('contains')->willReturn(true);
 
         // When em->flush() is called, we call postFlush again to see if it recurses
@@ -357,6 +464,7 @@ final class AuditSubscriberTest extends TestCase
         $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
         $this->auditManager->scheduledAudits = [['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false]];
 
+        $this->dispatcher->method('dispatch')->willReturn(true);
         $em->method('contains')->with($audit)->willReturn(true);
         $em->expects($this->once())->method('flush');
         $logger->expects($this->never())->method('critical');
@@ -375,6 +483,7 @@ final class AuditSubscriberTest extends TestCase
         $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
         $this->auditManager->scheduledAudits = [['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false]];
 
+        $this->dispatcher->method('dispatch')->willReturn(true);
         $em->method('contains')->with($audit)->willReturn(true);
         $em->method('flush')->willThrowException(new Exception('Flush failed'));
 
@@ -394,6 +503,7 @@ final class AuditSubscriberTest extends TestCase
         $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
         $this->auditManager->scheduledAudits = [['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false]];
 
+        $this->dispatcher->method('dispatch')->willReturn(true);
         $em->method('contains')->with($audit)->willReturn(true);
         $em->method('flush')->willThrowException(new Exception('Critical error'));
 
