@@ -27,6 +27,8 @@ services:
       tags: ['audit_trail.voter']
     Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface:
       tags: ['audit_trail.context_contributor']
+    Rcsofttech\AuditTrailBundle\Contract\AuditLogAiProcessorInterface:
+      tags: ['audit_trail.ai_processor']
 
 
   Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService:
@@ -41,6 +43,15 @@ services:
   Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\AuditMetadataManager
 
+  Rcsofttech\AuditTrailBundle\Contract\AuditAccessHandlerInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler
+
+  Rcsofttech\AuditTrailBundle\Contract\AuditLogMessageFactoryInterface:
+    alias: Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory
+
+  Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\AuditLogWriter
+
   Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\ContextResolver
 
@@ -49,6 +60,12 @@ services:
 
   Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\EntityIdResolver
+
+  Rcsofttech\AuditTrailBundle\Contract\EntityDataExtractorInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor
+
+  Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\MetadataCache
 
   Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\AuditDispatcher
@@ -89,8 +106,12 @@ services:
   Rcsofttech\AuditTrailBundle\:
     resource: '../../*'
     exclude:
+      - '../../Attribute/'
       - '../../DependencyInjection/'
       - '../../DataCollector/'
+      - '../../Entity/'
+      - '../../Enum/'
+      - '../../Message/'
       - '../../Service/AuditIntegrityService.php'
       - '../../Transport/'
       - '../../Controller/'

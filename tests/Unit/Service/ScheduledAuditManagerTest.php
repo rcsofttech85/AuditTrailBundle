@@ -5,17 +5,13 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use OverflowException;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use stdClass;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
-#[AllowMockObjectsWithoutExpectations]
-class ScheduledAuditManagerTest extends TestCase
+final class ScheduledAuditManagerTest extends TestCase
 {
     public function testSchedule(): void
     {
@@ -25,10 +21,10 @@ class ScheduledAuditManagerTest extends TestCase
 
         $manager->schedule($entity, $log, true);
 
-        self::assertNotEmpty($manager->scheduledAudits);
-        self::assertCount(1, $manager->scheduledAudits);
+        self::assertNotEmpty($manager->getScheduledAudits());
+        self::assertCount(1, $manager->getScheduledAudits());
 
-        $audits = $manager->scheduledAudits;
+        $audits = $manager->getScheduledAudits();
         self::assertCount(1, $audits);
         self::assertSame($entity, $audits[0]['entity']);
         self::assertSame($log, $audits[0]['audit']);
@@ -50,15 +46,12 @@ class ScheduledAuditManagerTest extends TestCase
         $manager->schedule($entity, $log, true);
     }
 
-    public function testScheduleWithDispatcher(): void
+    public function testScheduleDoesNotDispatchEvent(): void
     {
-        $dispatcher = $this->createMock(EventDispatcherInterface::class);
-        $dispatcher->expects($this->once())
-            ->method('dispatch')
-            ->with(self::isInstanceOf(AuditLogCreatedEvent::class), AuditLogCreatedEvent::NAME);
-
-        $manager = new ScheduledAuditManager($dispatcher);
+        $manager = new ScheduledAuditManager();
         $manager->schedule(new stdClass(), new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE), false);
+
+        self::assertCount(1, $manager->getScheduledAudits());
     }
 
     public function testPendingDeletions(): void
@@ -69,7 +62,7 @@ class ScheduledAuditManagerTest extends TestCase
 
         $manager->addPendingDeletion($entity, $data, true);
 
-        $deletions = $manager->pendingDeletions;
+        $deletions = $manager->getPendingDeletions();
         self::assertCount(1, $deletions);
         self::assertSame($entity, $deletions[0]['entity']);
         self::assertSame($data, $deletions[0]['data']);
@@ -84,7 +77,7 @@ class ScheduledAuditManagerTest extends TestCase
 
         $manager->clear();
 
-        self::assertEmpty($manager->scheduledAudits);
-        self::assertEmpty($manager->pendingDeletions);
+        self::assertEmpty($manager->getScheduledAudits());
+        self::assertEmpty($manager->getPendingDeletions());
     }
 }

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use InvalidArgumentException;
 use PHPUnit\Framework\MockObject\MockObject;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -13,21 +13,22 @@ use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use ReflectionClass;
 use Symfony\Component\Uid\Uuid;
 
-#[AllowMockObjectsWithoutExpectations]
-class TransactionDrilldownServiceTest extends AbstractAuditTestCase
+final class TransactionDrilldownServiceTest extends AbstractAuditTestCase
 {
-    private AuditLogRepositoryInterface&MockObject $repository;
+    private AuditLogRepositoryInterface $repository;
 
     private TransactionDrilldownService $service;
 
     protected function setUp(): void
     {
-        $this->repository = $this->createMock(AuditLogRepositoryInterface::class);
+        $this->repository = self::createStub(AuditLogRepositoryInterface::class);
         $this->service = new TransactionDrilldownService($this->repository);
     }
 
     public function testGetDrilldownPageFirstPage(): void
     {
+        $repository = $this->useRepositoryMock();
+
         $hash = 'hash123';
         $limit = 5;
 
@@ -35,12 +36,12 @@ class TransactionDrilldownServiceTest extends AbstractAuditTestCase
         $log2 = $this->createAuditLog();
         $logs = [$log1, $log2];
 
-        $this->repository->expects($this->once())
+        $repository->expects($this->once())
             ->method('count')
             ->with(['transactionHash' => $hash])
             ->willReturn(10);
 
-        $this->repository->expects($this->once())
+        $repository->expects($this->once())
             ->method('findWithFilters')
             ->with(['transactionHash' => $hash], $limit + 1)
             ->willReturn($logs);
@@ -57,6 +58,8 @@ class TransactionDrilldownServiceTest extends AbstractAuditTestCase
 
     public function testGetDrilldownPageWithNextPage(): void
     {
+        $repository = $this->useRepositoryMock();
+
         $hash = 'hash123';
         $limit = 2;
 
@@ -65,8 +68,8 @@ class TransactionDrilldownServiceTest extends AbstractAuditTestCase
         $log3 = $this->createAuditLog(); // Extra record
         $logs = [$log1, $log2, $log3];
 
-        $this->repository->method('count')->willReturn(10);
-        $this->repository->expects($this->once())
+        $repository->method('count')->willReturn(10);
+        $repository->expects($this->once())
             ->method('findWithFilters')
             ->with(['transactionHash' => $hash], $limit + 1)
             ->willReturn($logs);
@@ -82,6 +85,8 @@ class TransactionDrilldownServiceTest extends AbstractAuditTestCase
 
     public function testGetDrilldownPageWithPrevPage(): void
     {
+        $repository = $this->useRepositoryMock();
+
         $hash = 'hash123';
         $limit = 2;
         $afterId = 'id0';
@@ -90,8 +95,8 @@ class TransactionDrilldownServiceTest extends AbstractAuditTestCase
         $log2 = $this->createAuditLog();
         $logs = [$log1, $log2];
 
-        $this->repository->method('count')->willReturn(10);
-        $this->repository->expects($this->once())
+        $repository->method('count')->willReturn(10);
+        $repository->expects($this->once())
             ->method('findWithFilters')
             ->with(['transactionHash' => $hash, 'afterId' => $afterId], $limit + 1)
             ->willReturn($logs);
@@ -104,6 +109,8 @@ class TransactionDrilldownServiceTest extends AbstractAuditTestCase
 
     public function testGetDrilldownPagePaginatingBackwards(): void
     {
+        $repository = $this->useRepositoryMock();
+
         $hash = 'hash123';
         $limit = 2;
         $beforeId = (string) Uuid::v7();
@@ -113,8 +120,8 @@ class TransactionDrilldownServiceTest extends AbstractAuditTestCase
         $log5 = $this->createAuditLog();
         $logs = [$log3, $log4, $log5];
 
-        $this->repository->method('count')->willReturn(10);
-        $this->repository->expects($this->once())
+        $repository->method('count')->willReturn(10);
+        $repository->expects($this->once())
             ->method('findWithFilters')
             ->with(['transactionHash' => $hash, 'beforeId' => $beforeId], $limit + 1)
             ->willReturn($logs);
@@ -128,15 +135,62 @@ class TransactionDrilldownServiceTest extends AbstractAuditTestCase
         self::assertSame((string) $log5->id, $result['lastId']);
     }
 
+    public function testGetDrilldownPageRejectsNonPositiveLimit(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Limit must be greater than zero.');
+
+        $this->service->getDrilldownPage('hash123', null, null, 0);
+    }
+
+    public function testGetDrilldownPageRejectsConflictingCursors(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Only one pagination cursor can be used at a time.');
+
+        $this->service->getDrilldownPage('hash123', (string) Uuid::v7(), (string) Uuid::v7(), 5);
+    }
+
+    public function testGetDrilldownPageBackwardsWithNoResultsDoesNotExposeNextPage(): void
+    {
+        $repository = $this->useRepositoryMock();
+
+        $hash = 'hash123';
+        $limit = 2;
+        $beforeId = (string) Uuid::v7();
+
+        $repository->method('count')->willReturn(10);
+        $repository->expects($this->once())
+            ->method('findWithFilters')
+            ->with(['transactionHash' => $hash, 'beforeId' => $beforeId], $limit + 1)
+            ->willReturn([]);
+
+        $result = $this->service->getDrilldownPage($hash, null, $beforeId, $limit);
+
+        self::assertSame([], $result['logs']);
+        self::assertFalse($result['hasNextPage']);
+        self::assertFalse($result['hasPrevPage']);
+        self::assertNull($result['firstId']);
+        self::assertNull($result['lastId']);
+    }
+
     private function createAuditLog(): AuditLog
     {
         $log = new AuditLog('Class', '1', 'create');
 
         $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
-        $property->setAccessible(true);
         $property->setValue($log, Uuid::v7());
 
         return $log;
+    }
+
+    private function useRepositoryMock(): AuditLogRepositoryInterface&MockObject
+    {
+        $repository = $this->createMock(AuditLogRepositoryInterface::class);
+        $this->repository = $repository;
+        $this->service = new TransactionDrilldownService($repository);
+
+        return $repository;
     }
 }

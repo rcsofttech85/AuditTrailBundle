@@ -6,7 +6,6 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use ArrayObject;
 use DateTimeImmutable;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\ChildAuditable;
@@ -16,8 +15,7 @@ use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\SensitiveEntity;
 use RuntimeException;
 use stdClass;
 
-#[AllowMockObjectsWithoutExpectations]
-class MetadataCacheTest extends TestCase
+final class MetadataCacheTest extends TestCase
 {
     private MetadataCache $cache;
 
@@ -59,10 +57,10 @@ class MetadataCacheTest extends TestCase
         $fields = $this->cache->getSensitiveFields(SensitiveEntity::class);
 
         self::assertArrayHasKey('secret', $fields);
-        self::assertEquals('***', $fields['secret']);
+        self::assertSame('***', $fields['secret']);
 
         self::assertArrayHasKey('password', $fields);
-        self::assertEquals('**REDACTED**', $fields['password']);
+        self::assertSame('**REDACTED**', $fields['password']);
 
         self::assertArrayNotHasKey('public', $fields);
 

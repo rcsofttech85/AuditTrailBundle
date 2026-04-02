@@ -15,7 +15,7 @@ use Symfony\Contracts\Service\ResetInterface;
  * to ensure the same ID is used for all audit logs within a single
  * execution cycle.
  */
-class TransactionIdGenerator implements ResetInterface
+final class TransactionIdGenerator implements ResetInterface
 {
     private ?string $transactionId = null;
 

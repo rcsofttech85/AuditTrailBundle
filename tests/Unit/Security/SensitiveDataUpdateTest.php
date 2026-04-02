@@ -7,25 +7,22 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Security;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\UnitOfWork;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
+use Rcsofttech\AuditTrailBundle\Contract\AuditAccessHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
-use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\SensitiveUser;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
+use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 
-#[AllowMockObjectsWithoutExpectations]
-class SensitiveDataUpdateTest extends AbstractAuditTestCase
+final class SensitiveDataUpdateTest extends AbstractAuditTestCase
 {
     /** @var EntityManagerInterface&Stub */
     private EntityManagerInterface $entityManager;
@@ -33,7 +30,6 @@ class SensitiveDataUpdateTest extends AbstractAuditTestCase
     /** @var AuditTransportInterface&MockObject */
     private AuditTransportInterface $transport;
 
-    /** @var TransactionIdGenerator&Stub */
     private TransactionIdGenerator $transactionIdGenerator;
 
     protected function setUp(): void
@@ -42,8 +38,7 @@ class SensitiveDataUpdateTest extends AbstractAuditTestCase
         $this->transport = $this->createMock(AuditTransportInterface::class);
         $this->transport->method('supports')->willReturn(true);
 
-        $this->transactionIdGenerator = self::createStub(TransactionIdGenerator::class);
-        $this->transactionIdGenerator->method('getTransactionId')->willReturn('test-transaction-id');
+        $this->transactionIdGenerator = new TransactionIdGenerator();
     }
 
     public function testUpdateMasksSensitiveData(): void
@@ -54,7 +49,8 @@ class SensitiveDataUpdateTest extends AbstractAuditTestCase
 
         $this->transport->expects($this->once())
             ->method('send')
-            ->with(self::callback(static function (AuditLog $log): bool {
+            ->with(self::callback(static function (AuditTransportContext $context): bool {
+                $log = $context->audit;
                 $old = $log->oldValues;
                 $new = $log->newValues;
 
@@ -68,12 +64,12 @@ class SensitiveDataUpdateTest extends AbstractAuditTestCase
     {
         $auditService = $this->createAuditService($this->entityManager, $this->transactionIdGenerator);
         $dispatcher = $this->createAuditDispatcher($this->transport);
-        $auditManager = new ScheduledAuditManager(self::createStub(EventDispatcherInterface::class));
+        $auditManager = new ScheduledAuditManager();
 
         $metadataManager = self::createStub(AuditMetadataManagerInterface::class);
         $metadataManager->method('getSensitiveFields')->willReturn(['password' => '**REDACTED**']);
 
-        $changeProcessor = new ChangeProcessor($metadataManager, new ValueSerializer(null), true, 'deletedAt');
+        $changeProcessor = new ChangeProcessor($metadataManager, new ValueSerializer(self::createStub(EntityIdResolverInterface::class)), true, 'deletedAt');
 
         $entityProcessor = $this->createEntityProcessor(
             $auditService,
@@ -89,7 +85,7 @@ class SensitiveDataUpdateTest extends AbstractAuditTestCase
             $auditManager,
             $entityProcessor,
             $this->transactionIdGenerator,
-            self::createStub(AuditAccessHandler::class),
+            self::createStub(AuditAccessHandlerInterface::class),
             self::createStub(EntityIdResolverInterface::class)
         );
     }

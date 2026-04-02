@@ -8,6 +8,8 @@ use DateTimeInterface;
 
 class RevertTestUser
 {
+    public string $name = '';
+
     public function getId(): int
     {
         return 1;

@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Serializer;
 
 use InvalidArgumentException;
 use Override;
+use Rcsofttech\AuditTrailBundle\AuditTrailBundle;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
@@ -30,8 +31,6 @@ final readonly class AuditLogMessageSerializer implements SerializerInterface
     private const API_KEY_HEADER = 'X-Audit-Api-Key';
 
     private const SIGNATURE_HEADER = 'X-Audit-Signature';
-
-    private const BUNDLE_VERSION = '1.0.0';
 
     /**
      * @return array{body: string, headers: array<string, string>}
@@ -64,7 +63,7 @@ final readonly class AuditLogMessageSerializer implements SerializerInterface
     {
         $headers = [
             'Content-Type' => self::CONTENT_TYPE,
-            'User-Agent' => 'RcsoftTech-AuditTrailBundle/'.self::BUNDLE_VERSION,
+            'User-Agent' => 'RcsoftTech-AuditTrailBundle/'.AuditTrailBundle::VERSION,
         ];
 
         /** @var ApiKeyStamp|null $apiKeyStamp */

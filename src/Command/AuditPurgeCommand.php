@@ -7,7 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Command;
 use DateTimeImmutable;
 use Exception;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
-use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -25,7 +25,7 @@ use function sprintf;
 final class AuditPurgeCommand extends Command
 {
     public function __construct(
-        private readonly AuditLogRepository $repository,
+        private readonly AuditLogRepositoryInterface $repository,
         private readonly AuditIntegrityServiceInterface $integrityService,
     ) {
         parent::__construct();

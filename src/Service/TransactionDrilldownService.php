@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use InvalidArgumentException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
@@ -33,6 +34,14 @@ final class TransactionDrilldownService
      */
     public function getDrilldownPage(string $transactionHash, ?string $afterId, ?string $beforeId, int $limit = 15): array
     {
+        if ($limit < 1) {
+            throw new InvalidArgumentException('Limit must be greater than zero.');
+        }
+
+        if ($afterId !== null && $afterId !== '' && $beforeId !== null && $beforeId !== '') {
+            throw new InvalidArgumentException('Only one pagination cursor can be used at a time.');
+        }
+
         $filters = $this->prepareFilters($transactionHash, $afterId, $beforeId);
         $totalItems = $this->repository->count(['transactionHash' => $transactionHash]);
 
@@ -51,7 +60,11 @@ final class TransactionDrilldownService
         $filters = ['transactionHash' => $transactionHash];
         if ($afterId !== null && $afterId !== '') {
             $filters['afterId'] = $afterId;
-        } elseif ($beforeId !== null && $beforeId !== '') {
+
+            return $filters;
+        }
+
+        if ($beforeId !== null && $beforeId !== '') {
             $filters['beforeId'] = $beforeId;
         }
 
@@ -96,23 +109,26 @@ final class TransactionDrilldownService
      */
     private function calculatePaginationStatus(array $logs, array $filters, int $limit): array
     {
-        $hasNextPage = false;
-        $hasPrevPage = false;
-
         if (isset($filters['beforeId'])) {
-            $hasNextPage = true;
+            $hasPrevPage = false;
             if ($limit < count($logs)) {
                 $hasPrevPage = true;
                 array_shift($logs);
             }
-        } else {
-            if (isset($filters['afterId'])) {
-                $hasPrevPage = true;
-            }
-            if ($limit < count($logs)) {
-                $hasNextPage = true;
-                array_pop($logs);
-            }
+
+            return [
+                'logs' => $logs,
+                'hasNextPage' => $logs !== [],
+                'hasPrevPage' => $hasPrevPage,
+            ];
+        }
+
+        $hasPrevPage = isset($filters['afterId']);
+        $hasNextPage = false;
+
+        if ($limit < count($logs)) {
+            $hasNextPage = true;
+            array_pop($logs);
         }
 
         return [

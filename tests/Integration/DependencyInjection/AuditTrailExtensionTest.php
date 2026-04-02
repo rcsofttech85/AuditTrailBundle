@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Integration\DependencyInjection;
 
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use LogicException;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\DependencyInjection\AuditTrailExtension;
+use Rcsofttech\AuditTrailBundle\Transport\NullAuditTransport;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
-#[AllowMockObjectsWithoutExpectations]
-class AuditTrailExtensionTest extends TestCase
+final class AuditTrailExtensionTest extends TestCase
 {
     public function testDefaultConfigurationLoadsDoctrineTransport(): void
     {
@@ -25,10 +25,23 @@ class AuditTrailExtensionTest extends TestCase
 
         self::assertTrue($container->hasDefinition('rcsofttech_audit_trail.transport.database'));
         self::assertTrue($container->hasAlias(AuditTransportInterface::class));
-        self::assertEquals(
+        self::assertSame(
             'rcsofttech_audit_trail.transport.database',
             (string) $container->getAlias(AuditTransportInterface::class)
         );
+        self::assertSame('ROLE_ADMIN', $container->getParameter('audit_trail.admin_permission'));
+    }
+
+    public function testCustomAdminPermissionIsStored(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([[
+            'admin_permission' => 'ROLE_AUDIT_ADMIN',
+        ]], $container);
+
+        self::assertSame('ROLE_AUDIT_ADMIN', $container->getParameter('audit_trail.admin_permission'));
     }
 
     public function testHttpTransportConfiguration(): void
@@ -55,7 +68,7 @@ class AuditTrailExtensionTest extends TestCase
         $extension->load($config, $container);
 
         self::assertTrue($container->hasDefinition('rcsofttech_audit_trail.transport.http'));
-        self::assertEquals(
+        self::assertSame(
             'rcsofttech_audit_trail.transport.http',
             (string) $container->getAlias(AuditTransportInterface::class)
         );
@@ -84,7 +97,7 @@ class AuditTrailExtensionTest extends TestCase
         $extension->load($config, $container);
 
         self::assertTrue($container->hasDefinition('rcsofttech_audit_trail.transport.queue'));
-        self::assertEquals(
+        self::assertSame(
             'rcsofttech_audit_trail.transport.queue',
             (string) $container->getAlias(AuditTransportInterface::class)
         );
@@ -114,7 +127,7 @@ class AuditTrailExtensionTest extends TestCase
         $extension->load($config, $container);
 
         self::assertTrue($container->hasDefinition('rcsofttech_audit_trail.transport.chain'));
-        self::assertEquals(
+        self::assertSame(
             'rcsofttech_audit_trail.transport.chain',
             (string) $container->getAlias(AuditTransportInterface::class)
         );
@@ -133,5 +146,67 @@ class AuditTrailExtensionTest extends TestCase
         ));
         $definition = $container->getDefinition('Rcsofttech\AuditTrailBundle\EventSubscriber\TablePrefixSubscriber');
         self::assertTrue($definition->isAutoconfigured());
+    }
+
+    public function testDisabledHttpTransportDoesNotRequireEndpoint(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $config = [
+            'transports' => [
+                'database' => ['enabled' => true],
+                'http' => ['enabled' => false],
+            ],
+        ];
+
+        $extension->load([$config], $container);
+
+        self::assertTrue($container->hasDefinition('rcsofttech_audit_trail.transport.database'));
+        self::assertFalse($container->hasDefinition('rcsofttech_audit_trail.transport.http'));
+        self::assertSame(
+            'rcsofttech_audit_trail.transport.database',
+            (string) $container->getAlias(AuditTransportInterface::class)
+        );
+    }
+
+    public function testEnabledBundleRequiresAtLeastOneTransport(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('At least one audit transport must be enabled');
+
+        $extension->load([[
+            'transports' => [
+                'database' => ['enabled' => false],
+                'http' => ['enabled' => false],
+                'queue' => ['enabled' => false],
+            ],
+        ]], $container);
+    }
+
+    public function testDisabledBundleCanUseNullTransportWhenAllTransportsAreDisabled(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([[
+            'enabled' => false,
+            'transports' => [
+                'database' => ['enabled' => false],
+                'http' => ['enabled' => false],
+                'queue' => ['enabled' => false],
+            ],
+        ]], $container);
+
+        self::assertTrue($container->hasDefinition('rcsofttech_audit_trail.transport.null'));
+        self::assertTrue($container->hasAlias(AuditTransportInterface::class));
+        self::assertSame(
+            'rcsofttech_audit_trail.transport.null',
+            (string) $container->getAlias(AuditTransportInterface::class)
+        );
+        self::assertSame(NullAuditTransport::class, $container->getDefinition('rcsofttech_audit_trail.transport.null')->getClass());
     }
 }

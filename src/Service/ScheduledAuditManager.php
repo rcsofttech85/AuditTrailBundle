@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use OverflowException;
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 use function count;
 use function sprintf;
@@ -24,35 +23,38 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
      *     is_insert: bool
      * }>
      */
-    public private(set) array $scheduledAudits = [];
+    private array $scheduledAudits = [];
 
     /** @var list<array{entity: object, data: array<string, mixed>, is_managed: bool}> */
-    public private(set) array $pendingDeletions = [];
+    private array $pendingDeletions = [];
 
     private bool $enabled;
 
     public function __construct(
-        private readonly ?EventDispatcherInterface $eventDispatcher = null,
         bool $enabled = true,
     ) {
         $this->enabled = $enabled;
     }
 
+    #[Override]
     public function disable(): void
     {
         $this->enabled = false;
     }
 
+    #[Override]
     public function enable(): void
     {
         $this->enabled = true;
     }
 
+    #[Override]
     public function isEnabled(): bool
     {
         return $this->enabled;
     }
 
+    #[Override]
     public function schedule(
         object $entity,
         AuditLog $audit,
@@ -61,8 +63,6 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
         if (count($this->scheduledAudits) >= self::MAX_SCHEDULED_AUDITS) {
             throw new OverflowException(sprintf('Maximum audit queue size exceeded (%d). Consider batch processing.', self::MAX_SCHEDULED_AUDITS));
         }
-
-        $audit = $this->dispatchCreatedEvent($entity, $audit);
 
         $this->scheduledAudits[] = [
             'entity' => $entity,
@@ -74,6 +74,7 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
     /**
      * @param array<string, mixed> $data
      */
+    #[Override]
     public function addPendingDeletion(object $entity, array $data, bool $isManaged): void
     {
         $this->pendingDeletions[] = [
@@ -83,6 +84,7 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
         ];
     }
 
+    #[Override]
     public function clear(): void
     {
         $this->scheduledAudits = [];
@@ -90,10 +92,29 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
     }
 
     /**
+     * @return array<int, array{entity: object, audit: AuditLog, is_insert: bool}>
+     */
+    #[Override]
+    public function getScheduledAudits(): array
+    {
+        return $this->scheduledAudits;
+    }
+
+    /**
+     * @return list<array{entity: object, data: array<string, mixed>, is_managed: bool}>
+     */
+    #[Override]
+    public function getPendingDeletions(): array
+    {
+        return $this->pendingDeletions;
+    }
+
+    /**
      * @internal retains only audits that still need delivery after a failed post-flush dispatch
      *
      * @param array<int, array{entity: object, audit: AuditLog, is_insert: bool}> $scheduledAudits
      */
+    #[Override]
     public function replaceScheduledAudits(array $scheduledAudits): void
     {
         $this->scheduledAudits = $scheduledAudits;
@@ -104,22 +125,9 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
      *
      * @param list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $pendingDeletions
      */
+    #[Override]
     public function replacePendingDeletions(array $pendingDeletions): void
     {
         $this->pendingDeletions = $pendingDeletions;
-    }
-
-    private function dispatchCreatedEvent(
-        object $entity,
-        AuditLog $audit,
-    ): AuditLog {
-        if ($this->eventDispatcher === null) {
-            return $audit;
-        }
-
-        $event = new AuditLogCreatedEvent($audit, $entity);
-        $this->eventDispatcher->dispatch($event, AuditLogCreatedEvent::NAME);
-
-        return $event->auditLog;
     }
 }

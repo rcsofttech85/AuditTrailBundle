@@ -5,26 +5,27 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
 use Doctrine\ORM\EntityManagerInterface;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
+use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
+use RuntimeException;
 use stdClass;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 
 use function array_key_exists;
 
-#[AllowMockObjectsWithoutExpectations]
-class HttpAuditTransportTest extends TestCase
+final class HttpAuditTransportTest extends TestCase
 {
     public function testSendPostFlushSendsRequest(): void
     {
         $client = $this->createMock(HttpClientInterface::class);
-        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
         $transport = new HttpAuditTransport(
             $client,
             'http://example.com',
@@ -39,11 +40,13 @@ class HttpAuditTransportTest extends TestCase
 
         $client->expects($this->once())
             ->method('request')
-            ->with('POST', 'http://example.com', self::callback(static function ($options) {
-                if ($options['headers']['X-Test'] !== 'value' || $options['timeout'] !== 10) {
+            ->with('POST', 'http://example.com', self::callback(static function (array $options) {
+                /** @var array{headers: array<string, string>, timeout: int, body: string} $options */
+                if (($options['headers']['X-Test'] ?? null) !== 'value' || $options['timeout'] !== 10) {
                     return false;
                 }
 
+                /** @var array<string, mixed> $body */
                 $body = json_decode($options['body'], true);
                 $expectedKeys = [
                     'entity_class',
@@ -68,23 +71,23 @@ class HttpAuditTransportTest extends TestCase
                     }
                 }
 
-                return $body['context'] === ['phase' => 'post_flush'];
+                return $body['context'] === [];
             }))
-            ->willReturnCallback(function () {
-                $response = $this->createMock(ResponseInterface::class);
+            ->willReturnCallback(static function () {
+                $response = self::createStub(ResponseInterface::class);
                 $response->method('getStatusCode')->willReturn(200);
 
                 return $response;
             });
 
-        $transport->send($log, ['phase' => 'post_flush']);
+        $transport->send($this->createContext($log));
     }
 
     public function testSendResolvesPendingId(): void
     {
         $client = $this->createMock(HttpClientInterface::class);
-        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
         $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver);
 
         $log = new AuditLog('TestEntity', 'pending', 'create');
@@ -93,15 +96,17 @@ class HttpAuditTransportTest extends TestCase
 
         $client->expects($this->once())
             ->method('request')
-            ->with('POST', 'http://example.com', self::callback(static function ($options) {
+            ->with('POST', 'http://example.com', self::callback(static function (array $options) {
+                /** @var array{headers: array<string, string>, timeout: int, body: string} $options */
+                /** @var array<string, mixed> $body */
                 $body = json_decode($options['body'], true);
 
                 return isset($body['entity_id'])
                     && $body['entity_id'] === '100'
                     && array_key_exists('changed_fields', $body);
             }))
-            ->willReturnCallback(function () {
-                $response = $this->createMock(ResponseInterface::class);
+            ->willReturnCallback(static function () {
+                $response = self::createStub(ResponseInterface::class);
                 $response->method('getStatusCode')->willReturn(200);
 
                 return $response;
@@ -114,18 +119,14 @@ class HttpAuditTransportTest extends TestCase
         $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
 
-        $transport->send($log, [
-            'phase' => 'post_flush',
-            'em' => $em,
-            'entity' => $entity,
-        ]);
+        $transport->send($this->createContext($log, $em, $entity));
     }
 
     public function testDefaultTimeoutIsFive(): void
     {
         $client = $this->createMock(HttpClientInterface::class);
-        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
         // Use default timeout (no explicit timeout in constructor)
         $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver);
 
@@ -133,24 +134,25 @@ class HttpAuditTransportTest extends TestCase
 
         $client->expects($this->once())
             ->method('request')
-            ->with('POST', 'http://example.com', self::callback(static function ($options) {
+            ->with('POST', 'http://example.com', self::callback(static function (array $options) {
+                /** @var array{headers: array<string, string>, timeout: int, body: string} $options */
                 return $options['timeout'] === 5;
             }))
-            ->willReturnCallback(function () {
-                $response = $this->createMock(ResponseInterface::class);
+            ->willReturnCallback(static function () {
+                $response = self::createStub(ResponseInterface::class);
                 $response->method('getStatusCode')->willReturn(200);
 
                 return $response;
             });
 
-        $transport->send($log, ['phase' => 'post_flush']);
+        $transport->send($this->createContext($log));
     }
 
     public function testIntegrityServiceEnabledAddsSignatureHeader(): void
     {
         $client = $this->createMock(HttpClientInterface::class);
-        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
         $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver);
 
         $integrityService->method('isEnabled')->willReturn(true);
@@ -160,25 +162,26 @@ class HttpAuditTransportTest extends TestCase
 
         $client->expects($this->once())
             ->method('request')
-            ->with('POST', 'http://example.com', self::callback(static function ($options) {
+            ->with('POST', 'http://example.com', self::callback(static function (array $options) {
+                /** @var array{headers: array<string, string>, timeout: int, body: string} $options */
                 return isset($options['headers']['X-Signature'])
                     && $options['headers']['X-Signature'] === 'sig-abc';
             }))
-            ->willReturnCallback(function () {
-                $response = $this->createMock(ResponseInterface::class);
+            ->willReturnCallback(static function () {
+                $response = self::createStub(ResponseInterface::class);
                 $response->method('getStatusCode')->willReturn(200);
 
                 return $response;
             });
 
-        $transport->send($log, ['phase' => 'post_flush']);
+        $transport->send($this->createContext($log));
     }
 
     public function testIntegrityServiceDisabledNoSignatureHeader(): void
     {
         $client = $this->createMock(HttpClientInterface::class);
-        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
         $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver);
 
         $integrityService->method('isEnabled')->willReturn(false);
@@ -187,24 +190,25 @@ class HttpAuditTransportTest extends TestCase
 
         $client->expects($this->once())
             ->method('request')
-            ->with('POST', 'http://example.com', self::callback(static function ($options) {
+            ->with('POST', 'http://example.com', self::callback(static function (array $options) {
+                /** @var array{headers: array<string, string>, timeout: int, body: string} $options */
                 return !isset($options['headers']['X-Signature']);
             }))
-            ->willReturnCallback(function () {
-                $response = $this->createMock(ResponseInterface::class);
+            ->willReturnCallback(static function () {
+                $response = self::createStub(ResponseInterface::class);
                 $response->method('getStatusCode')->willReturn(200);
 
                 return $response;
             });
 
-        $transport->send($log, ['phase' => 'post_flush']);
+        $transport->send($this->createContext($log));
     }
 
-    public function testContextMergesLogContextWithParam(): void
+    public function testContextUsesPersistedAuditContextOnly(): void
     {
         $client = $this->createMock(HttpClientInterface::class);
-        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
         $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver);
 
         $log = new AuditLog('TestEntity', '1', 'create');
@@ -212,33 +216,62 @@ class HttpAuditTransportTest extends TestCase
 
         $client->expects($this->once())
             ->method('request')
-            ->with('POST', 'http://example.com', self::callback(static function ($options) {
+            ->with('POST', 'http://example.com', self::callback(static function (array $options) {
+                /** @var array{headers: array<string, string>, timeout: int, body: string} $options */
+                /** @var array<string, mixed> $body */
                 $body = json_decode($options['body'], true);
 
-                // context should be merged: log.context + param context
-                return $body['context'] === ['source' => 'cli', 'phase' => 'post_flush'];
+                return $body['context'] === ['source' => 'cli'];
             }))
-            ->willReturnCallback(function () {
-                $response = $this->createMock(ResponseInterface::class);
+            ->willReturnCallback(static function () {
+                $response = self::createStub(ResponseInterface::class);
                 $response->method('getStatusCode')->willReturn(200);
 
                 return $response;
             });
 
-        $transport->send($log, ['phase' => 'post_flush']);
+        $transport->send($this->createContext($log));
+    }
+
+    public function testInternalRuntimeContextIsNotLeakedToHttpPayload(): void
+    {
+        $client = $this->createMock(HttpClientInterface::class);
+        $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver);
+
+        $log = new AuditLog('TestEntity', '1', 'create', context: ['source' => 'cli']);
+
+        $client->expects($this->once())
+            ->method('request')
+            ->with('POST', 'http://example.com', self::callback(static function (array $options) {
+                /** @var array{headers: array<string, string>, timeout: int, body: string} $options */
+                /** @var array<string, mixed> $body */
+                $body = json_decode($options['body'], true);
+
+                return $body['context'] === ['source' => 'cli'];
+            }))
+            ->willReturnCallback(static function () {
+                $response = self::createStub(ResponseInterface::class);
+                $response->method('getStatusCode')->willReturn(200);
+
+                return $response;
+            });
+
+        $transport->send($this->createContext($log, self::createStub(EntityManagerInterface::class), new stdClass()));
     }
 
     public function testErrorResponseLogsError(): void
     {
-        $client = $this->createMock(HttpClientInterface::class);
-        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $client = self::createStub(HttpClientInterface::class);
+        $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
         $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
         $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver, $logger);
 
         $log = new AuditLog('TestEntity', '1', 'create');
 
-        $response = $this->createMock(ResponseInterface::class);
+        $response = self::createStub(ResponseInterface::class);
         $response->method('getStatusCode')->willReturn(500);
         $response->method('getContent')->willReturn('Internal Server Error');
 
@@ -248,20 +281,21 @@ class HttpAuditTransportTest extends TestCase
             ->method('error')
             ->with(self::stringContains('HTTP audit transport failed'));
 
-        $transport->send($log, ['phase' => 'post_flush']);
+        $this->expectException(RuntimeException::class);
+        $transport->send($this->createContext($log));
     }
 
     public function testBoundaryStatusCode199LogsError(): void
     {
-        $client = $this->createMock(HttpClientInterface::class);
-        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $client = self::createStub(HttpClientInterface::class);
+        $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
         $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
         $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver, $logger);
 
         $log = new AuditLog('TestEntity', '1', 'create');
 
-        $response = $this->createMock(ResponseInterface::class);
+        $response = self::createStub(ResponseInterface::class);
         $response->method('getStatusCode')->willReturn(199);
         $response->method('getContent')->willReturn('');
 
@@ -269,20 +303,21 @@ class HttpAuditTransportTest extends TestCase
 
         $logger->expects($this->once())->method('error');
 
-        $transport->send($log, ['phase' => 'post_flush']);
+        $this->expectException(RuntimeException::class);
+        $transport->send($this->createContext($log));
     }
 
     public function testBoundaryStatusCode200NoError(): void
     {
-        $client = $this->createMock(HttpClientInterface::class);
-        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $client = self::createStub(HttpClientInterface::class);
+        $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
         $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
         $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver, $logger);
 
         $log = new AuditLog('TestEntity', '1', 'create');
 
-        $response = $this->createMock(ResponseInterface::class);
+        $response = self::createStub(ResponseInterface::class);
         $response->method('getStatusCode')->willReturn(200);
         $response->method('getContent')->willReturn('');
 
@@ -290,20 +325,20 @@ class HttpAuditTransportTest extends TestCase
 
         $logger->expects($this->never())->method('error');
 
-        $transport->send($log, ['phase' => 'post_flush']);
+        $transport->send($this->createContext($log));
     }
 
     public function testBoundaryStatusCode299NoError(): void
     {
-        $client = $this->createMock(HttpClientInterface::class);
-        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $client = self::createStub(HttpClientInterface::class);
+        $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
         $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
         $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver, $logger);
 
         $log = new AuditLog('TestEntity', '1', 'create');
 
-        $response = $this->createMock(ResponseInterface::class);
+        $response = self::createStub(ResponseInterface::class);
         $response->method('getStatusCode')->willReturn(299);
         $response->method('getContent')->willReturn('');
 
@@ -311,20 +346,20 @@ class HttpAuditTransportTest extends TestCase
 
         $logger->expects($this->never())->method('error');
 
-        $transport->send($log, ['phase' => 'post_flush']);
+        $transport->send($this->createContext($log));
     }
 
     public function testBoundaryStatusCode300LogsError(): void
     {
-        $client = $this->createMock(HttpClientInterface::class);
-        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $client = self::createStub(HttpClientInterface::class);
+        $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
         $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
         $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver, $logger);
 
         $log = new AuditLog('TestEntity', '1', 'create');
 
-        $response = $this->createMock(ResponseInterface::class);
+        $response = self::createStub(ResponseInterface::class);
         $response->method('getStatusCode')->willReturn(300);
         $response->method('getContent')->willReturn('');
 
@@ -332,6 +367,21 @@ class HttpAuditTransportTest extends TestCase
 
         $logger->expects($this->once())->method('error');
 
-        $transport->send($log, ['phase' => 'post_flush']);
+        $this->expectException(RuntimeException::class);
+        $transport->send($this->createContext($log));
+    }
+
+    private function createContext(
+        AuditLog $log,
+        ?EntityManagerInterface $em = null,
+        ?object $entity = null,
+    ): AuditTransportContext {
+        return new AuditTransportContext(
+            AuditPhase::PostFlush,
+            $em ?? self::createStub(EntityManagerInterface::class),
+            $log,
+            null,
+            $entity,
+        );
     }
 }

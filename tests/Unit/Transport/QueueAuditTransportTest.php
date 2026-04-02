@@ -6,44 +6,74 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use Doctrine\ORM\EntityManagerInterface;
 use Exception;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogMessageFactoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;
-use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
+use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
 use stdClass;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
-#[AllowMockObjectsWithoutExpectations]
-class QueueAuditTransportTest extends TestCase
+final class QueueAuditTransportTest extends TestCase
 {
     private QueueAuditTransport $transport;
 
-    private MessageBusInterface&MockObject $bus;
+    /** @var (MessageBusInterface&\PHPUnit\Framework\MockObject\Stub)|(MessageBusInterface&MockObject) */
+    private MessageBusInterface $bus;
 
-    private EventDispatcherInterface&MockObject $eventDispatcher;
+    /** @var (EventDispatcherInterface&\PHPUnit\Framework\MockObject\Stub)|(EventDispatcherInterface&MockObject) */
+    private EventDispatcherInterface $eventDispatcher;
 
-    private AuditIntegrityServiceInterface&MockObject $integrityService;
+    /** @var AuditIntegrityServiceInterface&\PHPUnit\Framework\MockObject\Stub */
+    private AuditIntegrityServiceInterface $integrityService;
 
-    private AuditLogMessageFactory&MockObject $messageFactory;
+    /** @var AuditLogMessageFactoryInterface&\PHPUnit\Framework\MockObject\Stub */
+    private AuditLogMessageFactoryInterface $messageFactory;
 
     protected function setUp(): void
     {
-        $this->bus = $this->createMock(MessageBusInterface::class);
-        $this->eventDispatcher = $this->createMock(EventDispatcherInterface::class);
-        $this->integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
-        $this->messageFactory = $this->createMock(AuditLogMessageFactory::class);
+        $this->bus = self::createStub(MessageBusInterface::class);
+        $this->eventDispatcher = self::createStub(EventDispatcherInterface::class);
+        $this->integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $this->messageFactory = self::createStub(AuditLogMessageFactoryInterface::class);
 
+        $this->resetTransport();
+    }
+
+    /** @return MessageBusInterface&MockObject */
+    private function useBusMock(): MessageBusInterface
+    {
+        $bus = self::createMock(MessageBusInterface::class);
+        $this->bus = $bus;
+        $this->resetTransport();
+
+        return $bus;
+    }
+
+    /** @return EventDispatcherInterface&MockObject */
+    private function useEventDispatcherMock(): EventDispatcherInterface
+    {
+        $eventDispatcher = self::createMock(EventDispatcherInterface::class);
+        $this->eventDispatcher = $eventDispatcher;
+        $this->resetTransport();
+
+        return $eventDispatcher;
+    }
+
+    private function resetTransport(): void
+    {
         $this->transport = new QueueAuditTransport(
             $this->bus,
             $this->eventDispatcher,
@@ -77,11 +107,12 @@ class QueueAuditTransportTest extends TestCase
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->integrityService->method('signPayload')->willReturn('test_signature');
 
-        $this->bus->expects($this->once())
+        $bus = $this->useBusMock();
+        $bus->expects($this->once())
             ->method('dispatch')
             ->with(
                 self::isInstanceOf(AuditLogMessage::class),
-                self::callback(static function ($stamps) {
+                self::callback(static function (array $stamps) {
                     $hasApiKeyStamp = false;
                     $hasSignatureStamp = false;
                     foreach ($stamps as $stamp) {
@@ -104,7 +135,7 @@ class QueueAuditTransportTest extends TestCase
             )
             ->willReturn(new Envelope(new stdClass()));
 
-        $this->transport->send($log);
+        $this->transport->send($this->createContext(AuditPhase::PostFlush, $log));
     }
 
     public function testSendPropagatesException(): void
@@ -128,12 +159,15 @@ class QueueAuditTransportTest extends TestCase
 
         $this->messageFactory->method('createQueueMessage')->willReturn($queueMessage);
 
-        $this->bus->method('dispatch')->willThrowException(new Exception('Bus error'));
+        $bus = $this->useBusMock();
+        $bus->expects($this->once())
+            ->method('dispatch')
+            ->willThrowException(new Exception('Bus error'));
 
         $this->expectException(Exception::class);
         $this->expectExceptionMessage('Bus error');
 
-        $this->transport->send($log);
+        $this->transport->send($this->createContext(AuditPhase::PostFlush, $log));
     }
 
     public function testSendResolvesPendingId(): void
@@ -157,14 +191,15 @@ class QueueAuditTransportTest extends TestCase
 
         $this->messageFactory->method('createQueueMessage')->willReturn($queueMessage);
 
-        $this->bus->expects($this->once())
+        $bus = $this->useBusMock();
+        $bus->expects($this->once())
             ->method('dispatch')
             ->with(self::callback(static function (AuditLogMessage $message) {
                 return $message->entityId === '123';
             }))
             ->willReturn(new Envelope(new stdClass()));
 
-        $this->transport->send($log);
+        $this->transport->send($this->createContext(AuditPhase::PostFlush, $log));
     }
 
     public function testSendIsCancelledByStoppingPropagation(): void
@@ -188,7 +223,8 @@ class QueueAuditTransportTest extends TestCase
 
         $this->messageFactory->method('createQueueMessage')->willReturn($queueMessage);
 
-        $this->eventDispatcher->expects($this->once())
+        $eventDispatcher = $this->useEventDispatcherMock();
+        $eventDispatcher->expects($this->once())
             ->method('dispatch')
             ->willReturnCallback(static function (AuditMessageStampEvent $event) {
                 $event->stopPropagation();
@@ -196,15 +232,25 @@ class QueueAuditTransportTest extends TestCase
                 return $event;
             });
 
-        $this->bus->expects($this->never())
+        $bus = $this->useBusMock();
+        $bus->expects($this->never())
             ->method('dispatch');
 
-        $this->transport->send($log);
+        $this->transport->send($this->createContext(AuditPhase::PostFlush, $log));
     }
 
     public function testSupports(): void
     {
-        self::assertTrue($this->transport->supports('post_flush'));
-        self::assertFalse($this->transport->supports('pre_flush'));
+        self::assertTrue($this->transport->supports($this->createContext(AuditPhase::PostFlush)));
+        self::assertFalse($this->transport->supports($this->createContext(AuditPhase::OnFlush)));
+    }
+
+    private function createContext(AuditPhase $phase, ?AuditLog $log = null): AuditTransportContext
+    {
+        return new AuditTransportContext(
+            $phase,
+            self::createStub(EntityManagerInterface::class),
+            $log ?? new AuditLog('TestEntity', '1', AuditLogInterface::ACTION_CREATE),
+        );
     }
 }

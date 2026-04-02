@@ -8,13 +8,17 @@ use LogicException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
+use Rcsofttech\AuditTrailBundle\Service\AuditLogContextProcessor;
+use Rcsofttech\AuditTrailBundle\Service\AuditLogWriter;
+use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\AbstractFunctionalTestCase;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 
-class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
+final class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
 {
     public function testModifyLogInEventPreservesSignature(): void
     {
@@ -46,11 +50,13 @@ class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
 
         $dispatcher = new AuditDispatcher(
             $transport,
+            new AuditLogContextProcessor(new ContextSanitizer()),
+            new AuditLogWriter(),
             $eventDispatcher,
             $integrityService,
             null,
             true, // failOnTransportError
-            true  // fallbackToDatabase
+            true, // fallbackToDatabase
         );
 
         $log = new AuditLog('App\Entity\User', '1', 'create');
@@ -58,7 +64,7 @@ class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
         $em = $this->getEntityManager();
 
         //  Dispatch
-        $dispatcher->dispatch($log, $em, 'post_flush');
+        $dispatcher->dispatch($log, $em, AuditPhase::PostFlush);
 
         //  Verify modification
         self::assertSame('MODIFIED', $log->entityId, 'Log should be modified in the event listener');

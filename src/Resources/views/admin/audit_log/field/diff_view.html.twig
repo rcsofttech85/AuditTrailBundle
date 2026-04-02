@@ -3,7 +3,19 @@
 {% set new_values = entity.instance.newValues ?? {} %}
 {% set changed = entity.instance.changedFields ?? [] %}
 
-{% set all_fields = changed|merge(old_values|keys)|merge(new_values|keys)|unique %}
+{% set candidate_fields = changed is not empty
+    ? changed
+    : old_values|keys|merge(new_values|keys)|unique
+%}
+
+{% set all_fields = [] %}
+{% for field in candidate_fields %}
+    {% set old_val = old_values[field] ?? null %}
+    {% set new_val = new_values[field] ?? null %}
+    {% if old_val != new_val %}
+        {% set all_fields = all_fields|merge([field]) %}
+    {% endif %}
+{% endfor %}
 
 {% if all_fields is not empty %}
 <div class="audit-diff-container">

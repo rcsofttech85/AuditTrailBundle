@@ -22,11 +22,20 @@ use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
+use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
+use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
+use Rcsofttech\AuditTrailBundle\Service\AuditLogContextProcessor;
+use Rcsofttech\AuditTrailBundle\Service\AuditLogWriter;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
+use Rcsofttech\AuditTrailBundle\Service\CollectionChangeResolver;
+use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
+use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
+use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
+use Rcsofttech\AuditTrailBundle\Service\JoinTableCollectionIdLoader;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
@@ -38,10 +47,11 @@ abstract class AbstractAuditTestCase extends TestCase
 {
     protected function createAuditService(
         EntityManagerInterface $em,
-        Stub&TransactionIdGenerator $transactionIdGenerator,
-        MetadataCache $metadataCache = new MetadataCache(),
-        ValueSerializer $serializer = new ValueSerializer(null),
+        TransactionIdGenerator $transactionIdGenerator,
+        MetadataCacheInterface $metadataCache = new MetadataCache(),
+        ?ValueSerializer $serializer = null,
     ): AuditServiceInterface {
+        $serializer ??= new ValueSerializer($this->createEntityIdResolverStub());
         $extractor = new EntityDataExtractor($em, $serializer, $metadataCache);
         $metadataManager = self::createStub(AuditMetadataManagerInterface::class);
         $contextResolver = self::createStub(ContextResolverInterface::class);
@@ -62,8 +72,20 @@ abstract class AbstractAuditTestCase extends TestCase
             $extractor,
             $metadataManager,
             $contextResolver,
-            $idResolver
+            $idResolver,
+            new ContextSanitizer(),
+            null,
+            'UTC',
+            [],
         );
+    }
+
+    protected function createEntityIdResolverStub(string|int|null $resolvedId = '1'): EntityIdResolverInterface
+    {
+        $resolver = self::createStub(EntityIdResolverInterface::class);
+        $resolver->method('resolveFromEntity')->willReturn($resolvedId);
+
+        return $resolver;
     }
 
     protected function createAuditDispatcher(
@@ -72,8 +94,10 @@ abstract class AbstractAuditTestCase extends TestCase
     ): AuditDispatcherInterface {
         return new AuditDispatcher(
             $transport,
+            new AuditLogContextProcessor(new ContextSanitizer()),
+            new AuditLogWriter(),
             null, // eventDispatcher
-            $integrityService ?? self::createStub(AuditIntegrityServiceInterface::class)
+            $integrityService ?? self::createStub(AuditIntegrityServiceInterface::class),
         );
     }
 
@@ -84,13 +108,18 @@ abstract class AbstractAuditTestCase extends TestCase
         ScheduledAuditManagerInterface $auditManager,
         bool $deferTransportUntilCommit = false,
     ): EntityProcessorInterface {
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+
         return new EntityProcessor(
             $auditService,
             $changeProcessor,
             $dispatcher,
             $auditManager,
-            self::createStub(EntityIdResolverInterface::class),
-            $deferTransportUntilCommit
+            new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger()),
+            new CollectionChangeResolver(new CollectionIdExtractor($idResolver), new JoinTableCollectionIdLoader($idResolver)),
+            new CollectionTransitionMerger(),
+            $deferTransportUntilCommit,
+            false,
         );
     }
 

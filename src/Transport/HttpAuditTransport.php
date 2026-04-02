@@ -10,7 +10,7 @@ use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use RuntimeException;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 use function sprintf;
@@ -33,12 +33,10 @@ final class HttpAuditTransport implements AuditTransportInterface
     ) {
     }
 
-    /**
-     * @param array<string, mixed> $context
-     */
     #[Override]
-    public function send(AuditLog $log, array $context = []): void
+    public function send(AuditTransportContext $context): void
     {
+        $log = $context->audit;
         $entityId = $this->idResolver->resolve($log, $context) ?? $log->entityId;
 
         $payload = [
@@ -54,7 +52,7 @@ final class HttpAuditTransport implements AuditTransportInterface
             'user_agent' => $log->userAgent,
             'transaction_hash' => $log->transactionHash,
             'signature' => $log->signature,
-            'context' => [...$log->context, ...$context],
+            'context' => $log->context,
             'created_at' => $log->createdAt->format(DateTimeInterface::ATOM),
         ];
 
@@ -71,20 +69,26 @@ final class HttpAuditTransport implements AuditTransportInterface
             'timeout' => $this->timeout,
         ]);
 
-        if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) {
-            $this->logger?->error(sprintf(
+        $statusCode = $response->getStatusCode();
+
+        if ($statusCode < 200 || $statusCode >= 300) {
+            $responseBody = mb_substr($response->getContent(false), 0, 500);
+            $message = sprintf(
                 'HTTP audit transport failed for %s#%s with status code %d: %s',
                 $log->entityClass,
                 $entityId,
-                $response->getStatusCode(),
-                $response->getContent(false)
-            ));
+                $statusCode,
+                $responseBody
+            );
+            $this->logger?->error($message);
+
+            throw new RuntimeException($message);
         }
     }
 
     #[Override]
-    public function supports(string $phase, array $context = []): bool
+    public function supports(AuditTransportContext $context): bool
     {
-        return $phase === 'post_flush' || $phase === 'post_load';
+        return $context->phase->isAsyncDispatchPhase();
     }
 }

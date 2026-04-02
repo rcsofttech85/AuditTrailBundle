@@ -24,6 +24,7 @@ use const FILTER_VALIDATE_IP;
 #[ORM\Index(name: 'user_action_date_idx', columns: ['user_id', 'action', 'created_at'])]
 #[ORM\Index(name: 'entity_date_idx', columns: ['entity_class', 'entity_id', 'created_at'])]
 #[ORM\Index(name: 'transaction_idx', columns: ['transaction_hash'])]
+#[ORM\UniqueConstraint(name: 'uniq_delivery_id', columns: ['delivery_id'])]
 class AuditLog implements AuditLogInterface
 {
     private const array VALID_ACTIONS = AuditLogInterface::ALL_ACTIONS;
@@ -111,6 +112,14 @@ class AuditLog implements AuditLogInterface
             set {
                 $this->checkSealed();
                 $this->signature = $value;
+            }
+        },
+        #[ORM\Column(length: 36, nullable: true)]
+        public ?string $deliveryId = null {
+            get => $this->deliveryId;
+            set {
+                $this->checkSealed();
+                $this->deliveryId = $value;
             }
         },
     ) {

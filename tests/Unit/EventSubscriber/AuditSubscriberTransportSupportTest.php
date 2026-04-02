@@ -9,25 +9,24 @@ use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
+use Rcsofttech\AuditTrailBundle\Contract\AuditAccessHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
-use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
+use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use stdClass;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
-#[AllowMockObjectsWithoutExpectations]
-class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
+final class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
 {
     public function testOnFlushDefersWhenTransportDoesNotSupportIt(): void
     {
@@ -42,8 +41,7 @@ class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
         $transport->expects($this->once())
             ->method('send')
             ->with(
-                self::isInstanceOf(AuditLog::class),
-                self::callback(static fn (array $context): bool => ($context['phase'] ?? '') === 'post_flush')
+                self::callback(static fn (AuditTransportContext $context): bool => $context->phase === AuditPhase::PostFlush)
             );
 
         $subscriber->onFlush(new OnFlushEventArgs($em));
@@ -56,13 +54,13 @@ class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
     ): AuditSubscriber {
         $changeProcessor = new ChangeProcessor(
             self::createStub(AuditMetadataManagerInterface::class),
-            new ValueSerializer(),
+            new ValueSerializer(self::createStub(EntityIdResolverInterface::class)),
             true,
             'deletedAt'
         );
 
         $dispatcher = $this->createAuditDispatcher($transport);
-        $auditManager = new ScheduledAuditManager(self::createStub(EventDispatcherInterface::class));
+        $auditManager = new ScheduledAuditManager();
 
         $entityProcessor = $this->createEntityProcessor(
             $auditService,
@@ -77,8 +75,8 @@ class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
             $dispatcher,
             $auditManager,
             $entityProcessor,
-            self::createStub(TransactionIdGenerator::class),
-            self::createStub(AuditAccessHandler::class),
+            new TransactionIdGenerator(),
+            self::createStub(AuditAccessHandlerInterface::class),
             self::createStub(EntityIdResolverInterface::class)
         );
     }
@@ -118,9 +116,9 @@ class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
     private function configureTransportPhaseSupport(AuditTransportInterface $transport): void
     {
         $transport->method('supports')->willReturnCallback(
-            static fn (string $phase): bool => match ($phase) {
-                'on_flush' => false,
-                'post_flush' => true,
+            static fn (AuditTransportContext $context): bool => match ($context->phase) {
+                AuditPhase::OnFlush => false,
+                AuditPhase::PostFlush => true,
                 default => false,
             }
         );

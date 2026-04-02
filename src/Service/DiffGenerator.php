@@ -13,6 +13,7 @@ use function is_array;
 use function is_string;
 
 use const JSON_PRETTY_PRINT;
+use const JSON_THROW_ON_ERROR;
 use const JSON_UNESCAPED_SLASHES;
 
 final class DiffGenerator implements DiffGeneratorInterface
@@ -90,7 +91,7 @@ final class DiffGenerator implements DiffGeneratorInterface
 
     private function normalizeJsonString(string $value): string
     {
-        $decoded = json_decode($value, true);
+        $decoded = json_decode($value, true, 512, JSON_THROW_ON_ERROR);
 
         if (!is_array($decoded)) {
             return $value;

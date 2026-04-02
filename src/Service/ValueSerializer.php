@@ -10,14 +10,16 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\PersistentCollection;
 use Override;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Stringable;
+use Throwable;
 use UnitEnum;
 
 use function is_array;
 use function is_object;
 use function is_resource;
-use function method_exists;
 use function sprintf;
 
 final readonly class ValueSerializer implements ValueSerializerInterface
@@ -25,6 +27,7 @@ final readonly class ValueSerializer implements ValueSerializerInterface
     private const int MAX_SERIALIZATION_DEPTH = 5;
 
     public function __construct(
+        private EntityIdResolverInterface $entityIdResolver,
         private ?LoggerInterface $logger = null,
         private string $collectionSerializationMode = 'lazy',
         private int $maxCollectionItems = 100,
@@ -89,9 +92,13 @@ final readonly class ValueSerializer implements ValueSerializerInterface
             }
         }
 
-        $count = $value->count();
-
         $forceOnlyIdentifiers = $onlyIdentifiers || $this->collectionSerializationMode === 'ids_only';
+
+        if ($forceOnlyIdentifiers && $value instanceof PersistentCollection && !$value->isInitialized()) {
+            return $this->serializeIdentifiersFromPersistentCollection($value);
+        }
+
+        $count = $value->count();
 
         if ($count > $this->maxCollectionItems) {
             $this->logger?->warning('Collection exceeds max items for audit', [
@@ -122,12 +129,50 @@ final readonly class ValueSerializer implements ValueSerializerInterface
         );
     }
 
+    /**
+     * Avoid full collection hydration when ids_only mode is used on an
+     * uninitialized Doctrine collection.
+     *
+     * @param PersistentCollection<int|string, mixed> $value
+     *
+     * @return array<int|string, mixed>|array{_truncated: bool, _total_count: int, _sample: array<mixed>}
+     */
+    private function serializeIdentifiersFromPersistentCollection(PersistentCollection $value): array
+    {
+        try {
+            $count = $value->count();
+            $sample = $value->slice(0, $this->maxCollectionItems);
+        } catch (Throwable) {
+            $wrapped = $value->unwrap();
+            $count = $wrapped->count();
+            $sample = $wrapped->slice(0, $this->maxCollectionItems);
+        }
+
+        $serializedSample = array_map(
+            fn ($item) => is_object($item) ? $this->extractEntityIdentifier($item) : $item,
+            $sample
+        );
+
+        if ($count > $this->maxCollectionItems) {
+            $this->logger?->warning('Collection exceeds max items for audit', [
+                'count' => $count,
+                'max' => $this->maxCollectionItems,
+            ]);
+
+            return [
+                '_truncated' => true,
+                '_total_count' => $count,
+                '_sample' => $serializedSample,
+            ];
+        }
+
+        return $serializedSample;
+    }
+
     private function serializeObject(object $value, int $depth = 0): mixed
     {
-        if (method_exists($value, 'getId')) {
-            $id = $value->getId();
-
-            // Handle IDs that are themselves objects (e.g. UUID objects)
+        $id = $this->resolveEntityId($value);
+        if ($id !== null) {
             return is_object($id) ? $this->serialize($id, $depth + 1) : $id;
         }
 
@@ -145,13 +190,21 @@ final readonly class ValueSerializer implements ValueSerializerInterface
 
     private function extractEntityIdentifier(object $entity): mixed
     {
-        if (method_exists($entity, 'getId')) {
-            $id = $entity->getId();
-
-            // Recurse for object identifiers (like Uuid)
+        $id = $this->resolveEntityId($entity);
+        if ($id !== null) {
             return is_object($id) ? $this->serialize($id) : $id;
         }
 
         return $entity::class;
+    }
+
+    private function resolveEntityId(object $entity): mixed
+    {
+        $resolvedId = $this->entityIdResolver->resolveFromEntity($entity);
+        if ($resolvedId !== AuditLogInterface::PENDING_ID) {
+            return $resolvedId;
+        }
+
+        return null;
     }
 }

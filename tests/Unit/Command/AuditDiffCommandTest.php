@@ -5,37 +5,36 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
 use DateTimeImmutable;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditDiffCommand;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\DiffGeneratorInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use ReflectionClass;
+use stdClass;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Uid\Uuid;
 
-#[AllowMockObjectsWithoutExpectations]
-class AuditDiffCommandTest extends TestCase
+final class AuditDiffCommandTest extends TestCase
 {
     use ConsoleOutputTestTrait;
 
-    private AuditLogRepository&MockObject $repository;
+    /** @var (AuditLogRepositoryInterface&\PHPUnit\Framework\MockObject\Stub)|(AuditLogRepositoryInterface&MockObject) */
+    private AuditLogRepositoryInterface $repository;
 
-    private DiffGeneratorInterface&MockObject $diffGenerator;
+    /** @var (DiffGeneratorInterface&\PHPUnit\Framework\MockObject\Stub)|(DiffGeneratorInterface&MockObject) */
+    private DiffGeneratorInterface $diffGenerator;
 
     private CommandTester $commandTester;
 
     protected function setUp(): void
     {
-        $this->repository = $this->createMock(AuditLogRepository::class);
-        $this->diffGenerator = $this->createMock(DiffGeneratorInterface::class);
-
-        $command = new AuditDiffCommand($this->repository, $this->diffGenerator);
-        $this->commandTester = new CommandTester($command);
+        $this->repository = self::createStub(AuditLogRepositoryInterface::class);
+        $this->diffGenerator = self::createStub(DiffGeneratorInterface::class);
+        $this->resetCommandTester();
     }
 
     private function setLogId(AuditLog $log, string $id): void
@@ -43,6 +42,31 @@ class AuditDiffCommandTest extends TestCase
         $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
         $property->setValue($log, Uuid::fromString($id));
+    }
+
+    /** @return AuditLogRepositoryInterface&MockObject */
+    private function useRepositoryMock(): AuditLogRepositoryInterface
+    {
+        $repository = self::createMock(AuditLogRepositoryInterface::class);
+        $this->repository = $repository;
+        $this->resetCommandTester();
+
+        return $repository;
+    }
+
+    /** @return DiffGeneratorInterface&MockObject */
+    private function useDiffGeneratorMock(): DiffGeneratorInterface
+    {
+        $diffGenerator = self::createMock(DiffGeneratorInterface::class);
+        $this->diffGenerator = $diffGenerator;
+        $this->resetCommandTester();
+
+        return $diffGenerator;
+    }
+
+    private function resetCommandTester(): void
+    {
+        $this->commandTester = new CommandTester(new AuditDiffCommand($this->repository, $this->diffGenerator));
     }
 
     public function testExecuteWithId(): void
@@ -58,12 +82,14 @@ class AuditDiffCommandTest extends TestCase
         );
         $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
 
-        $this->repository->expects($this->once())
+        $repository = $this->useRepositoryMock();
+        $repository->expects($this->once())
             ->method('find')
             ->with('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a')
             ->willReturn($log);
 
-        $this->diffGenerator->expects($this->once())
+        $diffGenerator = $this->useDiffGeneratorMock();
+        $diffGenerator->expects($this->once())
             ->method('generate')
             ->willReturn(['title' => ['old' => 'Old Title', 'new' => 'New Title']]);
 
@@ -108,12 +134,14 @@ class AuditDiffCommandTest extends TestCase
         $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
         $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
 
-        $this->repository->expects($this->once())
+        $repository = $this->useRepositoryMock();
+        $repository->expects($this->once())
             ->method('findWithFilters')
             ->with(['entityClass' => 'App\Entity\Post', 'entityId' => '123'], 1)
             ->willReturn([$log]);
 
-        $this->diffGenerator->expects($this->once())
+        $diffGenerator = $this->useDiffGeneratorMock();
+        $diffGenerator->expects($this->once())
             ->method('generate')
             ->willReturn(['title' => ['old' => 'Old Title', 'new' => 'New Title']]);
 
@@ -132,12 +160,14 @@ class AuditDiffCommandTest extends TestCase
     {
         $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
 
-        $this->repository->expects($this->once())
+        $repository = $this->useRepositoryMock();
+        $repository->expects($this->once())
             ->method('findWithFilters')
             ->with(['entityClass' => 'Post', 'entityId' => '123'], 1)
             ->willReturn([$log]);
 
-        $this->diffGenerator->expects($this->once())
+        $diffGenerator = $this->useDiffGeneratorMock();
+        $diffGenerator->expects($this->once())
             ->method('generate')
             ->willReturn(['title' => ['old' => 'Old Title', 'new' => 'New Title']]);
 
@@ -177,12 +207,14 @@ class AuditDiffCommandTest extends TestCase
             new DateTimeImmutable('2023-01-01 12:00:00')
         );
 
-        $this->repository->expects($this->once())
+        $repository = $this->useRepositoryMock();
+        $repository->expects($this->once())
             ->method('find')
             ->with('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a')
             ->willReturn($log);
 
-        $this->diffGenerator->expects($this->once())
+        $diffGenerator = $this->useDiffGeneratorMock();
+        $diffGenerator->expects($this->once())
             ->method('generate')
             ->with(
                 self::anything(),
@@ -206,7 +238,8 @@ class AuditDiffCommandTest extends TestCase
     {
         $log = new AuditLog('123', '456', AuditLogInterface::ACTION_UPDATE);
 
-        $this->repository->expects($this->once())
+        $repository = $this->useRepositoryMock();
+        $repository->expects($this->once())
             ->method('findWithFilters')
             ->with(['entityClass' => '123', 'entityId' => '456'], 1)
             ->willReturn([$log]);
@@ -227,7 +260,8 @@ class AuditDiffCommandTest extends TestCase
 
         $this->repository->method('find')->willReturn($log);
 
-        $this->diffGenerator->expects($this->once())
+        $diffGenerator = $this->useDiffGeneratorMock();
+        $diffGenerator->expects($this->once())
             ->method('generate')
             ->with(
                 self::anything(),
@@ -261,14 +295,15 @@ class AuditDiffCommandTest extends TestCase
         // identifier is NOT numeric (so it's a class), but entityId is null
         $this->commandTester->execute(['identifier' => 'App\Entity\Post']);
 
-        self::assertEquals(Command::FAILURE, $this->commandTester->getStatusCode());
+        self::assertSame(Command::FAILURE, $this->commandTester->getStatusCode());
         $display = (string) preg_replace('/\s+/', ' ', trim($this->commandTester->getDisplay()));
         self::assertStringContainsString('Entity ID is required', $display);
     }
 
     public function testExecuteNoLogsFoundForEntity(): void
     {
-        $this->repository->expects($this->once())
+        $repository = $this->useRepositoryMock();
+        $repository->expects($this->once())
             ->method('findWithFilters')
             ->willReturn([]);
 
@@ -277,7 +312,9 @@ class AuditDiffCommandTest extends TestCase
             'entityId' => '123',
         ]);
 
-        self::assertEquals(Command::FAILURE, $this->commandTester->getStatusCode());
+        self::assertSame(Command::FAILURE, $this->commandTester->getStatusCode());
+        $display = (string) preg_replace('/\s+/', ' ', trim($this->commandTester->getDisplay()));
+        self::assertStringContainsString('No audit logs found for App\Entity\Post:123.', $display);
     }
 
     public function testExecuteWithNullAndBoolValues(): void
@@ -328,5 +365,43 @@ class AuditDiffCommandTest extends TestCase
         self::assertNotFalse($truePos, 'TRUE should be in output');
         self::assertNotFalse($falsePos, 'FALSE should be in output');
         self::assertLessThan($falsePos, $truePos, 'TRUE (old value) should appear before FALSE (new value)');
+    }
+
+    public function testExecuteFormatsDateObjectsFallbackObjectsAndInvalidUtf8Arrays(): void
+    {
+        $log = new AuditLog('App\\Entity\\Post', '1', AuditLogInterface::ACTION_UPDATE);
+        $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
+
+        $this->repository->method('find')->willReturn($log);
+        $this->diffGenerator->method('generate')->willReturn([
+            'publishedAt' => ['old' => new DateTimeImmutable('2024-03-12 15:30:00'), 'new' => null],
+            'payload' => ['old' => ['bad' => "\xB1\x31"], 'new' => []],
+            'objectValue' => ['old' => new stdClass(), 'new' => 'done'],
+        ]);
+
+        $this->commandTester->execute(['identifier' => '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a']);
+
+        $this->commandTester->assertCommandIsSuccessful();
+        $output = $this->normalizeOutput($this->commandTester);
+        self::assertStringContainsString('2024-03-12 15:30:00', $output);
+        self::assertStringContainsString('unencodable data', $output);
+        self::assertStringContainsString('stdClass', $output);
+    }
+
+    public function testExecuteFailsWhenEntityIdIsMissingForEntityClassInput(): void
+    {
+        $repository = $this->useRepositoryMock();
+        $repository->expects($this->never())->method('find');
+        $repository->expects($this->never())->method('findWithFilters');
+
+        $this->commandTester->execute([
+            'identifier' => 'App\\Entity\\Post',
+        ]);
+
+        self::assertSame(1, $this->commandTester->getStatusCode());
+        self::assertStringContainsString(
+            'Entity ID is required when providing an Entity Class.',
+            $this->normalizeOutput($this->commandTester)
+        );
     }
 }

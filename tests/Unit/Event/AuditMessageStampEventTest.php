@@ -12,7 +12,7 @@ use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Symfony\Component\Messenger\Stamp\TransportNamesStamp;
 
-class AuditMessageStampEventTest extends TestCase
+final class AuditMessageStampEventTest extends TestCase
 {
     public function testEventExposesMessage(): void
     {

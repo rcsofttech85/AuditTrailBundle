@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
+use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
-#[AllowMockObjectsWithoutExpectations]
-class HttpAuditTransportIssueTest extends TestCase
+final class HttpAuditTransportIssueTest extends TestCase
 {
     public function testSupportsMethod(): void
     {
@@ -23,7 +25,16 @@ class HttpAuditTransportIssueTest extends TestCase
         $idResolver = self::createStub(EntityIdResolverInterface::class);
         $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver);
 
-        self::assertFalse($transport->supports('on_flush'), 'Should not support on_flush');
-        self::assertTrue($transport->supports('post_flush'), 'Should support post_flush');
+        self::assertFalse($transport->supports($this->createContext(AuditPhase::OnFlush)), 'Should not support on_flush');
+        self::assertTrue($transport->supports($this->createContext(AuditPhase::PostFlush)), 'Should support post_flush');
+    }
+
+    private function createContext(AuditPhase $phase): AuditTransportContext
+    {
+        return new AuditTransportContext(
+            $phase,
+            self::createStub(EntityManagerInterface::class),
+            new AuditLog('TestEntity', '1', 'create'),
+        );
     }
 }

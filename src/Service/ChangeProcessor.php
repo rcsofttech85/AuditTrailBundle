@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
@@ -29,6 +30,7 @@ final class ChangeProcessor implements ChangeProcessorInterface
      *
      * @return array{0: array<string, mixed>, 1: array<string, mixed>}
      */
+    #[Override]
     public function extractChanges(object $entity, array $changeSet): array
     {
         $old = [];
@@ -79,6 +81,7 @@ final class ChangeProcessor implements ChangeProcessorInterface
     /**
      * @param array<string, array{0: mixed, 1: mixed}> $changeSet
      */
+    #[Override]
     public function determineUpdateAction(array $changeSet): string
     {
         if (!$this->enableSoftDelete || !array_key_exists($this->softDeleteField, $changeSet)) {
@@ -95,16 +98,18 @@ final class ChangeProcessor implements ChangeProcessorInterface
             : AuditLogInterface::ACTION_UPDATE;
     }
 
+    #[Override]
     public function determineDeletionAction(EntityManagerInterface $em, object $entity, bool $enableHardDelete): ?string
     {
-        if ($this->enableSoftDelete) {
-            $meta = $em->getClassMetadata($entity::class);
-            if ($meta->hasField($this->softDeleteField)) {
-                $reflProp = $meta->getReflectionProperty($this->softDeleteField);
-                $softDeleteValue = $reflProp?->getValue($entity);
-                if ($softDeleteValue !== null) {
-                    return AuditLogInterface::ACTION_SOFT_DELETE;
-                }
+        if (!$this->enableSoftDelete) {
+            return $enableHardDelete ? AuditLogInterface::ACTION_DELETE : null;
+        }
+
+        $meta = $em->getClassMetadata($entity::class);
+        if ($meta->hasField($this->softDeleteField)) {
+            $softDeleteValue = $meta->getFieldValue($entity, $this->softDeleteField);
+            if ($softDeleteValue !== null) {
+                return AuditLogInterface::ACTION_SOFT_DELETE;
             }
         }
 

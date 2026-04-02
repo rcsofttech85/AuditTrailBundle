@@ -6,47 +6,48 @@ namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Traversable;
-
-use function is_string;
 
 final class ChainAuditTransport implements AuditTransportInterface
 {
+    /** @var list<AuditTransportInterface> */
+    private readonly array $transports;
+
     /**
      * @param iterable<AuditTransportInterface> $transports
      */
-    public function __construct(
-        private readonly iterable $transports,
-    ) {
+    public function __construct(iterable $transports)
+    {
+        $this->transports = array_values([...$transports]);
     }
 
     /**
-     * @param array<string, mixed> $context
+     * The chain is intentionally fail-fast: a transport failure stops delivery
+     * to later transports so the dispatcher can apply its configured fallback
+     * strategy consistently.
      */
     #[Override]
-    public function send(AuditLog $log, array $context = []): void
+    public function send(AuditTransportContext $context): void
     {
-        $phase = $context['phase'] ?? null;
-        if (!is_string($phase)) {
-            $phase = null;
-        }
-
         foreach ($this->transports as $transport) {
-            if ($phase !== null && !$transport->supports($phase, $context)) {
+            if (!$transport->supports($context)) {
                 continue;
             }
 
-            $transport->send($log, $context);
+            $transport->send($context);
         }
     }
 
+    /**
+     * The chain is intentionally fail-fast: a transport failure stops delivery
+     * to later transports so the dispatcher can apply its configured fallback
+     * strategy consistently.
+     */
     #[Override]
-    public function supports(string $phase, array $context = []): bool
+    public function supports(AuditTransportContext $context): bool
     {
         return array_any(
-            $this->transports instanceof Traversable ? iterator_to_array($this->transports) : $this->transports,
-            static fn (AuditTransportInterface $transport) => $transport->supports($phase, $context)
+            $this->transports,
+            static fn (AuditTransportInterface $transport) => $transport->supports($context)
         );
     }
 }

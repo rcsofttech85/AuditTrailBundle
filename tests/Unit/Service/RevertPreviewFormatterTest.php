@@ -5,14 +5,13 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use DateTimeImmutable;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use Doctrine\Common\Collections\ArrayCollection;
 use Rcsofttech\AuditTrailBundle\Service\RevertPreviewFormatter;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use stdClass;
 use Stringable;
 
-#[AllowMockObjectsWithoutExpectations]
-class RevertPreviewFormatterTest extends AbstractAuditTestCase
+final class RevertPreviewFormatterTest extends AbstractAuditTestCase
 {
     private RevertPreviewFormatter $formatter;
 
@@ -54,6 +53,7 @@ class RevertPreviewFormatterTest extends AbstractAuditTestCase
         };
 
         $result = $this->formatter->format($object);
+        self::assertIsString($result);
         self::assertStringContainsString('#42', $result);
     }
 
@@ -61,6 +61,92 @@ class RevertPreviewFormatterTest extends AbstractAuditTestCase
     {
         $object = new stdClass();
         self::assertSame('stdClass', $this->formatter->format($object));
+    }
+
+    public function testFormatTraversableCollection(): void
+    {
+        $value = new ArrayCollection([
+            new class {
+                public function getId(): int
+                {
+                    return 42;
+                }
+
+                public function getLabel(): string
+                {
+                    return 'php';
+                }
+            },
+            new class {
+                public function getId(): int
+                {
+                    return 7;
+                }
+
+                public function getName(): string
+                {
+                    return 'Backend';
+                }
+            },
+        ]);
+
+        self::assertSame([
+            'Anonymous#42 (php)',
+            'Anonymous#7 (Backend)',
+        ], $this->formatter->format($value));
+    }
+
+    public function testFormatObjectWithPublicPhp84StyleProperties(): void
+    {
+        $object = new class {
+            public private(set) int $id = 42;
+
+            public function __construct(
+                public private(set) string $name = 'Backend',
+            ) {
+            }
+        };
+
+        self::assertSame('Anonymous#42 (Backend)', $this->formatter->format($object));
+    }
+
+    public function testFormatObjectWithTitleButWithoutId(): void
+    {
+        $object = new class {
+            public function getTitle(): string
+            {
+                return 'Release Notes';
+            }
+        };
+
+        self::assertSame('Anonymous (Release Notes)', $this->formatter->format($object));
+    }
+
+    public function testFormatIgnoresNonPublicLabelProperty(): void
+    {
+        $object = new class {
+            private string $label = 'Hidden';
+
+            public function __construct()
+            {
+                $this->consume($this->label);
+            }
+
+            private function consume(string $_value): void
+            {
+            }
+        };
+
+        self::assertSame('Anonymous', $this->formatter->format($object));
+    }
+
+    public function testFormatIgnoresUninitializedPublicLabelProperty(): void
+    {
+        $object = new class {
+            public string $label;
+        };
+
+        self::assertSame('Anonymous', $this->formatter->format($object));
     }
 
     public function testFormatRecursiveArray(): void

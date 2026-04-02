@@ -62,7 +62,9 @@ final readonly class UserResolver implements UserResolverInterface
         $request = $this->requestStack->getCurrentRequest();
 
         if ($request !== null) {
-            return $this->trackIpAddress ? $request->getClientIp() : null;
+            $ip = $this->trackIpAddress ? $request->getClientIp() : null;
+
+            return $ip !== null && $this->isValidIpAddress($ip) ? $ip : null;
         }
 
         if ($this->trackIpAddress && PHP_SAPI === 'cli') {
@@ -147,12 +149,25 @@ final readonly class UserResolver implements UserResolverInterface
 
     private function getServerUser(): ?string
     {
-        $user = $_SERVER['USER'] ?? $_SERVER['USERNAME'] ?? null;
+        $user = $this->readCliUserValue('USER') ?? $this->readCliUserValue('USERNAME');
+
         if (is_string($user) && $user !== '') {
             return 'cli:'.$user;
         }
 
         return null;
+    }
+
+    private function readCliUserValue(string $key): ?string
+    {
+        $value = getenv($key);
+        if (is_string($value) && $value !== '') {
+            return $value;
+        }
+
+        $serverValue = $_SERVER[$key] ?? null;
+
+        return is_string($serverValue) && $serverValue !== '' ? $serverValue : null;
     }
 
     private function resolveCliIpAddress(): ?string

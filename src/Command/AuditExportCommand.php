@@ -16,12 +16,11 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
-use function count;
 use function dirname;
+use function filesize;
 use function in_array;
 use function is_string;
 use function sprintf;
-use function strlen;
 
 #[AsCommand(
     name: 'audit:export',
@@ -109,6 +108,7 @@ final class AuditExportCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
+        $outputFile = $input->getOption('output');
 
         $format = $this->parseFormat($input, $io);
         $limit = $this->parseLimit($input, $io);
@@ -123,6 +123,12 @@ final class AuditExportCommand extends Command
             return Command::FAILURE;
         }
 
+        if (is_string($outputFile) && $outputFile !== '') {
+            return $this->exportToFile($io, $outputFile, $filters, $format, $limit)
+                ? Command::SUCCESS
+                : Command::FAILURE;
+        }
+
         $audits = $this->repository->findWithFilters($filters, $limit);
 
         if ($audits === []) {
@@ -131,16 +137,9 @@ final class AuditExportCommand extends Command
             return Command::SUCCESS;
         }
 
-        $io->note(sprintf('Found %s audit logs', number_format(count($audits))));
-
         $data = $this->exporter->formatAudits($audits, $format);
-        $outputFile = $input->getOption('output');
 
-        if (is_string($outputFile) && $outputFile !== '') {
-            $this->writeToFile($io, $outputFile, $data, count($audits));
-        } else {
-            $output->writeln($data);
-        }
+        $output->writeln($data);
 
         return Command::SUCCESS;
     }
@@ -264,26 +263,90 @@ final class AuditExportCommand extends Command
         }
     }
 
-    private function writeToFile(SymfonyStyle $io, string $outputFile, string $data, int $count): void
-    {
+    /**
+     * @param array<string, mixed> $filters
+     */
+    private function exportToFile(
+        SymfonyStyle $io,
+        string $outputFile,
+        array $filters,
+        string $format,
+        int $limit,
+    ): bool {
         $directory = dirname($outputFile);
         if (!is_dir($directory) && !mkdir($directory, 0o755, true) && !is_dir($directory)) {
             $io->error(sprintf('Failed to create directory: %s', $directory));
 
-            return;
+            return false;
         }
 
-        if (false === file_put_contents($outputFile, $data)) {
+        $preview = $this->repository->findWithFilters($filters, 1);
+        if ($preview === []) {
+            $io->warning('No audit logs found matching the criteria.');
+
+            return true;
+        }
+
+        $handle = @fopen($outputFile, 'w');
+        if ($handle === false) {
             $io->error(sprintf('Failed to write to file: %s', $outputFile));
 
-            return;
+            return false;
         }
+
+        $count = 0;
+
+        try {
+            $this->exporter->exportToStream(
+                $this->takeAudits($this->countYieldedAudits($this->repository->findAllWithFilters($filters), $count), $limit),
+                $format,
+                $handle
+            );
+        } finally {
+            fclose($handle);
+        }
+
+        $size = filesize($outputFile);
 
         $io->success(sprintf(
             'Exported %s audit logs to %s (%s)',
             number_format($count),
             $outputFile,
-            $this->exporter->formatFileSize(strlen($data))
+            $this->exporter->formatFileSize($size !== false ? $size : 0)
         ));
+
+        return true;
+    }
+
+    /**
+     * @param iterable<\Rcsofttech\AuditTrailBundle\Entity\AuditLog> $audits
+     *
+     * @return iterable<\Rcsofttech\AuditTrailBundle\Entity\AuditLog>
+     */
+    private function countYieldedAudits(iterable $audits, int &$count): iterable
+    {
+        foreach ($audits as $audit) {
+            ++$count;
+            yield $audit;
+        }
+    }
+
+    /**
+     * @param iterable<\Rcsofttech\AuditTrailBundle\Entity\AuditLog> $audits
+     *
+     * @return iterable<\Rcsofttech\AuditTrailBundle\Entity\AuditLog>
+     */
+    private function takeAudits(iterable $audits, int $limit): iterable
+    {
+        $yielded = 0;
+
+        foreach ($audits as $audit) {
+            if ($yielded >= $limit) {
+                break;
+            }
+
+            ++$yielded;
+            yield $audit;
+        }
     }
 }

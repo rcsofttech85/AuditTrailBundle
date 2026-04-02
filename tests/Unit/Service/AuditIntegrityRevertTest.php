@@ -5,14 +5,12 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use DateTimeImmutable;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 
-#[AllowMockObjectsWithoutExpectations]
-class AuditIntegrityRevertTest extends TestCase
+final class AuditIntegrityRevertTest extends TestCase
 {
     private AuditIntegrityService $service;
 

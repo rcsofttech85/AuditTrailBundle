@@ -9,12 +9,11 @@ use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\UnitOfWork;
-use Exception;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditAccessHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
@@ -22,29 +21,30 @@ use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
-use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+use ReflectionClass;
 use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
 final class AuditSubscriberTest extends TestCase
 {
-    private AuditServiceInterface&MockObject $auditService;
+    private AuditServiceInterface&Stub $auditService;
 
     private ChangeProcessorInterface&Stub $changeProcessor;
 
-    private AuditDispatcherInterface&MockObject $dispatcher;
+    private AuditDispatcherInterface&Stub $dispatcher;
 
     private MockScheduledAuditManager $auditManager;
 
-    private EntityProcessorInterface&MockObject $entityProcessor;
+    private EntityProcessorInterface&Stub $entityProcessor;
 
-    private TransactionIdGenerator&Stub $transactionIdGenerator;
+    private TransactionIdGenerator $transactionIdGenerator;
 
-    private LoggerInterface&MockObject $logger;
+    private LoggerInterface&Stub $logger;
 
-    private AuditAccessHandler&MockObject $accessHandler;
+    private AuditAccessHandlerInterface&Stub $accessHandler;
 
     private EntityIdResolverInterface&Stub $idResolver;
 
@@ -52,27 +52,17 @@ final class AuditSubscriberTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->auditService = self::createMock(AuditServiceInterface::class);
+        $this->auditService = self::createStub(AuditServiceInterface::class);
         $this->changeProcessor = self::createStub(ChangeProcessorInterface::class);
-        $this->dispatcher = self::createMock(AuditDispatcherInterface::class);
+        $this->dispatcher = self::createStub(AuditDispatcherInterface::class);
         $this->auditManager = new MockScheduledAuditManager();
-        $this->entityProcessor = self::createMock(EntityProcessorInterface::class);
-        $this->transactionIdGenerator = self::createStub(TransactionIdGenerator::class);
-        $this->logger = self::createMock(LoggerInterface::class);
-        $this->accessHandler = self::createMock(AuditAccessHandler::class);
+        $this->entityProcessor = self::createStub(EntityProcessorInterface::class);
+        $this->transactionIdGenerator = new TransactionIdGenerator();
+        $this->logger = self::createStub(LoggerInterface::class);
+        $this->accessHandler = self::createStub(AuditAccessHandlerInterface::class);
         $this->idResolver = self::createStub(EntityIdResolverInterface::class);
 
-        $this->subscriber = new AuditSubscriber(
-            $this->auditService,
-            $this->changeProcessor,
-            $this->dispatcher,
-            $this->auditManager,
-            $this->entityProcessor,
-            $this->transactionIdGenerator,
-            $this->accessHandler,
-            $this->idResolver,
-            $this->logger
-        );
+        $this->subscriber = $this->createSubscriber();
     }
 
     public function testIsEnabled(): void
@@ -93,69 +83,71 @@ final class AuditSubscriberTest extends TestCase
     public function testOnFlushRecursion(): void
     {
         $em = $this->createMock(EntityManagerInterface::class);
-        $uow = $this->createMock(UnitOfWork::class);
-        $args = $this->createMock(OnFlushEventArgs::class);
+        $uow = self::createStub(UnitOfWork::class);
+        $args = self::createStub(OnFlushEventArgs::class);
+        $entityProcessor = $this->createMock(EntityProcessorInterface::class);
+        $subscriber = $this->createSubscriber(entityProcessor: $entityProcessor);
 
         $args->method('getObjectManager')->willReturn($em);
         $em->method('getUnitOfWork')->willReturn($uow);
 
-        // First call should proceed
-        $this->entityProcessor->expects($this->once())->method('processInsertions');
+        $entityProcessor->expects($this->once())->method('processInsertions');
 
-        // During processInsertions (representing the work in onFlush), we simulate another flush event
-        $this->entityProcessor->method('processInsertions')->willReturnCallback(function () use ($args) {
-            // Second call should return early
-            $this->subscriber->onFlush($args);
+        $entityProcessor->method('processInsertions')->willReturnCallback(static function () use ($args, $subscriber) {
+            $subscriber->onFlush($args);
         });
 
-        $this->subscriber->onFlush($args);
+        $subscriber->onFlush($args);
     }
 
     public function testOnFlushDoesNotDispatchDirectly(): void
     {
         $em = $this->createMock(EntityManagerInterface::class);
-        $uow = $this->createMock(UnitOfWork::class);
-        $args = $this->createMock(OnFlushEventArgs::class);
+        $uow = self::createStub(UnitOfWork::class);
+        $args = self::createStub(OnFlushEventArgs::class);
+        $dispatcher = $this->createMock(AuditDispatcherInterface::class);
+        $subscriber = $this->createSubscriber(dispatcher: $dispatcher);
 
         $args->method('getObjectManager')->willReturn($em);
         $em->method('getUnitOfWork')->willReturn($uow);
 
-        $this->dispatcher->expects($this->never())->method('dispatch');
+        $dispatcher->expects($this->never())->method('dispatch');
 
-        $this->subscriber->onFlush($args);
+        $subscriber->onFlush($args);
     }
 
     public function testPostFlushProcessPendingDeletions(): void
     {
         $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $args = self::createStub(PostFlushEventArgs::class);
+        $auditService = self::createStub(AuditServiceInterface::class);
+        $dispatcher = $this->createMock(AuditDispatcherInterface::class);
+        $subscriber = $this->createSubscriber(auditService: $auditService, dispatcher: $dispatcher);
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
         $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_DELETE);
 
-        // property access on mock
         $this->auditManager->scheduledAudits = [];
         $this->auditManager->pendingDeletions = [
             ['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true],
         ];
 
         $this->changeProcessor->method('determineDeletionAction')->willReturn('delete');
-        $this->auditService->method('createAuditLog')->willReturn($audit);
+        $auditService->method('createAuditLog')->willReturn($audit);
 
-        $this->dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
-        $em->method('contains')->with($audit)->willReturn(true);
+        $dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
+        $em->expects($this->never())->method('flush');
 
-        // Expect flush because hasNewAudits will be true
-        $em->expects($this->once())->method('flush');
-
-        $this->subscriber->postFlush($args);
+        $subscriber->postFlush($args);
     }
 
     public function testPostFlushProcessScheduledAuditsWithPendingId(): void
     {
         $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $args = self::createStub(PostFlushEventArgs::class);
+        $dispatcher = $this->createMock(AuditDispatcherInterface::class);
+        $subscriber = $this->createSubscriber(dispatcher: $dispatcher);
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
@@ -168,19 +160,21 @@ final class AuditSubscriberTest extends TestCase
 
         $this->idResolver->method('resolveFromEntity')->willReturn('123');
 
-        $this->dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
-        $em->method('contains')->with($audit)->willReturn(true);
-        $em->expects($this->once())->method('flush');
+        $dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
+        $em->expects($this->never())->method('flush');
 
-        $this->subscriber->postFlush($args);
+        $subscriber->postFlush($args);
 
-        self::assertEquals('123', $audit->entityId);
+        self::assertSame('123', $audit->entityId);
     }
 
     public function testPostFlushRetainsScheduledAuditWhenDispatchFails(): void
     {
         $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $args = self::createStub(PostFlushEventArgs::class);
+        $dispatcher = $this->createMock(AuditDispatcherInterface::class);
+        $accessHandler = $this->createMock(AuditAccessHandlerInterface::class);
+        $subscriber = $this->createSubscriber(dispatcher: $dispatcher, accessHandler: $accessHandler);
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
@@ -190,14 +184,14 @@ final class AuditSubscriberTest extends TestCase
             ['entity' => $entity, 'audit' => $audit, 'is_insert' => false],
         ];
 
-        $this->dispatcher->expects($this->once())
+        $dispatcher->expects($this->once())
             ->method('dispatch')
-            ->with($audit, $em, 'post_flush')
+            ->with($audit, $em, AuditPhase::PostFlush, null, $entity)
             ->willReturn(false);
-        $this->accessHandler->expects($this->never())->method('markAsAudited');
+        $accessHandler->expects($this->never())->method('markAsAudited');
         $em->expects($this->never())->method('flush');
 
-        $this->subscriber->postFlush($args);
+        $subscriber->postFlush($args);
 
         self::assertNotEmpty($this->auditManager->scheduledAudits);
         self::assertSame($audit, $this->auditManager->scheduledAudits[0]['audit']);
@@ -206,7 +200,10 @@ final class AuditSubscriberTest extends TestCase
     public function testPostFlushRetriesRetainedScheduledAuditOnNextFlushWithoutDuplication(): void
     {
         $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $args = self::createStub(PostFlushEventArgs::class);
+        $dispatcher = $this->createMock(AuditDispatcherInterface::class);
+        $accessHandler = $this->createMock(AuditAccessHandlerInterface::class);
+        $subscriber = $this->createSubscriber(dispatcher: $dispatcher, accessHandler: $accessHandler);
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
@@ -216,25 +213,27 @@ final class AuditSubscriberTest extends TestCase
             ['entity' => $entity, 'audit' => $audit, 'is_insert' => false],
         ];
 
-        $this->dispatcher->expects($this->exactly(2))
+        $dispatcher->expects($this->exactly(2))
             ->method('dispatch')
-            ->with($audit, $em, 'post_flush')
+            ->with($audit, $em, AuditPhase::PostFlush, null, $entity)
             ->willReturnOnConsecutiveCalls(false, true);
-        $this->accessHandler->expects($this->once())->method('markAsAudited');
-        $em->method('contains')->with($audit)->willReturn(true);
-        $em->expects($this->once())->method('flush');
+        $accessHandler->expects($this->once())->method('markAsAudited');
+        $em->expects($this->never())->method('flush');
 
-        $this->subscriber->postFlush($args);
+        $subscriber->postFlush($args);
         self::assertNotEmpty($this->auditManager->scheduledAudits);
 
-        $this->subscriber->postFlush($args);
+        $subscriber->postFlush($args);
         self::assertEmpty($this->auditManager->scheduledAudits);
     }
 
-    public function testPostFlushFlushException(): void
+    public function testPostFlushDoesNotTriggerFollowUpFlush(): void
     {
         $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $args = self::createStub(PostFlushEventArgs::class);
+        $dispatcher = self::createStub(AuditDispatcherInterface::class);
+        $logger = $this->createMock(LoggerInterface::class);
+        $subscriber = $this->createSubscriber(dispatcher: $dispatcher, logger: $logger);
         $args->method('getObjectManager')->willReturn($em);
 
         $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
@@ -248,19 +247,15 @@ final class AuditSubscriberTest extends TestCase
             ],
         ];
 
-        $this->dispatcher->method('dispatch')->willReturn(true);
-        $em->method('contains')->with($audit)->willReturn(true);
+        $dispatcher->method('dispatch')->willReturn(true);
+        $em->expects($this->never())->method('flush');
+        $logger->expects($this->never())->method('critical');
 
-        $em->method('flush')->willThrowException(new Exception('Flush failed'));
-
-        $this->logger->expects($this->once())->method('critical');
-
-        $this->subscriber->postFlush($args);
+        $subscriber->postFlush($args);
     }
 
     public function testOnClear(): void
     {
-        // Populate manager
         $this->auditManager->scheduledAudits = [
             ['entity' => new stdClass(), 'audit' => new AuditLog(stdClass::class, '1', 'create'), 'is_insert' => true],
         ];
@@ -273,75 +268,127 @@ final class AuditSubscriberTest extends TestCase
         $this->auditManager->disable();
 
         $entity = new stdClass();
-        $em = $this->createMock(EntityManagerInterface::class);
+        $em = self::createStub(EntityManagerInterface::class);
         $args = new PostLoadEventArgs($entity, $em);
-        $this->accessHandler->expects($this->never())->method('handleAccess');
+        $accessHandler = $this->createMock(AuditAccessHandlerInterface::class);
+        $subscriber = $this->createSubscriber(accessHandler: $accessHandler);
+        $accessHandler->expects($this->never())->method('handleAccess');
 
-        $this->subscriber->postLoad($args);
+        $subscriber->postLoad($args);
     }
 
     public function testPostLoadEnabled(): void
     {
         $entity = new stdClass();
-        $em = $this->createMock(EntityManagerInterface::class);
+        $em = self::createStub(EntityManagerInterface::class);
         $args = new PostLoadEventArgs($entity, $em);
+        $accessHandler = $this->createMock(AuditAccessHandlerInterface::class);
+        $subscriber = $this->createSubscriber(accessHandler: $accessHandler);
 
-        $this->accessHandler->expects($this->once())->method('handleAccess')->with($entity, $em);
+        $accessHandler->expects($this->once())->method('handleAccess')->with($entity, $em);
 
-        $this->subscriber->postLoad($args);
+        $subscriber->postLoad($args);
+    }
+
+    public function testPostLoadIsSkippedDuringOnFlushProcessing(): void
+    {
+        $entity = new stdClass();
+        $em = self::createStub(EntityManagerInterface::class);
+        $args = new PostLoadEventArgs($entity, $em);
+        $accessHandler = $this->createMock(AuditAccessHandlerInterface::class);
+        $subscriber = $this->createSubscriber(accessHandler: $accessHandler);
+
+        $reflection = new ReflectionClass($subscriber);
+        $property = $reflection->getProperty('onFlushProcessing');
+        $property->setValue($subscriber, true);
+
+        $accessHandler->expects($this->never())->method('handleAccess');
+
+        $subscriber->postLoad($args);
+    }
+
+    public function testPostLoadIsSkippedDuringPostFlushProcessing(): void
+    {
+        $entity = new stdClass();
+        $em = self::createStub(EntityManagerInterface::class);
+        $args = new PostLoadEventArgs($entity, $em);
+        $accessHandler = $this->createMock(AuditAccessHandlerInterface::class);
+        $subscriber = $this->createSubscriber(accessHandler: $accessHandler);
+
+        $reflection = new ReflectionClass($subscriber);
+        $property = $reflection->getProperty('postFlushDepth');
+        $property->setValue($subscriber, 1);
+
+        $accessHandler->expects($this->never())->method('handleAccess');
+
+        $subscriber->postLoad($args);
     }
 
     public function testPostFlushDisabled(): void
     {
         $this->auditManager->disable();
 
-        $args = $this->createMock(PostFlushEventArgs::class);
-        $args->method('getObjectManager')->willReturn($this->createMock(EntityManagerInterface::class));
+        $args = self::createStub(PostFlushEventArgs::class);
+        $args->method('getObjectManager')->willReturn(self::createStub(EntityManagerInterface::class));
+        $auditService = $this->createMock(AuditServiceInterface::class);
+        $subscriber = $this->createSubscriber(auditService: $auditService);
 
         $this->auditManager->pendingDeletions = [['entity' => new stdClass(), 'data' => [], 'is_managed' => true]];
-        $this->auditService->expects($this->never())->method('createAuditLog');
+        $auditService->expects($this->never())->method('createAuditLog');
 
-        $this->subscriber->postFlush($args);
+        $subscriber->postFlush($args);
     }
 
     public function testPostFlushProcessPendingDeletionsSkipped(): void
     {
-        $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $args = self::createStub(PostFlushEventArgs::class);
+        $auditService = $this->createMock(AuditServiceInterface::class);
+        $subscriber = $this->createSubscriber(auditService: $auditService);
         $args->method('getObjectManager')->willReturn($em);
 
         $this->auditManager->pendingDeletions = [['entity' => new stdClass(), 'data' => [], 'is_managed' => true]];
-        // action is null
         $this->changeProcessor->method('determineDeletionAction')->willReturn(null);
 
-        $this->auditService->expects($this->never())->method('createAuditLog');
+        $auditService->expects($this->never())->method('createAuditLog');
 
-        $this->subscriber->postFlush($args);
+        $subscriber->postFlush($args);
     }
 
     public function testPostFlushSoftDelete(): void
     {
-        $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $args = self::createStub(PostFlushEventArgs::class);
+        $auditService = $this->createMock(AuditServiceInterface::class);
+        $dispatcher = self::createStub(AuditDispatcherInterface::class);
+        $subscriber = $this->createSubscriber(auditService: $auditService, dispatcher: $dispatcher);
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
         $this->auditManager->pendingDeletions = [['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true]];
 
         $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditLogInterface::ACTION_SOFT_DELETE);
-        $this->auditService->expects($this->once())->method('getEntityData')->with($entity)->willReturn(['name' => 'soft']);
+        $auditService->expects($this->once())->method('getEntityData')->with($entity)->willReturn(['name' => 'soft']);
 
         $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_SOFT_DELETE);
-        $this->auditService->method('createAuditLog')->willReturn($audit);
-        $this->dispatcher->method('dispatch')->willReturn(true);
+        $auditService->method('createAuditLog')->willReturn($audit);
+        $dispatcher->method('dispatch')->willReturn(true);
 
-        $this->subscriber->postFlush($args);
+        $subscriber->postFlush($args);
     }
 
     public function testPostFlushRetainsPendingDeletionWhenDispatchFails(): void
     {
         $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $args = self::createStub(PostFlushEventArgs::class);
+        $auditService = self::createStub(AuditServiceInterface::class);
+        $dispatcher = $this->createMock(AuditDispatcherInterface::class);
+        $accessHandler = $this->createMock(AuditAccessHandlerInterface::class);
+        $subscriber = $this->createSubscriber(
+            auditService: $auditService,
+            dispatcher: $dispatcher,
+            accessHandler: $accessHandler,
+        );
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
@@ -349,12 +396,12 @@ final class AuditSubscriberTest extends TestCase
         $this->auditManager->scheduledAudits = [];
 
         $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditLogInterface::ACTION_DELETE);
-        $this->auditService->method('createAuditLog')->willReturn(new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_DELETE));
-        $this->dispatcher->expects($this->once())->method('dispatch')->willReturn(false);
-        $this->accessHandler->expects($this->never())->method('markAsAudited');
+        $auditService->method('createAuditLog')->willReturn(new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_DELETE));
+        $dispatcher->expects($this->once())->method('dispatch')->willReturn(false);
+        $accessHandler->expects($this->never())->method('markAsAudited');
         $em->expects($this->never())->method('flush');
 
-        $this->subscriber->postFlush($args);
+        $subscriber->postFlush($args);
 
         self::assertNotEmpty($this->auditManager->pendingDeletions);
         self::assertSame($entity, $this->auditManager->pendingDeletions[0]['entity']);
@@ -363,7 +410,15 @@ final class AuditSubscriberTest extends TestCase
     public function testPostFlushRetriesRetainedPendingDeletionOnNextFlushWithoutDuplication(): void
     {
         $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $args = self::createStub(PostFlushEventArgs::class);
+        $auditService = self::createStub(AuditServiceInterface::class);
+        $dispatcher = $this->createMock(AuditDispatcherInterface::class);
+        $accessHandler = $this->createMock(AuditAccessHandlerInterface::class);
+        $subscriber = $this->createSubscriber(
+            auditService: $auditService,
+            dispatcher: $dispatcher,
+            accessHandler: $accessHandler,
+        );
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
@@ -372,26 +427,25 @@ final class AuditSubscriberTest extends TestCase
         $this->auditManager->scheduledAudits = [];
 
         $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditLogInterface::ACTION_DELETE);
-        $this->auditService->method('createAuditLog')->willReturn($audit);
-        $this->dispatcher->expects($this->exactly(2))
+        $auditService->method('createAuditLog')->willReturn($audit);
+        $dispatcher->expects($this->exactly(2))
             ->method('dispatch')
-            ->with($audit, $em, 'post_flush')
+            ->with($audit, $em, AuditPhase::PostFlush, null, $entity)
             ->willReturnOnConsecutiveCalls(false, true);
-        $this->accessHandler->expects($this->once())->method('markAsAudited');
-        $em->method('contains')->with($audit)->willReturn(true);
-        $em->expects($this->once())->method('flush');
+        $accessHandler->expects($this->once())->method('markAsAudited');
+        $em->expects($this->never())->method('flush');
 
-        $this->subscriber->postFlush($args);
+        $subscriber->postFlush($args);
         self::assertNotEmpty($this->auditManager->pendingDeletions);
 
-        $this->subscriber->postFlush($args);
+        $subscriber->postFlush($args);
         self::assertEmpty($this->auditManager->pendingDeletions);
     }
 
     public function testPostFlushProcessScheduledAuditsWithStaticId(): void
     {
-        $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $args = self::createStub(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
@@ -401,25 +455,26 @@ final class AuditSubscriberTest extends TestCase
             ['entity' => $entity, 'audit' => $audit, 'is_insert' => true],
         ];
 
-        // resolveFromEntity returns something other than PENDING_ID
         $this->idResolver->method('resolveFromEntity')->willReturn('456');
         $this->dispatcher->method('dispatch')->willReturn(true);
 
         $this->subscriber->postFlush($args);
 
-        self::assertEquals('456', $audit->entityId);
+        self::assertSame('456', $audit->entityId);
     }
 
     public function testReset(): void
     {
-        $this->accessHandler->expects($this->once())->method('reset');
-        $this->subscriber->reset();
+        $accessHandler = $this->createMock(AuditAccessHandlerInterface::class);
+        $subscriber = $this->createSubscriber(accessHandler: $accessHandler);
+        $accessHandler->expects($this->once())->method('reset');
+        $subscriber->reset();
     }
 
     public function testRecursionPreventionViaIsFlushing(): void
     {
         $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $args = self::createStub(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
         $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
@@ -428,18 +483,97 @@ final class AuditSubscriberTest extends TestCase
         ];
 
         $this->dispatcher->method('dispatch')->willReturn(true);
-        $em->method('contains')->willReturn(true);
-
-        // When em->flush() is called, we call postFlush again to see if it recurses
-        $em->expects($this->once())
-            ->method('flush')
-            ->willReturnCallback(function () use ($args) {
-                // If we are here, isFlushing must be true
-                // Calling postFlush again should return early immediately due to isFlushing
-                $this->subscriber->postFlush($args);
-            });
+        $em->expects($this->never())->method('flush');
 
         $this->subscriber->postFlush($args);
+    }
+
+    public function testOnFlushRunsNormallyWithoutAuditFollowUpFlush(): void
+    {
+        $em = $this->createMock(EntityManagerInterface::class);
+        $uow = self::createStub(UnitOfWork::class);
+        $onFlushArgs = self::createStub(OnFlushEventArgs::class);
+        $postFlushArgs = self::createStub(PostFlushEventArgs::class);
+        $dispatcher = self::createStub(AuditDispatcherInterface::class);
+        $entityProcessor = $this->createMock(EntityProcessorInterface::class);
+        $subscriber = $this->createSubscriber(dispatcher: $dispatcher, entityProcessor: $entityProcessor);
+
+        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $this->auditManager->scheduledAudits = [
+            ['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false],
+        ];
+
+        $postFlushArgs->method('getObjectManager')->willReturn($em);
+        $onFlushArgs->method('getObjectManager')->willReturn($em);
+        $em->method('getUnitOfWork')->willReturn($uow);
+        $dispatcher->method('dispatch')->willReturn(true);
+
+        $entityProcessor->expects($this->once())->method('processInsertions');
+        $entityProcessor->expects($this->once())->method('processUpdates');
+        $entityProcessor->expects($this->exactly(2))->method('processCollectionUpdates');
+        $entityProcessor->expects($this->once())->method('processDeletions');
+        $em->expects($this->never())->method('flush');
+
+        $subscriber->postFlush($postFlushArgs);
+        $subscriber->onFlush($onFlushArgs);
+    }
+
+    public function testPostFlushSkipsNestedInvocationTriggeredDuringDispatch(): void
+    {
+        $em = $this->createMock(EntityManagerInterface::class);
+        $args = self::createStub(PostFlushEventArgs::class);
+        $auditService = self::createStub(AuditServiceInterface::class);
+        $dispatcher = $this->createMock(AuditDispatcherInterface::class);
+        $subscriber = $this->createSubscriber(auditService: $auditService, dispatcher: $dispatcher);
+        $args->method('getObjectManager')->willReturn($em);
+
+        $entity = new stdClass();
+        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_DELETE);
+        $this->auditManager->pendingDeletions = [['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true]];
+        $this->auditManager->scheduledAudits = [];
+
+        $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditLogInterface::ACTION_DELETE);
+        $auditService->method('createAuditLog')->willReturn($audit);
+        $dispatcher->expects($this->once())
+            ->method('dispatch')
+            ->with($audit, $em, AuditPhase::PostFlush, null, $entity)
+            ->willReturnCallback(static function () use ($subscriber, $args): bool {
+                $subscriber->postFlush($args);
+
+                return true;
+            });
+        $em->expects($this->never())->method('flush');
+
+        $subscriber->postFlush($args);
+    }
+
+    public function testPostFlushSkipsNestedInvocationTriggeredByFallbackFlush(): void
+    {
+        $em = $this->createMock(EntityManagerInterface::class);
+        $args = self::createStub(PostFlushEventArgs::class);
+        $auditService = self::createStub(AuditServiceInterface::class);
+        $dispatcher = $this->createMock(AuditDispatcherInterface::class);
+        $subscriber = $this->createSubscriber(auditService: $auditService, dispatcher: $dispatcher);
+        $args->method('getObjectManager')->willReturn($em);
+
+        $entity = new stdClass();
+        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_DELETE);
+        $this->auditManager->pendingDeletions = [['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true]];
+        $this->auditManager->scheduledAudits = [];
+
+        $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditLogInterface::ACTION_DELETE);
+        $auditService->method('createAuditLog')->willReturn($audit);
+        $dispatcher->expects($this->once())
+            ->method('dispatch')
+            ->with($audit, $em, AuditPhase::PostFlush, null, $entity)
+            ->willReturnCallback(static function () use ($subscriber, $args): bool {
+                $subscriber->postFlush($args);
+
+                return true;
+            });
+        $em->expects($this->never())->method('flush');
+
+        $subscriber->postFlush($args);
     }
 
     public function testPostFlushWithLoggerButNoException(): void
@@ -458,76 +592,98 @@ final class AuditSubscriberTest extends TestCase
         );
 
         $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $args = self::createStub(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
         $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
         $this->auditManager->scheduledAudits = [['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false]];
 
         $this->dispatcher->method('dispatch')->willReturn(true);
-        $em->method('contains')->with($audit)->willReturn(true);
-        $em->expects($this->once())->method('flush');
+        $em->expects($this->never())->method('flush');
         $logger->expects($this->never())->method('critical');
 
         $subscriber->postFlush($args);
     }
 
-    public function testPostFlushFlushExceptionWithoutLogger(): void
+    public function testPostFlushWithoutLoggerStillAvoidsFollowUpFlush(): void
     {
         $subscriber = $this->createSubscriberWithLogger(null);
 
         $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $args = self::createStub(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
         $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
         $this->auditManager->scheduledAudits = [['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false]];
 
         $this->dispatcher->method('dispatch')->willReturn(true);
-        $em->method('contains')->with($audit)->willReturn(true);
-        $em->method('flush')->willThrowException(new Exception('Flush failed'));
+        $em->expects($this->never())->method('flush');
 
-        // Verifies null-safe operator (?->) on logger — if mutated to (->), this crashes
         $subscriber->postFlush($args);
+        $this->addToAssertionCount(1);
     }
 
-    public function testPostFlushFlushExceptionLogsCorrectContext(): void
+    public function testPostFlushDoesNotLogFlushFailureContext(): void
     {
         $logger = $this->createMock(LoggerInterface::class);
         $subscriber = $this->createSubscriberWithLogger($logger);
 
         $em = $this->createMock(EntityManagerInterface::class);
-        $args = $this->createMock(PostFlushEventArgs::class);
+        $args = self::createStub(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
         $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
         $this->auditManager->scheduledAudits = [['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false]];
 
         $this->dispatcher->method('dispatch')->willReturn(true);
-        $em->method('contains')->with($audit)->willReturn(true);
-        $em->method('flush')->willThrowException(new Exception('Critical error'));
-
-        $logger->expects($this->once())
-            ->method('critical')
-            ->with('Failed to flush audits', self::callback(static function (array $context): bool {
-                return isset($context['exception']) && $context['exception'] === 'Critical error';
-            }));
+        $em->expects($this->never())->method('flush');
+        $logger->expects($this->never())->method('critical');
 
         $subscriber->postFlush($args);
     }
 
+    public function testPostFlushDoesNotThrowWhenEntityManagerWouldPreviouslyCloseOnFollowUpFlush(): void
+    {
+        $logger = $this->createMock(LoggerInterface::class);
+        $subscriber = $this->createSubscriberWithLogger($logger);
+
+        $em = $this->createMock(EntityManagerInterface::class);
+        $args = self::createStub(PostFlushEventArgs::class);
+        $args->method('getObjectManager')->willReturn($em);
+
+        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $this->auditManager->scheduledAudits = [['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false]];
+
+        $this->dispatcher->method('dispatch')->willReturn(true);
+        $em->expects($this->never())->method('flush');
+        $logger->expects($this->never())->method('critical');
+
+        $subscriber->postFlush($args);
+        $this->addToAssertionCount(1);
+    }
+
     private function createSubscriberWithLogger(?LoggerInterface $logger): AuditSubscriber
     {
+        return $this->createSubscriber(logger: $logger);
+    }
+
+    private function createSubscriber(
+        ?AuditServiceInterface $auditService = null,
+        ?AuditDispatcherInterface $dispatcher = null,
+        ?EntityProcessorInterface $entityProcessor = null,
+        ?AuditAccessHandlerInterface $accessHandler = null,
+        ?LoggerInterface $logger = null,
+    ): AuditSubscriber {
         return new AuditSubscriber(
-            $this->auditService,
+            $auditService ?? $this->auditService,
             $this->changeProcessor,
-            $this->dispatcher,
+            $dispatcher ?? $this->dispatcher,
             $this->auditManager,
-            $this->entityProcessor,
+            $entityProcessor ?? $this->entityProcessor,
             $this->transactionIdGenerator,
-            $this->accessHandler,
+            $accessHandler ?? $this->accessHandler,
             $this->idResolver,
-            $logger,
+            $logger ?? $this->logger,
         );
     }
 }

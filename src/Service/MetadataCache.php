@@ -5,17 +5,19 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Generator;
+use Override;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 use Rcsofttech\AuditTrailBundle\Attribute\AuditAccess;
 use Rcsofttech\AuditTrailBundle\Attribute\AuditCondition;
 use Rcsofttech\AuditTrailBundle\Attribute\Sensitive;
+use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
 use ReflectionClass;
 use ReflectionException;
 use SensitiveParameter;
 
 use function is_object;
 
-class MetadataCache
+final class MetadataCache implements MetadataCacheInterface
 {
     /** @var array<string, Auditable|null> */
     private array $auditableCache = [];
@@ -29,6 +31,7 @@ class MetadataCache
     /** @var array<string, AuditAccess|null> */
     private array $accessCache = [];
 
+    #[Override]
     public function getAuditableAttribute(string|object $class): ?Auditable
     {
         /** @var class-string $className */
@@ -37,6 +40,7 @@ class MetadataCache
         return $this->auditableCache[$className] ??= $this->resolveAttribute($className, Auditable::class);
     }
 
+    #[Override]
     public function getAuditAccessAttribute(string|object $class): ?AuditAccess
     {
         /** @var class-string $className */
@@ -45,6 +49,7 @@ class MetadataCache
         return $this->accessCache[$className] ??= $this->resolveAttribute($className, AuditAccess::class);
     }
 
+    #[Override]
     public function getAuditCondition(string|object $class): ?AuditCondition
     {
         /** @var class-string $className */
@@ -56,6 +61,7 @@ class MetadataCache
     /**
      * @return array<string, string>
      */
+    #[Override]
     public function getSensitiveFields(string|object $class): array
     {
         /** @var class-string $className */
