@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Transport;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
 use Override;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -28,7 +29,11 @@ final class DoctrineAuditTransport implements AuditTransportInterface
 
         if ($phase === 'on_flush') {
             $this->handleOnFlush($log, $context);
-        } elseif ($phase === 'post_flush' || $phase === 'post_load' || $phase === 'batch_flush') {
+
+            return;
+        }
+
+        if ($phase === 'post_flush' || $phase === 'post_load' || $phase === 'batch_flush') {
             $this->handlePostFlush($log, $context);
         }
     }
@@ -69,6 +74,13 @@ final class DoctrineAuditTransport implements AuditTransportInterface
     #[Override]
     public function supports(string $phase, array $context = []): bool
     {
+        if ($phase === 'on_flush') {
+            $audit = $context['audit'] ?? null;
+
+            return !$audit instanceof AuditLog
+                || $audit->entityId !== AuditLogInterface::PENDING_ID;
+        }
+
         return true;
     }
 }

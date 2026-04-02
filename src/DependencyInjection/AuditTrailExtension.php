@@ -16,6 +16,7 @@ use Rcsofttech\AuditTrailBundle\Transport\AsyncDatabaseAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\ChainAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
+use Rcsofttech\AuditTrailBundle\Transport\NullAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
 use Symfony\Bundle\FrameworkBundle\DataCollector\AbstractDataCollector;
 use Symfony\Component\Config\FileLocator;
@@ -53,6 +54,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
          *   fallback_to_database: bool,
          *   integrity: array{enabled: bool, secret: ?string, algorithm: string},
          *   cache_pool: ?string,
+         *   admin_permission: string,
          *   audited_methods: array<string>,
          *   collection_serialization_mode: string,
          *   max_collection_items: int,
@@ -80,6 +82,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         $container->setParameter('audit_trail.fail_on_transport_error', $config['fail_on_transport_error']);
         $container->setParameter('audit_trail.fallback_to_database', $config['fallback_to_database']);
         $container->setParameter('audit_trail.cache_pool', $config['cache_pool']);
+        $container->setParameter('audit_trail.admin_permission', $config['admin_permission']);
         $container->setParameter('audit_trail.audited_methods', $config['audited_methods']);
         $container->setParameter('audit_trail.collection_serialization_mode', $config['collection_serialization_mode']);
         $container->setParameter('audit_trail.max_collection_items', $config['max_collection_items']);
@@ -101,6 +104,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
             $container->register(AuditLogCrudController::class)
                 ->setAutowired(true)
                 ->setAutoconfigured(true)
+                ->setArgument('$adminPermission', '%audit_trail.admin_permission%')
                 ->addTag('controller.service_arguments');
         }
 
@@ -131,6 +135,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
 
     /**
      * @param array{
+     *   enabled: bool,
      *   transports: array{
      *     database: array{enabled: bool, async: bool},
      *     http: array{enabled: bool, endpoint: string, headers: array<string, string>, timeout: int},
@@ -154,7 +159,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
             $transports[] = $this->registerQueueTransport($container, $config['transports']['queue']);
         }
 
-        $this->registerMainTransport($container, $transports);
+        $this->registerMainTransport($container, $transports, $config['enabled']);
     }
 
     /**
@@ -252,23 +257,33 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     /**
      * @param array<string> $transports
      */
-    private function registerMainTransport(ContainerBuilder $container, array $transports): void
+    private function registerMainTransport(ContainerBuilder $container, array $transports, bool $enabled): void
     {
+        if ($transports === []) {
+            if ($enabled) {
+                throw new LogicException('At least one audit transport must be enabled when the bundle is enabled.');
+            }
+
+            $id = 'rcsofttech_audit_trail.transport.null';
+            $container->register($id, NullAuditTransport::class);
+            $container->setAlias(AuditTransportInterface::class, $id)->setPublic(true);
+
+            return;
+        }
+
         if (1 === count($transports)) {
             $container->setAlias(AuditTransportInterface::class, $transports[0])->setPublic(true);
 
             return;
         }
 
-        if (count($transports) > 1) {
-            $id = 'rcsofttech_audit_trail.transport.chain';
-            $references = array_map(static fn ($id) => new Reference($id), $transports);
+        $id = 'rcsofttech_audit_trail.transport.chain';
+        $references = array_map(static fn ($id) => new Reference($id), $transports);
 
-            $container->register($id, ChainAuditTransport::class)
-                ->setArgument('$transports', $references);
+        $container->register($id, ChainAuditTransport::class)
+            ->setArgument('$transports', $references);
 
-            $container->setAlias(AuditTransportInterface::class, $id)->setPublic(true);
-        }
+        $container->setAlias(AuditTransportInterface::class, $id)->setPublic(true);
     }
 
     /**

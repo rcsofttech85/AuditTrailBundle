@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Command;
 
 use DateTimeInterface;
+use JsonException;
 use Rcsofttech\AuditTrailBundle\Contract\DiffGeneratorInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
@@ -25,6 +26,7 @@ use function is_string;
 use function sprintf;
 
 use const JSON_PRETTY_PRINT;
+use const JSON_THROW_ON_ERROR;
 use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
 
@@ -71,8 +73,7 @@ class AuditDiffCommand extends BaseAuditCommand
         ]);
 
         if (true === $input->getOption('json')) {
-            $json = json_encode($diff, JSON_PRETTY_PRINT);
-            $output->writeln($json !== false ? $json : '{}');
+            $output->writeln($this->encodeJson($diff, JSON_PRETTY_PRINT));
 
             return Command::SUCCESS;
         }
@@ -114,7 +115,13 @@ class AuditDiffCommand extends BaseAuditCommand
             1
         );
 
-        return $logs[0] ?? null;
+        if (!isset($logs[0])) {
+            $io->error(sprintf('No audit logs found for %s:%s.', $entityClass, $entityId));
+
+            return null;
+        }
+
+        return $logs[0];
     }
 
     /**
@@ -156,12 +163,21 @@ class AuditDiffCommand extends BaseAuditCommand
             $value === null => '<fg=gray>NULL</>',
             is_bool($value) => $value ? '<fg=green>TRUE</>' : '<fg=red>FALSE</>',
             is_scalar($value) => (string) $value,
-            is_array($value) => (($json = json_encode(
-                $value,
-                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-            )) !== false ? $json : '[]'),
+            is_array($value) => $this->encodeJson($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             $value instanceof DateTimeInterface => $value->format('Y-m-d H:i:s'),
             default => get_debug_type($value),
         };
+    }
+
+    /**
+     * @param array<mixed> $value
+     */
+    private function encodeJson(array $value, int $flags): string
+    {
+        try {
+            return json_encode($value, $flags | JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return '[unencodable data]';
+        }
     }
 }

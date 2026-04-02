@@ -97,14 +97,15 @@ final class ChangeProcessor implements ChangeProcessorInterface
 
     public function determineDeletionAction(EntityManagerInterface $em, object $entity, bool $enableHardDelete): ?string
     {
-        if ($this->enableSoftDelete) {
-            $meta = $em->getClassMetadata($entity::class);
-            if ($meta->hasField($this->softDeleteField)) {
-                $reflProp = $meta->getReflectionProperty($this->softDeleteField);
-                $softDeleteValue = $reflProp?->getValue($entity);
-                if ($softDeleteValue !== null) {
-                    return AuditLogInterface::ACTION_SOFT_DELETE;
-                }
+        if (!$this->enableSoftDelete) {
+            return $enableHardDelete ? AuditLogInterface::ACTION_DELETE : null;
+        }
+
+        $meta = $em->getClassMetadata($entity::class);
+        if ($meta->hasField($this->softDeleteField)) {
+            $softDeleteValue = $meta->getFieldValue($entity, $this->softDeleteField);
+            if ($softDeleteValue !== null) {
+                return AuditLogInterface::ACTION_SOFT_DELETE;
             }
         }
 

@@ -6,13 +6,6 @@ namespace Rcsofttech\AuditTrailBundle\Contract;
 
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
-/**
- * @property array<int, array{entity: object, audit: AuditLog, is_insert: bool}>       $scheduledAudits
- * @property list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $pendingDeletions
- *
- * @phpstan-property-read array<int, array{entity: object, audit: AuditLog, is_insert: bool}> $scheduledAudits
- * @phpstan-property-read list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $pendingDeletions
- */
 interface ScheduledAuditManagerInterface
 {
     public function schedule(object $entity, AuditLog $audit, bool $isInsert): void;
@@ -29,4 +22,24 @@ interface ScheduledAuditManagerInterface
     public function enable(): void;
 
     public function isEnabled(): bool;
+
+    /**
+     * @return array<int, array{entity: object, audit: AuditLog, is_insert: bool}>
+     */
+    public function getScheduledAudits(): array;
+
+    /**
+     * @return list<array{entity: object, data: array<string, mixed>, is_managed: bool}>
+     */
+    public function getPendingDeletions(): array;
+
+    /**
+     * @param array<int, array{entity: object, audit: AuditLog, is_insert: bool}> $scheduledAudits
+     */
+    public function replaceScheduledAudits(array $scheduledAudits): void;
+
+    /**
+     * @param list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $pendingDeletions
+     */
+    public function replacePendingDeletions(array $pendingDeletions): void;
 }

@@ -26,7 +26,7 @@ use function strlen;
 
 use const FILTER_VALIDATE_IP;
 
-class UserResolverTest extends TestCase
+final class UserResolverTest extends TestCase
 {
     public function testGetUserIdFallsBackToCliWhenNoUser(): void
     {
@@ -144,7 +144,7 @@ class UserResolverTest extends TestCase
             trackUserAgent: true
         );
 
-        self::assertEquals('127.0.0.1', $resolver->getIpAddress());
+        self::assertSame('127.0.0.1', $resolver->getIpAddress());
     }
 
     public function testGetIpAddressReturnsNullWhenTrackingDisabled(): void
@@ -169,7 +169,7 @@ class UserResolverTest extends TestCase
             trackUserAgent: true
         );
 
-        self::assertEquals('Mozilla/5.0', $resolver->getUserAgent());
+        self::assertSame('Mozilla/5.0', $resolver->getUserAgent());
     }
 
     public function testGetUserAgentReturnsNullWhenTrackingDisabled(): void
@@ -190,7 +190,7 @@ class UserResolverTest extends TestCase
 
         $ua = $resolver->getUserAgent();
         self::assertNotNull($ua);
-        self::assertEquals(500, strlen($ua));
+        self::assertSame(500, strlen($ua));
     }
 
     public function testGetUserAgentFallsBackToCliInCliEnvironment(): void

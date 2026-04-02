@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.0.0]
+
+This release focuses on hardening the bundle for production use, simplifying a few extension points, and making audit delivery and verification more reliable.
+
+### 3.0.0 Upgrade Notes
+
+- **Database async migration required**: If you use the database transport with `async: true`, the `audit_log` table now requires a nullable `delivery_id` column with a unique constraint. Run Doctrine migrations before enabling upgraded Messenger workers in production. This column is not used by queue-only or HTTP-only transport setups.
+- **Scheduled audit manager contract tightened**: Custom implementations of `ScheduledAuditManagerInterface` must now implement the full contract, including scheduled-audit accessors and failed-dispatch retention methods.
+- **Event usage aligned with Symfony conventions**: `AuditLogCreatedEvent` now uses class-based event dispatching consistently.
+
+### 3.0.0 Fixed
+
+- **Async persistence reliability**: Messenger retries no longer create duplicate audit rows for the same internal delivery.
+- **HTTP transport failure handling**: Failed HTTP deliveries are now treated as real transport failures instead of being silently accepted.
+- **Access log failure visibility**: Deferred audit flush failures at kernel termination are now logged so operational issues are visible.
+- **Safer flush lifecycle handling**: Audit persistence during Doctrine flush and post-flush is now more defensive, reducing recursion, nested flush risks, and silent failure paths during fallback handling.
+- **Integrity verification coverage**: Audit verification now protects additional audit metadata and includes compatibility for older signed records during upgrade.
+- **Audit query correctness**: Multi-action filters and changed-field lookups now behave predictably and avoid silent false negatives.
+- **Revert detection accuracy**: Reverted records are detected more precisely, reducing false matches.
+- **Identifier safety**: Audit ID resolution now fails safely when identifier values cannot be converted reliably, avoiding corrupted audit identifiers.
+- **Scheduled audit retry handling**: Failed post-flush deliveries are retained through explicit manager contracts instead of relying on fragile fallback behavior.
+- **Many-to-many audit aggregation**: Initial collection state is no longer double-logged as `create` plus `update`, and mixed scalar plus collection changes in a single flush are now merged into one predictable `update` audit.
+- **Configuration safety**: Disabled HTTP transport configuration no longer requires endpoint values, making environment-specific config merges safer.
+- **Subscriber contract safety**: Scheduled audit manager integrations now rely on explicit interface methods instead of runtime property probing.
+- **Audit context safety**: Audit creation and dispatch now sanitize malformed context values more defensively, preventing JSON-encoding edge cases from crashing audit flows.
+- **Soft-delete diff noise**: EasyAdmin change views now suppress unchanged old/new rows, and soft-delete or restore logs record `changedFields` consistently so diffs stay focused on real changes.
+- **Pagination input validation**: Query, repository, and admin drill-down flows now reject non-positive limits and conflicting `afterId`/`beforeId` cursor combinations instead of accepting ambiguous input.
+- **Revert relation safety**: EasyAdmin revert previews and persisted reverts now handle UUID-backed relation collections correctly instead of assuming a plain `id` identifier.
+- **Revert preview readability**: Admin dry-run previews now render restored collection values as human-readable related items instead of raw Doctrine collection object strings.
+- **Typed identifier revert support**: Revert loading now normalizes UUID- and ULID-backed entity identifiers before resolving entities or relations, including root entity restores.
+- **Inverse-side collection revert correctness**: Reverting audited to-many associations now synchronizes counterpart relations more safely, preventing preview-success/persist-failure gaps on inverse-side collections.
+
+### 3.0.0 Improved
+
+- **Stricter extension contracts**: Internal audit scheduling and retry flows now rely on explicit interfaces instead of compatibility shims.
+- **Symfony 8 style event flow**: Event dispatching and listener usage are now more idiomatic and easier to reason about.
+- **More resilient async workers**: Database persistence handling is safer when duplicate-delivery races or persistence failures occur.
+- **More predictable integrity upgrades**: Existing signed audit records continue to verify during upgrade while new signatures cover more audit metadata.
+- **Safer audit transport fallback**: Database fallback failures now surface more clearly when they would otherwise destroy the Doctrine entity manager.
+- **Cleaner enterprise extension points**: The bundle removes more deprecation-era behavior and favors explicit, testable contracts.
+- **AI-ready processing hook**: Optional `AuditLogAiProcessorInterface` implementations can now add structured AI insights before signing and dispatch without introducing a hard AI dependency into the bundle core.
+- **Safer admin revert UX**: EasyAdmin now only exposes revert for the latest meaningful state-changing log of an entity. Older `create`, `update`, or `soft_delete` entries no longer offer revert once a newer state-changing audit exists, reducing accidental destructive reverts from stale history.
+
 ## [2.3.0]
 
 ### 2.3.0 New Features
@@ -127,7 +170,7 @@ This major release represents a complete architectural modernization of the bund
 - **IP Address Validation**: `AuditLog` property hook validates IP addresses via `filter_var(FILTER_VALIDATE_IP)` at write time.
 - **Action Validation**: `AuditLog` property hook validates action strings against `AuditLogInterface::ALL_ACTIONS` at write time.
 - **Entity Class Validation**: `AuditLog` property hook trims and rejects empty entity class names.
-- **Context Truncation**: Strict 32KB byte-limit enforcement for JSON context data.
+- **Context Truncation**: Strict 64KB byte-limit enforcement for JSON context data.
 - **Parameterized Repository Queries**: `AuditLogRepository::findWithFilters()` uses parameterized queries to prevent SQL injection.
 
 ---

@@ -6,7 +6,6 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
 use DateTimeImmutable;
 use DateTimeInterface;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditListCommand;
@@ -16,25 +15,24 @@ use ReflectionClass;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Uid\Uuid;
 
-#[AllowMockObjectsWithoutExpectations]
-class AuditListCommandTest extends TestCase
+final class AuditListCommandTest extends TestCase
 {
     use ConsoleOutputTestTrait;
 
-    private AuditLogRepository&MockObject $repository;
+    private AuditLogRepository $repository;
 
     private CommandTester $commandTester;
 
     protected function setUp(): void
     {
-        $this->repository = $this->createMock(AuditLogRepository::class);
-        $command = new AuditListCommand($this->repository, new \Rcsofttech\AuditTrailBundle\Service\AuditRenderer());
-        $this->commandTester = new CommandTester($command);
+        $this->repository = self::createStub(AuditLogRepository::class);
+        $this->resetCommandTester();
     }
 
     public function testListWithNoResults(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('findWithFilters')
             ->with([], 50)
@@ -55,9 +53,10 @@ class AuditListCommandTest extends TestCase
 
     public function testListWithResults(): void
     {
+        $repository = $this->useRepositoryMock();
         $audit = $this->createAuditLog('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'TestEntity', '42', 'update');
 
-        $this->repository
+        $repository
             ->expects($this->once())
             ->method('findWithFilters')
             ->with([], 50)
@@ -78,9 +77,10 @@ class AuditListCommandTest extends TestCase
 
     public function testListWithDetailsFlag(): void
     {
+        $repository = $this->useRepositoryMock();
         $audit = $this->createAuditLog('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'TestEntity', '42', 'update');
 
-        $this->repository
+        $repository
             ->expects($this->once())
             ->method('findWithFilters')
             ->with([], 50)
@@ -99,7 +99,8 @@ class AuditListCommandTest extends TestCase
 
     public function testListWithFilters(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
@@ -124,7 +125,8 @@ class AuditListCommandTest extends TestCase
     public function testListWithEmptyFilters(): void
     {
         // Empty strings should be ignored
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('findWithFilters')
             ->with([], 50)
@@ -141,7 +143,8 @@ class AuditListCommandTest extends TestCase
 
     public function testListWithTransactionFilter(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
@@ -161,7 +164,8 @@ class AuditListCommandTest extends TestCase
 
     public function testListWithCustomLimit(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('findWithFilters')
             ->with([], 100)
@@ -176,7 +180,8 @@ class AuditListCommandTest extends TestCase
 
     public function testListWithDefaultLimit(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('findWithFilters')
             ->with([], 50)
@@ -192,7 +197,8 @@ class AuditListCommandTest extends TestCase
 
     public function testListWithDateFilters(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('findWithFilters')
             ->with(
@@ -216,7 +222,8 @@ class AuditListCommandTest extends TestCase
 
     public function testListWithInvalidAction(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->never())
             ->method('findWithFilters');
 
@@ -243,7 +250,8 @@ class AuditListCommandTest extends TestCase
 
     public function testListWithInvalidFromDate(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->never())
             ->method('findWithFilters');
 
@@ -259,7 +267,8 @@ class AuditListCommandTest extends TestCase
 
     public function testListWithInvalidToDate(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->never())
             ->method('findWithFilters');
 
@@ -292,5 +301,20 @@ class AuditListCommandTest extends TestCase
         $property->setValue($log, Uuid::fromString($id));
 
         return $log;
+    }
+
+    private function useRepositoryMock(): AuditLogRepository&MockObject
+    {
+        $repository = $this->createMock(AuditLogRepository::class);
+        $this->repository = $repository;
+        $this->resetCommandTester();
+
+        return $repository;
+    }
+
+    private function resetCommandTester(): void
+    {
+        $command = new AuditListCommand($this->repository, new \Rcsofttech\AuditTrailBundle\Service\AuditRenderer());
+        $this->commandTester = new CommandTester($command);
     }
 }

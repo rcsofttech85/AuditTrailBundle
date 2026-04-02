@@ -6,15 +6,17 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use DateTimeImmutable;
 use DateTimeZone;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 use RuntimeException;
 
+use function hash_hmac;
+use function json_encode;
 use function strlen;
 
-#[AllowMockObjectsWithoutExpectations]
+use const JSON_THROW_ON_ERROR;
+
 final class AuditIntegrityServiceTest extends TestCase
 {
     private AuditIntegrityService $service;
@@ -105,6 +107,66 @@ final class AuditIntegrityServiceTest extends TestCase
         $tamperedLog->signature = $signature;
 
         self::assertFalse($this->service->verifySignature($tamperedLog));
+    }
+
+    public function testVerifySignatureFailsWhenChangedFieldsAreTampered(): void
+    {
+        $log = new AuditLog(
+            entityClass: 'App\Entity\User',
+            entityId: '1',
+            action: 'update',
+            createdAt: new DateTimeImmutable('2023-01-01 12:00:00'),
+            oldValues: ['name' => 'Old Name'],
+            newValues: ['name' => 'New Name'],
+            changedFields: ['name']
+        );
+
+        $signature = $this->service->generateSignature($log);
+
+        $tamperedLog = new AuditLog(
+            entityClass: 'App\Entity\User',
+            entityId: '1',
+            action: 'update',
+            createdAt: new DateTimeImmutable('2023-01-01 12:00:00'),
+            oldValues: ['name' => 'Old Name'],
+            newValues: ['name' => 'New Name'],
+            changedFields: ['email']
+        );
+        $tamperedLog->signature = $signature;
+
+        self::assertFalse($this->service->verifySignature($tamperedLog));
+    }
+
+    public function testVerifySignatureAcceptsLegacySignatureWithoutChangedFields(): void
+    {
+        $log = new AuditLog(
+            entityClass: 'App\Entity\User',
+            entityId: '1',
+            action: 'update',
+            createdAt: new DateTimeImmutable('2023-01-01 12:00:00'),
+            oldValues: ['name' => 'Old Name'],
+            newValues: ['name' => 'New Name'],
+            changedFields: ['name']
+        );
+
+        $legacyPayload = json_encode([
+            'action' => 'update',
+            'context' => [],
+            'created_at' => '2023-01-01 12:00:00',
+            'entity_class' => 'App\Entity\User',
+            'entity_id' => '1',
+            'ip_address' => null,
+            'new_values' => ['name' => 's:New Name'],
+            'old_values' => ['name' => 's:Old Name'],
+            'transaction_hash' => null,
+            'user_agent' => null,
+            'user_id' => null,
+            'username' => null,
+        ], JSON_THROW_ON_ERROR);
+
+        $log->signature = hash_hmac('sha256', $legacyPayload, $this->secret);
+
+        self::assertTrue($this->service->verifySignature($log));
     }
 
     public function testVerifySignatureWithTamperedEntityClass(): void

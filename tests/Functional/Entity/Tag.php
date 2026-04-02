@@ -56,4 +56,16 @@ class Tag
     {
         return $this->authors;
     }
+
+    public function addAuthor(Author $author): void
+    {
+        if (!$this->authors->contains($author)) {
+            $this->authors->add($author);
+        }
+    }
+
+    public function removeAuthor(Author $author): void
+    {
+        $this->authors->removeElement($author);
+    }
 }

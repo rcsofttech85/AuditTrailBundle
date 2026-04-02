@@ -7,7 +7,6 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Security;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\UnitOfWork;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
@@ -22,10 +21,8 @@ use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\SensitiveUser;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
-#[AllowMockObjectsWithoutExpectations]
-class SensitiveDataUpdateTest extends AbstractAuditTestCase
+final class SensitiveDataUpdateTest extends AbstractAuditTestCase
 {
     /** @var EntityManagerInterface&Stub */
     private EntityManagerInterface $entityManager;
@@ -68,7 +65,7 @@ class SensitiveDataUpdateTest extends AbstractAuditTestCase
     {
         $auditService = $this->createAuditService($this->entityManager, $this->transactionIdGenerator);
         $dispatcher = $this->createAuditDispatcher($this->transport);
-        $auditManager = new ScheduledAuditManager(self::createStub(EventDispatcherInterface::class));
+        $auditManager = new ScheduledAuditManager();
 
         $metadataManager = self::createStub(AuditMetadataManagerInterface::class);
         $metadataManager->method('getSensitiveFields')->willReturn(['password' => '**REDACTED**']);

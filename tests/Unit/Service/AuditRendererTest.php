@@ -12,7 +12,7 @@ use Symfony\Component\Console\Output\BufferedOutput;
 
 use function strlen;
 
-class AuditRendererTest extends TestCase
+final class AuditRendererTest extends TestCase
 {
     private AuditRenderer $renderer;
 
@@ -27,7 +27,7 @@ class AuditRendererTest extends TestCase
 
         $result = $this->renderer->formatValue($ansiString);
 
-        self::assertEquals('Red Content', $result);
+        self::assertSame('Red Content', $result);
         self::assertStringNotContainsString("\x1b", $result);
     }
 
@@ -37,7 +37,7 @@ class AuditRendererTest extends TestCase
 
         $result = $this->renderer->formatValue($longString);
 
-        self::assertEquals(50, strlen($result));
+        self::assertSame(50, strlen($result));
         self::assertStringEndsWith('...', $result);
     }
 
@@ -64,7 +64,7 @@ class AuditRendererTest extends TestCase
             newValues: ['name' => 'New Name']
         );
 
-        $this->renderer->renderTable($output, [$log], true); // showDetails = true
+        $this->renderer->renderTable($output, [$log], true);
         $content = $output->fetch();
 
         self::assertStringContainsString('Old Name → New Name', $content);
@@ -74,7 +74,7 @@ class AuditRendererTest extends TestCase
     public function testFormatChangedDetailsEmpty(): void
     {
         $log = new AuditLog('App\Entity\User', '1', 'create');
-        self::assertEquals('-', $this->renderer->formatChangedDetails($log));
+        self::assertSame('-', $this->renderer->formatChangedDetails($log));
     }
 
     public function testFormatChangedDetailsWithArray(): void
@@ -90,12 +90,38 @@ class AuditRendererTest extends TestCase
         self::assertStringContainsString('ROLE_ADMIN', $details);
     }
 
+    public function testFormatChangedDetailsUsesChangedFieldsForSoftDeleteStyleDiffs(): void
+    {
+        $log = new AuditLog(
+            entityClass: 'App\Entity\Post',
+            entityId: '1',
+            action: 'soft_delete',
+            oldValues: [
+                'id' => 1,
+                'title' => 'create',
+                'deletedAt' => null,
+            ],
+            newValues: [
+                'id' => 1,
+                'title' => 'create',
+                'deletedAt' => '2026-04-05T08:46:03+00:00',
+            ],
+            changedFields: ['deletedAt'],
+        );
+
+        $details = $this->renderer->formatChangedDetails($log);
+
+        self::assertStringContainsString('deletedAt', $details);
+        self::assertStringNotContainsString('title', $details);
+        self::assertStringNotContainsString('id:', $details);
+    }
+
     public function testFormatValueEdgeCases(): void
     {
-        self::assertEquals('true', $this->renderer->formatValue(true));
-        self::assertEquals('false', $this->renderer->formatValue(false));
-        self::assertEquals('null', $this->renderer->formatValue(null));
-        self::assertEquals('[]', $this->renderer->formatValue([])); // Empty array
+        self::assertSame('true', $this->renderer->formatValue(true));
+        self::assertSame('false', $this->renderer->formatValue(false));
+        self::assertSame('null', $this->renderer->formatValue(null));
+        self::assertSame('[]', $this->renderer->formatValue([])); // Empty array
 
         $obj = new stdClass();
         self::assertStringContainsString('stdClass', $this->renderer->formatValue($obj));
@@ -103,8 +129,8 @@ class AuditRendererTest extends TestCase
 
     public function testShortenHash(): void
     {
-        self::assertEquals('-', $this->renderer->shortenHash(null));
-        self::assertEquals('-', $this->renderer->shortenHash(''));
-        self::assertEquals('12345678', $this->renderer->shortenHash('1234567890abcdef'));
+        self::assertSame('-', $this->renderer->shortenHash(null));
+        self::assertSame('-', $this->renderer->shortenHash(''));
+        self::assertSame('12345678', $this->renderer->shortenHash('1234567890abcdef'));
     }
 }

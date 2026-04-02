@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Factory;
 
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
@@ -13,24 +12,26 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
 use stdClass;
 
-#[AllowMockObjectsWithoutExpectations]
-class AuditLogMessageFactoryTest extends TestCase
+final class AuditLogMessageFactoryTest extends TestCase
 {
     private AuditLogMessageFactory $factory;
 
-    private EntityIdResolverInterface&MockObject $idResolver;
+    private EntityIdResolverInterface $idResolver;
 
     protected function setUp(): void
     {
-        $this->idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $this->idResolver = self::createStub(EntityIdResolverInterface::class);
         $this->factory = new AuditLogMessageFactory($this->idResolver);
     }
 
     public function testCreateQueueMessageResolvesEntityId(): void
     {
-        $log = new AuditLog(stdClass::class, 'pending', AuditLogInterface::ACTION_CREATE);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolve')->willReturn('42');
+        $this->idResolver = $idResolver;
+        $this->factory = new AuditLogMessageFactory($idResolver);
 
-        $this->idResolver->method('resolve')->willReturn('42');
+        $log = new AuditLog(stdClass::class, 'pending', AuditLogInterface::ACTION_CREATE);
 
         $message = $this->factory->createQueueMessage($log);
 
@@ -41,9 +42,12 @@ class AuditLogMessageFactoryTest extends TestCase
 
     public function testCreatePersistMessageResolvesEntityId(): void
     {
-        $log = new AuditLog(stdClass::class, 'pending', AuditLogInterface::ACTION_CREATE);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolve')->willReturn('42');
+        $this->idResolver = $idResolver;
+        $this->factory = new AuditLogMessageFactory($idResolver);
 
-        $this->idResolver->method('resolve')->willReturn('42');
+        $log = new AuditLog(stdClass::class, 'pending', AuditLogInterface::ACTION_CREATE);
 
         $message = $this->factory->createPersistMessage($log);
 
@@ -54,9 +58,12 @@ class AuditLogMessageFactoryTest extends TestCase
 
     public function testCreateQueueMessageFallsBackToLogEntityId(): void
     {
-        $log = new AuditLog(stdClass::class, '100', AuditLogInterface::ACTION_UPDATE);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolve')->willReturn(null);
+        $this->idResolver = $idResolver;
+        $this->factory = new AuditLogMessageFactory($idResolver);
 
-        $this->idResolver->method('resolve')->willReturn(null);
+        $log = new AuditLog(stdClass::class, '100', AuditLogInterface::ACTION_UPDATE);
 
         $message = $this->factory->createQueueMessage($log);
 
@@ -65,9 +72,12 @@ class AuditLogMessageFactoryTest extends TestCase
 
     public function testCreatePersistMessageFallsBackToLogEntityId(): void
     {
-        $log = new AuditLog(stdClass::class, '100', AuditLogInterface::ACTION_UPDATE);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolve')->willReturn(null);
+        $this->idResolver = $idResolver;
+        $this->factory = new AuditLogMessageFactory($idResolver);
 
-        $this->idResolver->method('resolve')->willReturn(null);
+        $log = new AuditLog(stdClass::class, '100', AuditLogInterface::ACTION_UPDATE);
 
         $message = $this->factory->createPersistMessage($log);
 
@@ -86,10 +96,11 @@ class AuditLogMessageFactoryTest extends TestCase
 
     public function testCreateQueueMessagePassesContext(): void
     {
+        $idResolver = $this->useIdResolverMock();
         $log = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
         $context = ['entity' => new stdClass(), 'em' => 'mock'];
 
-        $this->idResolver->expects($this->once())
+        $idResolver->expects($this->once())
             ->method('resolve')
             ->with($log, $context)
             ->willReturn('99');
@@ -97,5 +108,14 @@ class AuditLogMessageFactoryTest extends TestCase
         $message = $this->factory->createQueueMessage($log, $context);
 
         self::assertSame('99', $message->entityId);
+    }
+
+    private function useIdResolverMock(): EntityIdResolverInterface&MockObject
+    {
+        $idResolver = $this->createMock(EntityIdResolverInterface::class);
+        $this->idResolver = $idResolver;
+        $this->factory = new AuditLogMessageFactory($idResolver);
+
+        return $idResolver;
     }
 }

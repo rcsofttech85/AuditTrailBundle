@@ -9,7 +9,6 @@ use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
@@ -24,10 +23,8 @@ use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use stdClass;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
-#[AllowMockObjectsWithoutExpectations]
-class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
+final class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
 {
     public function testOnFlushDefersWhenTransportDoesNotSupportIt(): void
     {
@@ -62,7 +59,7 @@ class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
         );
 
         $dispatcher = $this->createAuditDispatcher($transport);
-        $auditManager = new ScheduledAuditManager(self::createStub(EventDispatcherInterface::class));
+        $auditManager = new ScheduledAuditManager();
 
         $entityProcessor = $this->createEntityProcessor(
             $auditService,

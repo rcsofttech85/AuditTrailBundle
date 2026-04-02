@@ -9,8 +9,9 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use InvalidArgumentException;
 use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
@@ -18,110 +19,160 @@ use ReflectionClass;
 use Symfony\Bridge\Doctrine\ManagerRegistry;
 use Symfony\Component\Uid\Uuid;
 
-#[AllowMockObjectsWithoutExpectations]
-class AuditLogRepositoryTest extends TestCase
+final class AuditLogRepositoryTest extends TestCase
 {
-    private AuditLogRepository $repository;
-
-    private EntityManagerInterface&MockObject $entityManager;
-
-    /** @var ClassMetadata<AuditLog>&MockObject */
-    private ClassMetadata&MockObject $classMetadata;
-
-    private ManagerRegistry&MockObject $registry;
-
-    private QueryBuilder&MockObject $qb;
-
-    /** @var Query<mixed>&MockObject */
-    private Query&MockObject $query;
-
-    protected function setUp(): void
+    private function createRepository(): AuditLogRepository
     {
-        $this->entityManager = $this->createMock(EntityManagerInterface::class);
-        $this->classMetadata = $this->createMock(ClassMetadata::class);
-        $this->registry = $this->createMock(ManagerRegistry::class);
-        $this->qb = $this->createMock(QueryBuilder::class);
-        $this->query = $this->createMock(Query::class);
+        $entityManager = self::createStub(EntityManagerInterface::class);
+        $classMetadata = self::createStub(ClassMetadata::class);
+        $registry = self::createStub(ManagerRegistry::class);
 
-        $this->registry->method('getManagerForClass')->willReturn($this->entityManager);
-        $this->entityManager->method('getClassMetadata')->willReturn($this->classMetadata);
-        $this->classMetadata->name = AuditLog::class;
+        $registry->method('getManagerForClass')->willReturn($entityManager);
+        $entityManager->method('getClassMetadata')->willReturn($classMetadata);
+        $classMetadata->name = AuditLog::class;
 
-        // Mock QB creation
-        $this->entityManager->method('createQueryBuilder')->willReturn($this->qb);
-
-        // Common QB chain for ServiceEntityRepository::createQueryBuilder
-        $this->qb->method('select')->willReturnSelf();
-        $this->qb->method('from')->willReturnSelf();
-
-        $this->repository = new AuditLogRepository($this->registry);
+        return new AuditLogRepository($registry);
     }
 
-    private function setupQueryBuilderDefaults(bool $mockGetResult = true): void
+    /**
+     * @return array{
+     *     0: AuditLogRepository,
+     *     1: QueryBuilder&MockObject,
+     *     2: Query<mixed>&Stub
+     * }
+     */
+    private function createQueryHarness(bool $stubGetResult = true): array
     {
-        $this->qb->method('where')->willReturnSelf();
-        $this->qb->method('andWhere')->willReturnSelf();
-        $this->qb->method('setParameter')->willReturnSelf();
-        $this->qb->method('orderBy')->willReturnSelf();
-        $this->qb->method('setMaxResults')->willReturnSelf();
-        $this->qb->method('getQuery')->willReturn($this->query);
+        $entityManager = self::createStub(EntityManagerInterface::class);
+        $classMetadata = self::createStub(ClassMetadata::class);
+        $registry = self::createStub(ManagerRegistry::class);
+        $qb = self::createMock(QueryBuilder::class);
+        $query = self::createStub(Query::class);
 
-        if ($mockGetResult) {
-            $this->query->method('getResult')->willReturn([]);
+        $registry->method('getManagerForClass')->willReturn($entityManager);
+        $entityManager->method('getClassMetadata')->willReturn($classMetadata);
+        $classMetadata->name = AuditLog::class;
+        $entityManager->method('createQueryBuilder')->willReturn($qb);
+
+        $qb->method('select')->willReturnSelf();
+        $qb->method('from')->willReturnSelf();
+        $qb->method('where')->willReturnSelf();
+        $qb->method('andWhere')->willReturnSelf();
+        $qb->method('setParameter')->willReturnSelf();
+        $qb->method('orderBy')->willReturnSelf();
+        $qb->method('addOrderBy')->willReturnSelf();
+        $qb->method('setMaxResults')->willReturnSelf();
+        $qb->method('getQuery')->willReturn($query);
+
+        if ($stubGetResult) {
+            $query->method('getResult')->willReturn([]);
         }
+
+        return [new AuditLogRepository($registry), $qb, $query];
+    }
+
+    /**
+     * @return array{
+     *     0: AuditLogRepository,
+     *     1: QueryBuilder&MockObject,
+     *     2: Query<mixed>&MockObject
+     * }
+     */
+    private function createQueryHarnessWithQueryMock(): array
+    {
+        $entityManager = self::createStub(EntityManagerInterface::class);
+        $classMetadata = self::createStub(ClassMetadata::class);
+        $registry = self::createStub(ManagerRegistry::class);
+        $qb = self::createMock(QueryBuilder::class);
+        $query = self::createMock(Query::class);
+
+        $registry->method('getManagerForClass')->willReturn($entityManager);
+        $entityManager->method('getClassMetadata')->willReturn($classMetadata);
+        $classMetadata->name = AuditLog::class;
+        $entityManager->method('createQueryBuilder')->willReturn($qb);
+
+        $qb->method('select')->willReturnSelf();
+        $qb->method('from')->willReturnSelf();
+        $qb->method('where')->willReturnSelf();
+        $qb->method('andWhere')->willReturnSelf();
+        $qb->method('setParameter')->willReturnSelf();
+        $qb->method('orderBy')->willReturnSelf();
+        $qb->method('addOrderBy')->willReturnSelf();
+        $qb->method('setMaxResults')->willReturnSelf();
+        $qb->method('getQuery')->willReturn($query);
+
+        return [new AuditLogRepository($registry), $qb, $query];
     }
 
     public function testFindByEntity(): void
     {
-        $this->setupQueryBuilderDefaults();
+        [$repository, $qb] = $this->createQueryHarness();
 
-        $this->qb->expects($this->once())->method('where')->with('a.entityClass = :class')->willReturnSelf();
-        $this->qb->expects($this->once())->method('andWhere')->with('a.entityId = :id')->willReturnSelf();
-        $this->qb->expects($this->exactly(2))->method('setParameter')->willReturnSelf();
+        $qb->expects($this->once())->method('where')->with('a.entityClass = :class')->willReturnSelf();
+        $qb->expects($this->once())->method('andWhere')->with('a.entityId = :id')->willReturnSelf();
+        $qb->expects($this->exactly(2))->method('setParameter')->willReturnSelf();
+        $qb->expects($this->once())->method('orderBy')->with('a.createdAt', 'DESC')->willReturnSelf();
+        $qb->expects($this->once())->method('addOrderBy')->with('a.id', 'DESC')->willReturnSelf();
 
-        $this->repository->findByEntity('Class', '1');
+        $repository->findByEntity('Class', '1');
     }
 
     public function testFindByTransactionHash(): void
     {
-        $this->setupQueryBuilderDefaults();
+        [$repository, $qb] = $this->createQueryHarness();
 
-        $this->qb->expects($this->once())->method('where')->with('a.transactionHash = :hash')->willReturnSelf();
-        $this->qb->expects($this->once())->method('setParameter')->with('hash', 'tx1')->willReturnSelf();
+        $qb->expects($this->once())->method('where')->with('a.transactionHash = :hash')->willReturnSelf();
+        $qb->expects($this->once())->method('setParameter')->with('hash', 'tx1')->willReturnSelf();
+        $qb->expects($this->once())->method('orderBy')->with('a.createdAt', 'DESC')->willReturnSelf();
+        $qb->expects($this->once())->method('addOrderBy')->with('a.id', 'DESC')->willReturnSelf();
 
-        $this->repository->findByTransactionHash('tx1');
+        $repository->findByTransactionHash('tx1');
     }
 
     public function testFindByUser(): void
     {
-        $this->setupQueryBuilderDefaults();
+        [$repository, $qb] = $this->createQueryHarness();
 
-        $this->qb->expects($this->once())->method('where')->with('a.userId = :userId')->willReturnSelf();
-        $this->qb->expects($this->once())->method('setParameter')->with('userId', 1)->willReturnSelf();
-        $this->qb->expects($this->once())->method('setMaxResults')->with(10)->willReturnSelf();
+        $qb->expects($this->once())->method('where')->with('a.userId = :userId')->willReturnSelf();
+        $qb->expects($this->once())->method('setParameter')->with('userId', 1)->willReturnSelf();
+        $qb->expects($this->once())->method('orderBy')->with('a.createdAt', 'DESC')->willReturnSelf();
+        $qb->expects($this->once())->method('addOrderBy')->with('a.id', 'DESC')->willReturnSelf();
+        $qb->expects($this->once())->method('setMaxResults')->with(10)->willReturnSelf();
 
-        $this->repository->findByUser('1', 10);
+        $repository->findByUser('1', 10);
+    }
+
+    public function testFindOlderThanUsesDeterministicOrdering(): void
+    {
+        [$repository, $qb] = $this->createQueryHarness();
+
+        $qb->expects($this->once())->method('where')->with('a.createdAt < :before')->willReturnSelf();
+        $qb->expects($this->once())->method('orderBy')->with('a.createdAt', 'ASC')->willReturnSelf();
+        $qb->expects($this->once())->method('addOrderBy')->with('a.id', 'ASC')->willReturnSelf();
+
+        $repository->findOlderThan(new DateTimeImmutable());
     }
 
     public function testDeleteOldLogs(): void
     {
-        $this->setupQueryBuilderDefaults();
+        [$repository, $qb, $query] = $this->createQueryHarness();
 
-        $this->qb->expects($this->once())->method('delete')->willReturnSelf();
-        $this->qb->expects($this->once())->method('where')->with('a.createdAt < :before')->willReturnSelf();
-        $this->query->method('execute')->willReturn(5);
+        $qb->expects($this->once())->method('delete')->willReturnSelf();
+        $qb->expects($this->once())->method('where')->with('a.createdAt < :before')->willReturnSelf();
+        $query->method('execute')->willReturn(5);
 
-        self::assertEquals(5, $this->repository->deleteOldLogs(new DateTimeImmutable()));
+        self::assertSame(5, $repository->deleteOldLogs(new DateTimeImmutable()));
     }
 
     public function testFindWithFiltersAll(): void
     {
-        $this->setupQueryBuilderDefaults();
+        [$repository, $qb] = $this->createQueryHarness();
 
         $filters = [
             'entityClass' => 'Class',
             'entityId' => '1',
             'userId' => 2,
+            'username' => 'admin',
             'action' => 'create',
             'transactionHash' => 'tx1',
             'from' => new DateTimeImmutable(),
@@ -130,41 +181,53 @@ class AuditLogRepositoryTest extends TestCase
         ];
 
         // Verify filter application
-        $this->qb->expects($this->exactly(8))->method('andWhere');
+        $qb->expects($this->exactly(9))->method('andWhere');
 
-        $this->repository->findWithFilters($filters);
+        $repository->findWithFilters($filters);
+    }
+
+    public function testFindWithFiltersUsername(): void
+    {
+        [$repository, $qb] = $this->createQueryHarness();
+
+        $filters = ['username' => 'admin'];
+
+        $qb->expects($this->once())->method('andWhere')->with('a.username = :username');
+        $qb->expects($this->once())->method('setParameter')->with('username', 'admin');
+
+        $repository->findWithFilters($filters);
     }
 
     public function testFindWithFiltersPaginationBackwards(): void
     {
-        $this->setupQueryBuilderDefaults(false); // Don't mock getResult yet
+        [$repository, $qb, $query] = $this->createQueryHarness(false);
 
         $filters = ['beforeId' => Uuid::v7()->toString()];
 
-        $this->qb->expects($this->once())->method('andWhere')->with('a.id > :beforeId');
-        $this->qb->expects($this->once())->method('orderBy')->with('a.id', 'ASC');
+        $qb->expects($this->once())->method('andWhere')->with('a.id > :beforeId');
+        $qb->expects($this->once())->method('orderBy')->with('a.id', 'ASC');
 
         $log = new AuditLog('Class', '1', 'create');
-        $this->query->method('getResult')->willReturn([$log]);
+        $query->method('getResult')->willReturn([$log]);
 
-        $result = $this->repository->findWithFilters($filters);
+        $result = $repository->findWithFilters($filters);
         self::assertCount(1, $result);
     }
 
     public function testFindWithFiltersPartialClass(): void
     {
-        $this->setupQueryBuilderDefaults();
+        [$repository, $qb] = $this->createQueryHarness();
 
         $filters = ['entityClass' => 'Partial'];
 
-        $this->qb->expects($this->once())->method('andWhere')->with('a.entityClass LIKE :entityClass');
+        $qb->expects($this->once())->method('andWhere')->with('a.entityClass LIKE :entityClass');
 
-        $this->repository->findWithFilters($filters);
+        $repository->findWithFilters($filters);
     }
 
     public function testFindWithFiltersPaginationBackwardsReversed(): void
     {
-        $this->setupQueryBuilderDefaults(false);
+        [$repository, $qb, $query] = $this->createQueryHarness(false);
 
         $uuid = Uuid::v7()->toString();
         $filters = ['beforeId' => $uuid];
@@ -175,9 +238,10 @@ class AuditLogRepositoryTest extends TestCase
         $this->setLogId($log2, Uuid::v7()->toString());
 
         // Results from DB will be ASC: [11, 12]
-        $this->query->method('getResult')->willReturn([$log1, $log2]);
+        $qb->expects($this->once())->method('orderBy')->with('a.id', 'ASC')->willReturnSelf();
+        $query->method('getResult')->willReturn([$log1, $log2]);
 
-        $result = $this->repository->findWithFilters($filters);
+        $result = $repository->findWithFilters($filters);
 
         // Should be reversed to DESC: [12, 11]
         self::assertCount(2, $result);
@@ -187,127 +251,176 @@ class AuditLogRepositoryTest extends TestCase
 
     public function testFindWithFiltersDefaultLimit(): void
     {
-        $this->setupQueryBuilderDefaults();
+        [$repository, $qb] = $this->createQueryHarness();
 
-        $this->qb->expects($this->once())->method('setMaxResults')->with(30)->willReturnSelf();
+        $qb->expects($this->once())->method('setMaxResults')->with(30)->willReturnSelf();
 
-        $this->repository->findWithFilters([]);
+        $repository->findWithFilters([]);
+    }
+
+    public function testFindByUserRejectsNonPositiveLimit(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Limit must be greater than zero.');
+
+        $repository = $this->createRepository();
+        $repository->findByUser('1', 0);
+    }
+
+    public function testFindWithFiltersRejectsNonPositiveLimit(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Limit must be greater than zero.');
+
+        $repository = $this->createRepository();
+        $repository->findWithFilters([], 0);
     }
 
     public function testFindWithFiltersFQCN(): void
     {
-        $this->setupQueryBuilderDefaults();
+        [$repository, $qb] = $this->createQueryHarness();
 
         $filters = ['entityClass' => AuditLog::class];
 
-        $this->qb->expects($this->once())->method('andWhere')->with('a.entityClass = :entityClass');
-        $this->qb->expects($this->once())->method('setParameter')->with('entityClass', AuditLog::class);
+        $qb->expects($this->once())->method('andWhere')->with('a.entityClass = :entityClass');
+        $qb->expects($this->once())->method('setParameter')->with('entityClass', AuditLog::class);
 
-        $this->repository->findWithFilters($filters);
+        $repository->findWithFilters($filters);
     }
 
     public function testFindWithFiltersShortName(): void
     {
-        $this->setupQueryBuilderDefaults();
+        [$repository, $qb] = $this->createQueryHarness();
 
         $filters = ['entityClass' => 'AuditLog'];
 
-        $this->qb->expects($this->once())->method('andWhere')->with('a.entityClass LIKE :entityClass');
-        $this->qb->expects($this->once())->method('setParameter')->with('entityClass', '%AuditLog%');
+        $qb->expects($this->once())->method('andWhere')->with('a.entityClass LIKE :entityClass');
+        $qb->expects($this->once())->method('setParameter')->with('entityClass', '%AuditLog%');
 
-        $this->repository->findWithFilters($filters);
+        $repository->findWithFilters($filters);
     }
 
     public function testFindWithFiltersShortNameWithWildcards(): void
     {
-        $this->setupQueryBuilderDefaults();
+        [$repository, $qb] = $this->createQueryHarness();
 
         $filters = ['entityClass' => 'Audit%_Log'];
 
-        $this->qb->expects($this->once())->method('andWhere')->with('a.entityClass LIKE :entityClass');
+        $qb->expects($this->once())->method('andWhere')->with('a.entityClass LIKE :entityClass');
         // Should be escaped as \% and \_
-        $this->qb->expects($this->once())->method('setParameter')->with('entityClass', '%Audit\%\_Log%');
+        $qb->expects($this->once())->method('setParameter')->with('entityClass', '%Audit\%\_Log%');
 
-        $this->repository->findWithFilters($filters);
-    }
-
-    public function testFindByUserReturnsAllResults(): void
-    {
-        $this->setupQueryBuilderDefaults(false);
-
-        $log1 = new AuditLog('Class', '1', 'create');
-        $log2 = new AuditLog('Class', '2', 'create');
-        $this->query->method('getResult')->willReturn([$log1, $log2]);
-
-        $result = $this->repository->findByUser('1');
-        self::assertCount(2, $result);
-        self::assertSame($log1, $result[0]);
-        self::assertSame($log2, $result[1]);
-    }
-
-    public function testFindByEntityReturnsAllResults(): void
-    {
-        $this->setupQueryBuilderDefaults(false);
-
-        $log1 = new AuditLog('Class', '1', 'create');
-        $log2 = new AuditLog('Class', '1', 'update');
-        $this->query->method('getResult')->willReturn([$log1, $log2]);
-
-        $result = $this->repository->findByEntity('Class', '1');
-        self::assertCount(2, $result);
-    }
-
-    public function testFindByTransactionHashReturnsAllResults(): void
-    {
-        $this->setupQueryBuilderDefaults(false);
-
-        $log1 = new AuditLog('Class', '1', 'create');
-        $log2 = new AuditLog('Class', '2', 'update');
-        $this->query->method('getResult')->willReturn([$log1, $log2]);
-
-        $result = $this->repository->findByTransactionHash('tx1');
-        self::assertCount(2, $result);
+        $repository->findWithFilters($filters);
     }
 
     public function testCountOlderThan(): void
     {
-        $this->setupQueryBuilderDefaults();
+        [$repository, $qb, $query] = $this->createQueryHarness();
 
         // select is called with 'a' by createQueryBuilder, then 'COUNT(a.id)' by countOlderThan
-        $this->qb->expects($this->exactly(2))
+        $qb->expects($this->exactly(2))
             ->method('select')
-            ->willReturnCallback(function ($arg) {
-                return $this->qb;
+            ->willReturnCallback(static function () use ($qb) {
+                return $qb;
             });
 
-        $this->qb->expects($this->once())->method('where')->with('a.createdAt < :before')->willReturnSelf();
-        $this->query->method('getSingleScalarResult')->willReturn(10);
+        $qb->expects($this->once())->method('where')->with('a.createdAt < :before')->willReturnSelf();
+        $query->method('getSingleScalarResult')->willReturn(10);
 
-        self::assertEquals(10, $this->repository->countOlderThan(new DateTimeImmutable()));
+        self::assertSame(10, $repository->countOlderThan(new DateTimeImmutable()));
     }
 
     public function testIsReverted(): void
     {
-        $this->setupQueryBuilderDefaults(false);
+        [$repository, $qb, $query] = $this->createQueryHarnessWithQueryMock();
 
         $log = new AuditLog('Class', '1', 'update');
         $this->setLogId($log, Uuid::v7()->toString());
 
-        $this->query->method('getSingleScalarResult')->willReturn(1);
+        $matchingRevertLog = new AuditLog(
+            'Class',
+            '1',
+            'revert',
+            context: ['reverted_log_id' => $log->id?->toRfc4122()]
+        );
 
-        self::assertTrue($this->repository->isReverted($log));
+        $qb->expects($this->once())->method('where')->with('a.entityClass = :entityClass')->willReturnSelf();
+        $qb->expects($this->exactly(4))->method('andWhere')->willReturnCallback(static function (string $clause) use ($qb) {
+            static $expected = [
+                'a.entityId = :entityId',
+                'a.action = :action',
+                'a.context LIKE :contextKey',
+                'a.context LIKE :revertedLogId',
+            ];
+            static $index = 0;
+
+            TestCase::assertSame($expected[$index], $clause);
+            ++$index;
+
+            return $qb;
+        });
+        $qb->expects($this->once())->method('setMaxResults')->with(25)->willReturnSelf();
+        $query->expects($this->once())->method('getResult')->willReturn([$matchingRevertLog]);
+
+        self::assertTrue($repository->isReverted($log));
     }
 
     public function testIsRevertedFalse(): void
     {
-        $this->setupQueryBuilderDefaults(false);
+        [$repository, $qb, $query] = $this->createQueryHarnessWithQueryMock();
 
         $log = new AuditLog('Class', '1', 'update');
         $this->setLogId($log, Uuid::v7()->toString());
 
-        $this->query->method('getSingleScalarResult')->willReturn(0);
+        $nonMatchingRevertLog = new AuditLog(
+            'Class',
+            '1',
+            'revert',
+            context: ['reverted_log_id' => Uuid::v7()->toRfc4122()]
+        );
 
-        self::assertFalse($this->repository->isReverted($log));
+        $qb->expects($this->once())->method('where')->with('a.entityClass = :entityClass')->willReturnSelf();
+        $query->expects($this->once())->method('getResult')->willReturn([$nonMatchingRevertLog]);
+
+        self::assertFalse($repository->isReverted($log));
+    }
+
+    public function testHasNewerStateChangingLogsReturnsTrueWhenAStateChangeAppearsBeforeTargetLog(): void
+    {
+        $registry = self::createStub(ManagerRegistry::class);
+        $repository = $this->getMockBuilder(AuditLogRepository::class)
+            ->setConstructorArgs([$registry])
+            ->onlyMethods(['findByEntity'])
+            ->getMock();
+
+        $olderUpdateLog = new AuditLog('Class', '1', 'update', new DateTimeImmutable('-10 minutes'));
+        $this->setLogId($olderUpdateLog, Uuid::v7()->toString());
+
+        $newerDeleteLog = new AuditLog('Class', '1', 'delete', new DateTimeImmutable('-5 minutes'));
+        $this->setLogId($newerDeleteLog, Uuid::v7()->toString());
+
+        $repository->expects($this->once())->method('findByEntity')->willReturn([$newerDeleteLog, $olderUpdateLog]);
+
+        self::assertTrue($repository->hasNewerStateChangingLogs($olderUpdateLog));
+    }
+
+    public function testHasNewerStateChangingLogsReturnsFalseForLatestStateChangingLog(): void
+    {
+        $registry = self::createStub(ManagerRegistry::class);
+        $repository = $this->getMockBuilder(AuditLogRepository::class)
+            ->setConstructorArgs([$registry])
+            ->onlyMethods(['findByEntity'])
+            ->getMock();
+
+        $latestCreateLog = new AuditLog('Class', '1', 'create', new DateTimeImmutable('-5 minutes'));
+        $this->setLogId($latestCreateLog, Uuid::v7()->toString());
+
+        $olderAccessLog = new AuditLog('Class', '1', 'access', new DateTimeImmutable('-10 minutes'));
+        $this->setLogId($olderAccessLog, Uuid::v7()->toString());
+
+        $repository->expects($this->once())->method('findByEntity')->willReturn([$latestCreateLog, $olderAccessLog]);
+
+        self::assertFalse($repository->hasNewerStateChangingLogs($latestCreateLog));
     }
 
     private function setLogId(AuditLog $log, string $id): void

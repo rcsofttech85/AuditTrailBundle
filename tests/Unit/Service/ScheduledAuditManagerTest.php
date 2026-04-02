@@ -5,17 +5,13 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use OverflowException;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use stdClass;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
-#[AllowMockObjectsWithoutExpectations]
-class ScheduledAuditManagerTest extends TestCase
+final class ScheduledAuditManagerTest extends TestCase
 {
     public function testSchedule(): void
     {
@@ -50,15 +46,12 @@ class ScheduledAuditManagerTest extends TestCase
         $manager->schedule($entity, $log, true);
     }
 
-    public function testScheduleWithDispatcher(): void
+    public function testScheduleDoesNotDispatchEvent(): void
     {
-        $dispatcher = $this->createMock(EventDispatcherInterface::class);
-        $dispatcher->expects($this->once())
-            ->method('dispatch')
-            ->with(self::isInstanceOf(AuditLogCreatedEvent::class), AuditLogCreatedEvent::NAME);
-
-        $manager = new ScheduledAuditManager($dispatcher);
+        $manager = new ScheduledAuditManager();
         $manager->schedule(new stdClass(), new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE), false);
+
+        self::assertCount(1, $manager->scheduledAudits);
     }
 
     public function testPendingDeletions(): void

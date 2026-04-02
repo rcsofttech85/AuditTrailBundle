@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use JsonException;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditRendererInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -19,6 +20,7 @@ use function mb_strlen;
 use function mb_substr;
 use function sprintf;
 
+use const JSON_THROW_ON_ERROR;
 use const JSON_UNESCAPED_SLASHES;
 use const JSON_UNESCAPED_UNICODE;
 
@@ -176,9 +178,11 @@ final readonly class AuditRenderer implements AuditRendererInterface
      */
     private function formatArrayValue(array $value): string
     {
-        $json = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-
-        return $json !== false ? $json : '[]';
+        try {
+            return json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        } catch (JsonException) {
+            return '[unencodable array]';
+        }
     }
 
     private function truncateString(string $str): string

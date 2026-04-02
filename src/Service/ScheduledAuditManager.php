@@ -7,8 +7,6 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use OverflowException;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 use function count;
 use function sprintf;
@@ -32,7 +30,6 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
     private bool $enabled;
 
     public function __construct(
-        private readonly ?EventDispatcherInterface $eventDispatcher = null,
         bool $enabled = true,
     ) {
         $this->enabled = $enabled;
@@ -62,8 +59,6 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
             throw new OverflowException(sprintf('Maximum audit queue size exceeded (%d). Consider batch processing.', self::MAX_SCHEDULED_AUDITS));
         }
 
-        $audit = $this->dispatchCreatedEvent($entity, $audit);
-
         $this->scheduledAudits[] = [
             'entity' => $entity,
             'audit' => $audit,
@@ -90,6 +85,22 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
     }
 
     /**
+     * @return array<int, array{entity: object, audit: AuditLog, is_insert: bool}>
+     */
+    public function getScheduledAudits(): array
+    {
+        return $this->scheduledAudits;
+    }
+
+    /**
+     * @return list<array{entity: object, data: array<string, mixed>, is_managed: bool}>
+     */
+    public function getPendingDeletions(): array
+    {
+        return $this->pendingDeletions;
+    }
+
+    /**
      * @internal retains only audits that still need delivery after a failed post-flush dispatch
      *
      * @param array<int, array{entity: object, audit: AuditLog, is_insert: bool}> $scheduledAudits
@@ -107,19 +118,5 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
     public function replacePendingDeletions(array $pendingDeletions): void
     {
         $this->pendingDeletions = $pendingDeletions;
-    }
-
-    private function dispatchCreatedEvent(
-        object $entity,
-        AuditLog $audit,
-    ): AuditLog {
-        if ($this->eventDispatcher === null) {
-            return $audit;
-        }
-
-        $event = new AuditLogCreatedEvent($audit, $entity);
-        $this->eventDispatcher->dispatch($event, AuditLogCreatedEvent::NAME);
-
-        return $event->auditLog;
     }
 }

@@ -55,8 +55,8 @@ final class ContextResolver implements ContextResolverInterface
         try {
             $userId = $extraContext[AuditLogInterface::CONTEXT_USER_ID] ?? $this->userResolver->getUserId();
             $username = $extraContext[AuditLogInterface::CONTEXT_USERNAME] ?? $this->userResolver->getUsername();
-            $ipAddress = $this->userResolver->getIpAddress();
-            $userAgent = $this->userResolver->getUserAgent();
+            $ipAddress = $extraContext[AuditLogInterface::CONTEXT_IP_ADDRESS] ?? $this->userResolver->getIpAddress();
+            $userAgent = $extraContext[AuditLogInterface::CONTEXT_USER_AGENT] ?? $this->userResolver->getUserAgent();
 
             $context = $this->buildContext($extraContext, $entity, $action, $newValues);
         } catch (Throwable $e) {
@@ -93,13 +93,16 @@ final class ContextResolver implements ContextResolverInterface
         $context = array_diff_key($extraContext, [
             AuditLogInterface::CONTEXT_USER_ID => true,
             AuditLogInterface::CONTEXT_USERNAME => true,
+            AuditLogInterface::CONTEXT_IP_ADDRESS => true,
+            AuditLogInterface::CONTEXT_USER_AGENT => true,
         ]);
 
         $impersonatorId = $this->userResolver->getImpersonatorId();
-        if ($impersonatorId !== null) {
+        $impersonatorUsername = $this->userResolver->getImpersonatorUsername();
+        if ($impersonatorId !== null || $impersonatorUsername !== null) {
             $context['impersonation'] = [
                 'impersonator_id' => $impersonatorId,
-                'impersonator_username' => $this->userResolver->getImpersonatorUsername(),
+                'impersonator_username' => $impersonatorUsername,
             ];
         }
 

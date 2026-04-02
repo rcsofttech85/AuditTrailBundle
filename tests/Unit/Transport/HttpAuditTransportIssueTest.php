@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
@@ -12,8 +11,7 @@ use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
-#[AllowMockObjectsWithoutExpectations]
-class HttpAuditTransportIssueTest extends TestCase
+final class HttpAuditTransportIssueTest extends TestCase
 {
     public function testSupportsMethod(): void
     {

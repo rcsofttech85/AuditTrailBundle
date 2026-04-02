@@ -6,12 +6,10 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use DateTimeImmutable;
 use DateTimeZone;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Service\DiffGenerator;
 
-#[AllowMockObjectsWithoutExpectations]
-class DiffGeneratorTest extends TestCase
+final class DiffGeneratorTest extends TestCase
 {
     private DiffGenerator $generator;
 
@@ -29,8 +27,8 @@ class DiffGeneratorTest extends TestCase
 
         self::assertCount(1, $diff);
         self::assertArrayHasKey('name', $diff);
-        self::assertEquals('John', $diff['name']['old']);
-        self::assertEquals('Jane', $diff['name']['new']);
+        self::assertSame('John', $diff['name']['old']);
+        self::assertSame('Jane', $diff['name']['new']);
     }
 
     public function testGenerateWithNormalization(): void
@@ -45,12 +43,13 @@ class DiffGeneratorTest extends TestCase
         $diff = $this->generator->generate($old, $new);
         self::assertCount(1, $diff);
         self::assertArrayHasKey('data', $diff);
+        self::assertIsString($diff['data']['new']);
         self::assertStringContainsString('"foo": "baz"', $diff['data']['new']);
 
         // Include timestamps
         $diff = $this->generator->generate($old, $new, ['include_timestamps' => true]);
         self::assertCount(2, $diff);
-        self::assertEquals('2023-01-01 10:00:00 UTC', $diff['updatedAt']['old']);
+        self::assertSame('2023-01-01 10:00:00 UTC', $diff['updatedAt']['old']);
     }
 
     public function testGenerateRaw(): void
@@ -61,7 +60,7 @@ class DiffGeneratorTest extends TestCase
         $diff = $this->generator->generate($old, $new, ['raw' => true]);
 
         self::assertIsArray($diff['data']['old']);
-        self::assertEquals('bar', $diff['data']['old']['foo']);
+        self::assertSame('bar', $diff['data']['old']['foo']);
     }
 
     public function testNormalizationOfJsonString(): void
@@ -71,7 +70,9 @@ class DiffGeneratorTest extends TestCase
 
         $diff = $this->generator->generate($old, $new);
 
+        self::assertIsString($diff['config']['old']);
         self::assertStringContainsString('"a": 1', $diff['config']['old']);
+        self::assertIsString($diff['config']['new']);
         self::assertStringContainsString('"a": 2', $diff['config']['new']);
     }
 }

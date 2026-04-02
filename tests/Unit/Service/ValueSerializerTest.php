@@ -9,22 +9,20 @@ use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Selectable;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\MockObject\MockObject;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use stdClass;
 use Stringable;
 
-#[AllowMockObjectsWithoutExpectations]
-class ValueSerializerTest extends AbstractAuditTestCase
+final class ValueSerializerTest extends AbstractAuditTestCase
 {
-    private EntityManagerInterface&MockObject $em;
+    /** @var EntityManagerInterface&\PHPUnit\Framework\MockObject\Stub */
+    private EntityManagerInterface $em;
 
     protected function setUp(): void
     {
-        $this->em = $this->createMock(EntityManagerInterface::class);
+        $this->em = self::createStub(EntityManagerInterface::class);
     }
 
     public function testSerializeBasicTypes(): void
@@ -134,8 +132,8 @@ class ValueSerializerTest extends AbstractAuditTestCase
     public function testCollectionSerializationModes(string $mode, mixed $expected): void
     {
         $serializer = new ValueSerializer(null, $mode);
-        /** @var ClassMetadata<TestEntity>&MockObject $metadata */
-        $metadata = $this->createMock(ClassMetadata::class);
+        /** @var ClassMetadata<TestEntity>&\PHPUnit\Framework\MockObject\Stub $metadata */
+        $metadata = self::createStub(ClassMetadata::class);
         $metadata->method('getName')->willReturn(TestEntity::class);
 
         /** @var ArrayCollection<int, TestEntity>&Selectable<int, TestEntity> $inner */
@@ -178,7 +176,7 @@ class ValueSerializerTest extends AbstractAuditTestCase
         // Direct serialize() usually tries for detail, but ids_only should lock it to IDs
         $result = $serializer->serialize($collection);
 
-        self::assertEquals([1, 2], $result);
+        self::assertSame([1, 2], $result);
     }
 
     public function testMaxItemsRespectsConfig(): void
@@ -189,12 +187,13 @@ class ValueSerializerTest extends AbstractAuditTestCase
         $serializer = new ValueSerializer($logger, 'eager', 2);
         $collection = new ArrayCollection([1, 2, 3, 4, 5]);
 
+        /** @var array{_truncated: bool, _total_count: int, _sample: array<mixed>} $result */
         $result = $serializer->serialize($collection);
 
         self::assertTrue($result['_truncated']);
-        self::assertEquals(5, $result['_total_count']);
+        self::assertSame(5, $result['_total_count']);
         self::assertCount(2, $result['_sample']);
-        self::assertEquals([1, 2], $result['_sample']);
+        self::assertSame([1, 2], $result['_sample']);
     }
 
     public function testSerializeObjectIdRecursionLimit(): void

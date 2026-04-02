@@ -28,7 +28,9 @@ final class ConfigurationInteractionTest extends KernelTestCase
         $kernel = parent::createKernel($options);
         if ($kernel instanceof TestKernel && isset($options['audit_config'])) {
             assert(is_array($options['audit_config']));
-            $kernel->setAuditConfig($options['audit_config']);
+            /** @var array<string, mixed> $auditConfig */
+            $auditConfig = $options['audit_config'];
+            $kernel->setAuditConfig($auditConfig);
         }
 
         return $kernel;

@@ -11,6 +11,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use RuntimeException;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 use function sprintf;
@@ -54,7 +55,7 @@ final class HttpAuditTransport implements AuditTransportInterface
             'user_agent' => $log->userAgent,
             'transaction_hash' => $log->transactionHash,
             'signature' => $log->signature,
-            'context' => [...$log->context, ...$context],
+            'context' => $log->context,
             'created_at' => $log->createdAt->format(DateTimeInterface::ATOM),
         ];
 
@@ -71,14 +72,20 @@ final class HttpAuditTransport implements AuditTransportInterface
             'timeout' => $this->timeout,
         ]);
 
-        if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) {
-            $this->logger?->error(sprintf(
+        $statusCode = $response->getStatusCode();
+
+        if ($statusCode < 200 || $statusCode >= 300) {
+            $responseBody = $response->getContent(false);
+            $message = sprintf(
                 'HTTP audit transport failed for %s#%s with status code %d: %s',
                 $log->entityClass,
                 $entityId,
-                $response->getStatusCode(),
-                $response->getContent(false)
-            ));
+                $statusCode,
+                $responseBody
+            );
+            $this->logger?->error($message);
+
+            throw new RuntimeException($message);
         }
     }
 

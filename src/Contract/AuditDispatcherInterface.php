@@ -20,5 +20,6 @@ interface AuditDispatcherInterface
         EntityManagerInterface $em,
         string $phase,
         ?UnitOfWork $uow = null,
+        ?object $entity = null,
     ): bool;
 }

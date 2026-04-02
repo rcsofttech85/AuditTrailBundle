@@ -75,13 +75,14 @@ class MyCustomVoter implements AuditVoterInterface
 
 ## Access Auditing (Read Tracking)
 
-To track when an entity is accessed (read), use the `#[AuditAccess]` attribute. This feature is strictly optimized for **GET requests** to minimize overhead.
+To track when an entity is accessed (read), use the `#[AuditAccess]` attribute. By default this feature audits **GET** requests only, and you can change the allowed methods with the `audit_trail.audited_methods` configuration option.
 
 ```php
 <?php
 
 declare(strict_types=1);
 
+use Doctrine\ORM\Mapping as ORM;
 use Rcsofttech\AuditTrailBundle\Attribute\AuditAccess;
 
 #[ORM\Entity]
@@ -106,6 +107,46 @@ class SensitiveDocument
 > However, if `#[AuditCondition]` is present on the same entity, it **is** respected for access logs.
 > The expression receives `action = "access"` for fine-grained control.
 
+## Collection Tracking Notes
+
+The bundle tracks direct Doctrine collection diffs and merges scalar-field plus collection changes from the same flush into one coherent `update` audit.
+
+Important limitation:
+
+- If you delete a related entity and expect the owning entity's collection field to be audited as changed, the bundle can only infer that reliably when Doctrine exposes the owning side through the in-memory object graph.
+- In practice, that means bidirectional associations are the safest choice for delete-propagation auditing.
+- With unidirectional mappings, database join-table cleanup may still happen correctly, but the bundle may not have enough reverse-relation context during flush to emit a second owner-side collection update audit.
+
+### Explicit Read Intent Override
+
+For enterprise apps with complex back-office flows, you can explicitly tell the bundle whether the current main request should count as a real record view.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Rcsofttech\AuditTrailBundle\Http\AuditRequestAttributes;
+use Symfony\Component\HttpFoundation\Request;
+
+final class AdminPostController
+{
+    public function detail(Request $request): void
+    {
+        $request->attributes->set(AuditRequestAttributes::ACCESS_INTENT, true);
+    }
+
+    public function edit(Request $request): void
+    {
+        $request->attributes->set(AuditRequestAttributes::ACCESS_INTENT, false);
+    }
+}
+```
+
+- `true`: force access auditing for the current main request
+- `false`: suppress access auditing for the current main request
+- unset: fall back to the bundle's default Symfony-friendly heuristics for safe `GET` / `HEAD` record views
+
 ### Cache Configuration
 
 To use the `cooldown` feature, you must specify a PSR-6 cache pool in your configuration:
@@ -115,6 +156,8 @@ To use the `cooldown` feature, you must specify a PSR-6 cache pool in your confi
 audit_trail:
     cache_pool: 'cache.app' # Use any available PSR-6 cache pool
 ```
+
+If no cache pool is configured, request-level deduplication still works during the current request, but cross-request cooldown persistence is unavailable.
 
 ## Rich Context & Impersonation Tracking
 
@@ -126,7 +169,7 @@ If an admin is impersonating a user (using Symfony's `_switch_user`), the bundle
 
 ```php
 $entry = $auditReader->forEntity(Product::class, '123')->getFirstResult();
-$context = $entry->getContext();
+$context = $entry?->auditLog->context ?? [];
 
 if (isset($context['impersonation'])) {
     echo "Action performed by " . $context['impersonation']['impersonator_username'];
@@ -158,11 +201,47 @@ class SystemInfoContributor implements AuditContextContributorInterface
 }
 ```
 
-The bundle automatically discovers and executes all tagged contributors, merging their results into the `context` JSON column.
+Autoconfigured services that implement `AuditContextContributorInterface` are tagged automatically and their results are merged into the `context` JSON column.
 
 ## Events & Customization
 
 The bundle dispatches Symfony events that allow you to hook into the audit process.
+
+## AI-Ready Processing
+
+The bundle now includes an optional `AuditLogAiProcessorInterface` contract for integrations that want to add AI-derived metadata before signing and transport dispatch.
+
+This is the recommended path for future Symfony AI integrations because it keeps AI explicit, optional, and non-blocking.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Audit;
+
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogAiProcessorInterface;
+
+final class AuditInsightAiProcessor implements AuditLogAiProcessorInterface
+{
+    public function process(array $context, ?object $entity = null): array
+    {
+        return [
+            'summary' => 'Price changed on a high-value order',
+            'risk' => 'medium',
+        ];
+    }
+}
+```
+
+Guidelines for AI processor implementations:
+
+- Treat AI output as optional metadata, not business-critical logic.
+- Return metadata only; the dispatcher stores it under `context['ai']`.
+- AI processors run only in flush-safe dispatch phases such as `post_flush`, `batch_flush`, and `manual_flush`.
+- Keep payloads structured and compact so they remain compatible with context-size limits.
+- If AI metadata alone would push context over the size limit, the dispatcher drops only the AI payload and preserves the rest of the audit context.
+- Prefer deterministic outputs when possible; if using AI later, fail open and let the audit continue.
 
 ### `AuditLogCreatedEvent`
 
@@ -187,17 +266,16 @@ class AuditSubscriber implements EventSubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            AuditLogCreatedEvent::NAME => 'onAuditLogCreated',
+            AuditLogCreatedEvent::class => 'onAuditLogCreated',
         ];
     }
 
     public function onAuditLogCreated(AuditLogCreatedEvent $event): void
     {
-        $log = $event->getAuditLog();
-
-        // Add custom metadata
-        $context = $log->getContext();
-        $context['server_id'] = 'node-01';
+        $event->auditLog->context = [
+            ...$event->auditLog->context,
+            'server_id' => 'node-01',
+        ];
     }
 }
 ```
@@ -207,6 +285,10 @@ class AuditSubscriber implements EventSubscriberInterface
 Dispatched when an audit message is about to be sent via the Messenger transport. Use this to add custom stamps (e.g., `DelayStamp`, `AmqpStamp`) to the message.
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 namespace App\EventSubscriber;
 
 use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;

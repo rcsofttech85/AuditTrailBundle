@@ -26,6 +26,21 @@ use const JSON_UNESCAPED_SLASHES;
 
 final readonly class AuditExporter implements AuditExporterInterface
 {
+    private const array CSV_HEADERS = [
+        'id',
+        'entity_class',
+        'entity_id',
+        'action',
+        'old_values',
+        'new_values',
+        'changed_fields',
+        'user_id',
+        'username',
+        'ip_address',
+        'user_agent',
+        'created_at',
+    ];
+
     public function __construct(
         private ?EntityManagerInterface $entityManager = null,
     ) {
@@ -141,15 +156,10 @@ final readonly class AuditExporter implements AuditExporterInterface
      */
     private function writeCsvToStream(iterable $audits, mixed $stream): void
     {
-        $headerWritten = false;
+        fputcsv($stream, self::CSV_HEADERS, ',', '"', '\\');
 
         foreach ($audits as $audit) {
             $row = $this->auditToArray($audit);
-            if (!$headerWritten) {
-                fputcsv($stream, array_keys($row), ',', '"', '\\');
-                $headerWritten = true;
-            }
-
             $csvRow = array_map(
                 fn ($value) => is_array($value) ? json_encode($value, JSON_THROW_ON_ERROR) : $this->sanitizeCsvValue((string) (is_scalar($value) || $value instanceof Stringable ? $value : '')),
                 $row

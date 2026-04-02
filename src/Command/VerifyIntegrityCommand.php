@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Command;
 
+use JsonException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -18,6 +19,8 @@ use Symfony\Component\Uid\Uuid;
 use function count;
 use function is_string;
 use function sprintf;
+
+use const JSON_THROW_ON_ERROR;
 
 #[AsCommand(
     name: 'audit:verify-integrity',
@@ -53,7 +56,13 @@ final class VerifyIntegrityCommand extends Command
         }
 
         $logId = $input->getOption('id');
-        if (is_string($logId) && Uuid::isValid($logId)) {
+        if (is_string($logId) && $logId !== '') {
+            if (!Uuid::isValid($logId)) {
+                $io->error('The --id option must be a valid UUID.');
+
+                return Command::FAILURE;
+            }
+
             return $this->verifySingleLog($logId, $io);
         }
 
@@ -87,8 +96,8 @@ final class VerifyIntegrityCommand extends Command
             $io->section('Debug Information');
             $io->writeln('<info>Expected Signature:</info> '.$this->integrityService->generateSignature($log));
             $io->writeln('<info>Actual Signature:  </info> '.$log->signature);
-            $io->writeln('<info>Normalized Old Values:</info> '.json_encode($log->oldValues));
-            $io->writeln('<info>Normalized New Values:</info> '.json_encode($log->newValues));
+            $io->writeln('<info>Normalized Old Values:</info> '.$this->encodeDebugValue($log->oldValues));
+            $io->writeln('<info>Normalized New Values:</info> '.$this->encodeDebugValue($log->newValues));
         }
 
         return Command::FAILURE;
@@ -108,24 +117,18 @@ final class VerifyIntegrityCommand extends Command
         $progressBar->start();
 
         $tamperedLogs = [];
-        $batchSize = 100;
-        $offset = 0;
-
-        while ($offset < $count) {
-            $logs = $this->repository->findBy([], ['id' => 'ASC'], $batchSize, $offset);
-            foreach ($logs as $log) {
-                if (!$this->integrityService->verifySignature($log)) {
-                    $tamperedLogs[] = [
-                        'id' => $log->id?->toRfc4122(),
-                        'entity' => $log->entityClass,
-                        'entity_id' => $log->entityId,
-                        'action' => $log->action,
-                        'created_at' => $log->createdAt->format('Y-m-d H:i:s'),
-                    ];
-                }
-                $progressBar->advance();
+        foreach ($this->repository->findAllWithFilters() as $log) {
+            if (!$this->integrityService->verifySignature($log)) {
+                $tamperedLogs[] = [
+                    'id' => $log->id?->toRfc4122(),
+                    'entity' => $log->entityClass,
+                    'entity_id' => $log->entityId,
+                    'action' => $log->action,
+                    'created_at' => $log->createdAt->format('Y-m-d H:i:s'),
+                ];
             }
-            $offset += $batchSize;
+
+            $progressBar->advance();
         }
 
         $progressBar->finish();
@@ -144,5 +147,14 @@ final class VerifyIntegrityCommand extends Command
         );
 
         return Command::FAILURE;
+    }
+
+    private function encodeDebugValue(mixed $value): string
+    {
+        try {
+            return json_encode($value, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return '[unencodable data]';
+        }
     }
 }

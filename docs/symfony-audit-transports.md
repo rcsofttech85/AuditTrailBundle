@@ -1,6 +1,6 @@
 # Audit Transports Documentation
 
-AuditTrailBundle supports multiple transports to dispatch audit logs. This allows you to offload audit processing to external services or queues, keeping your main application fast.
+AuditTrailBundle supports multiple transports to dispatch audit logs. This allows you to store logs locally, publish them to external services, or fan them out to several destinations at once.
 
 > [!NOTE]
 > **Messenger Confusion Warning:** The bundle utilizes Symfony Messenger for **two different features**.
@@ -8,7 +8,12 @@ AuditTrailBundle supports multiple transports to dispatch audit logs. This allow
 > 1. `database: { async: true }`: Designed to save logs to your *local database* asynchronously via an internal worker.
 > 2. `queue: { enabled: true }`: Designed to publish logs to an *external system* (so other microservices or tools like ELK can consume them).
 >
-> They can be used simultaneously without conflict because they route to different internal queues.
+> They can be used simultaneously because they target different Messenger message types and transport names.
+> [!NOTE]
+> In `v3`, `symfony/messenger` and `symfony/http-client` are installed as bundle dependencies.
+> You do not need a separate Composer step to enable queue, async database, or HTTP delivery.
+> What you still need is the corresponding runtime configuration:
+> Messenger routing/buses for queue or async database, and an endpoint for HTTP transport.
 
 ## 1. Database Transport (Async)
 
@@ -38,11 +43,16 @@ framework:
 
 *(The bundle auto-registers `PersistAuditLogHandler` to consume from this transport and insert the records into the database).*
 
+> [!IMPORTANT]
+> Async database mode uses a per-message delivery identifier so worker retries can be handled idempotently.
+> If you enable or upgrade to this feature, generate and run a Doctrine migration so the `audit_log.delivery_id`
+> column and unique constraint exist before workers process messages.
+
 ---
 
 ## 2. Queue Transport (External Delivery)
 
-The `queue` transport acts as a webhook publisher. It dispatches a strictly-typed DTO (`AuditLogMessage`) to the bus. You must write your own external consumer to ingest these messages (e.g., Logstash, another microservice).
+The `queue` transport dispatches a strictly-typed DTO (`AuditLogMessage`) to a Symfony Messenger bus. You must define the Messenger transport routing yourself and provide the downstream consumer that ingests those messages.
 
 ### Configuration for Queue transport
 
@@ -68,28 +78,7 @@ framework:
 
 ### Advanced Usage: Messenger Stamps
 
-You can pass Messenger stamps (like `DelayStamp` or `DispatchAfterCurrentBusStamp`) in two ways:
-
-#### 1. Manually (Programmatic Audits)
-
-Pass them via the `$context` array when creating an audit log or performing a revert.
-
-```php
-<?php
-
-declare(strict_types=1);
-
-use Symfony\Component\Messenger\Stamp\DelayStamp;
-
-// Programmatic audit log with a 5-second delay
-$auditService->createAuditLog($entity, 'custom_action', null, null, [
-    'messenger_stamps' => [new DelayStamp(5000)],
-]);
-```
-
-#### 2. Automatically (Event Subscriber)
-
-Use the `AuditMessageStampEvent` to add stamps to the message right before it is dispatched to the bus. This is the recommended way to add transport-specific stamps.
+Use the `AuditMessageStampEvent` to add stamps to the message right before it is dispatched to the bus. This is the supported way to add transport-specific stamps such as `DelayStamp` or `DispatchAfterCurrentBusStamp`.
 
 ```php
 <?php
@@ -136,7 +125,7 @@ $signature = $envelope->last(SignatureStamp::class)?->signature;
 
 ---
 
-## 2. HTTP Transport
+## 3. HTTP Transport
 
 The HTTP transport streams audit logs to an external API endpoint (e.g., a logging service, ELK, or Splunk).
 
@@ -172,7 +161,7 @@ Different transports send slightly different JSON payloads based on their delive
 
 #### HTTP Transport
 
-The HTTP transport sends a flat JSON object including the entity signature and merged runtime context.
+The HTTP transport sends a flat JSON object including the entity signature and the persisted audit context captured on the `AuditLog`.
 
 ```json
 {
@@ -182,14 +171,17 @@ The HTTP transport sends a flat JSON object including the entity signature and m
     "old_values": {"price": 100},
     "new_values": {"price": 120},
     "changed_fields": ["price"],
-    "user_id": 1,
+    "user_id": "1",
     "username": "admin",
     "ip_address": "127.0.0.1",
     "user_agent": "Mozilla/5.0...",
     "transaction_hash": "a1b2c3d4...",
     "signature": "hmac-signature-here",
     "context": {
-        "is_impersonation": false,
+        "impersonation": {
+            "impersonator_id": "99",
+            "impersonator_username": "admin"
+        },
         "runtime_meta": "value"
     },
     "created_at": "2024-01-01T12:00:00+00:00"
@@ -198,7 +190,7 @@ The HTTP transport sends a flat JSON object including the entity signature and m
 
 #### Queue Transport (AuditLogMessage)
 
-The Queue transport dispatches a strictly-typed DTO. It **omits** the entity signature from the body (it is sent as a transport-level header instead) and only contains the persisted entity context.
+The Queue transport dispatches a strictly-typed DTO. It **omits** the entity signature from the body and carries transport signing separately through Messenger metadata (`SignatureStamp`).
 
 ```json
 {
@@ -215,14 +207,17 @@ The Queue transport dispatches a strictly-typed DTO. It **omits** the entity sig
     "transaction_hash": "a1b2c3d4...",
     "created_at": "2024-01-01T12:00:00+00:00",
     "context": {
-        "is_impersonation": false
+        "impersonation": {
+            "impersonator_id": "99",
+            "impersonator_username": "admin"
+        }
     }
 }
 ```
 
 ---
 
-## 3. Database Transport (Default)
+## 4. Database Transport (Default)
 
 The Database transport stores logs in your local database. It is enabled by default.
 
@@ -260,9 +255,11 @@ framework:
             audit_trail_database: '%env(MESSENGER_TRANSPORT_DSN)%'
 ```
 
+Worker retries are handled safely: duplicate deliveries for the same internal message are ignored instead of creating duplicate audit rows.
+
 ---
 
-## 4. Chain Transport (Multiple Transports)
+## 5. Chain Transport (Multiple Transports)
 
 You can enable multiple transports simultaneously. The bundle will automatically use a `ChainAuditTransport` to dispatch logs to all enabled transports.
 
@@ -277,7 +274,7 @@ audit_trail:
 
 ---
 
-## 5. Signature vs. Payload Signing
+## 6. Signature vs. Payload Signing
 
 It is important to distinguish between the two types of signatures:
 
@@ -288,5 +285,5 @@ It is important to distinguish between the two types of signatures:
 
 2. **Transport Signature (`X-Signature` header or `SignatureStamp`):**
    * Generated just before sending.
-   * Signs the *entire* payload (including the Entity Signature).
+   * Signs the outbound transport payload.
    * **Purpose:** Transport security. Ensures the message wasn't tampered with during transit.

@@ -14,7 +14,7 @@ use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\AbstractFunctionalTestCase;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 
-class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
+final class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
 {
     public function testModifyLogInEventPreservesSignature(): void
     {
@@ -48,6 +48,7 @@ class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
             $transport,
             $eventDispatcher,
             $integrityService,
+            null,
             null,
             true, // failOnTransportError
             true  // fallbackToDatabase

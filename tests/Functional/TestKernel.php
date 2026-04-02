@@ -134,6 +134,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
             ],
         ];
 
+        /** @var array<string, mixed> $doctrineConfig */
         $doctrineConfig = array_replace_recursive($defaultDoctrineConfig, $this->doctrineConfig);
 
         $c->loadFromExtension('doctrine', $doctrineConfig);

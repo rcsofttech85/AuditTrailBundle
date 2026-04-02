@@ -9,22 +9,22 @@ use LogicException;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
-class AuditLogTest extends TestCase
+final class AuditLogTest extends TestCase
 {
     public function testContext(): void
     {
         $log = new AuditLog('App\Entity\User', '1', 'create');
-        self::assertEquals([], $log->context);
+        self::assertSame([], $log->context);
 
         $context = ['foo' => 'bar', 'nested' => ['a' => 1]];
         $log = new AuditLog('App\Entity\User', '1', 'create', context: $context);
-        self::assertEquals($context, $log->context);
+        self::assertSame($context, $log->context);
     }
 
     public function testActionValidation(): void
     {
         $log = new AuditLog('App\Entity\User', '1', 'create');
-        self::assertEquals('create', $log->action);
+        self::assertSame('create', $log->action);
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Invalid action "invalid_action". Must be one of:');
@@ -79,30 +79,31 @@ class AuditLogTest extends TestCase
     {
         $log = new AuditLog('App\Entity\User', '1', 'create');
         $log->entityId = '123';
-        self::assertEquals('123', $log->entityId);
+        self::assertSame('123', $log->entityId);
 
         $log->seal();
+        $this->assertSealedMutationIsRejected(
+            static function () use ($log): void {
+                $log->entityId = '456';
+            }
+        );
+        $this->assertSealedMutationIsRejected(
+            static function () use ($log): void {
+                $log->context = ['new' => 'val'];
+            }
+        );
+        $this->assertSealedMutationIsRejected(
+            static function () use ($log): void {
+                $log->signature = 'new_sig';
+            }
+        );
+    }
 
-        // entityId is hooked
+    private function assertSealedMutationIsRejected(callable $mutation): void
+    {
         try {
-            $log->entityId = '456';
-            self::fail('Should have thrown LogicException for entityId');
-        } catch (LogicException $e) {
-            self::assertSame('Cannot modify a sealed audit log.', $e->getMessage());
-        }
-
-        // context is hooked
-        try {
-            $log->context = ['new' => 'val'];
-            self::fail('Should have thrown LogicException for context');
-        } catch (LogicException $e) {
-            self::assertSame('Cannot modify a sealed audit log.', $e->getMessage());
-        }
-
-        // signature is hooked
-        try {
-            $log->signature = 'new_sig';
-            self::fail('Should have thrown LogicException for signature');
+            $mutation();
+            self::fail('Expected mutation on a sealed audit log to be rejected.');
         } catch (LogicException $e) {
             self::assertSame('Cannot modify a sealed audit log.', $e->getMessage());
         }

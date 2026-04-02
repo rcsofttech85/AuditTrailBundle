@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
@@ -16,19 +15,18 @@ use stdClass;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
 
-#[AllowMockObjectsWithoutExpectations]
-class AsyncDatabaseAuditTransportTest extends TestCase
+final class AsyncDatabaseAuditTransportTest extends TestCase
 {
     private AsyncDatabaseAuditTransport $transport;
 
-    private MessageBusInterface&MockObject $bus;
+    private MessageBusInterface $bus;
 
-    private AuditLogMessageFactory&MockObject $messageFactory;
+    private AuditLogMessageFactory $messageFactory;
 
     protected function setUp(): void
     {
-        $this->bus = $this->createMock(MessageBusInterface::class);
-        $this->messageFactory = $this->createMock(AuditLogMessageFactory::class);
+        $this->bus = self::createStub(MessageBusInterface::class);
+        $this->messageFactory = self::createStub(AuditLogMessageFactory::class);
 
         $this->transport = new AsyncDatabaseAuditTransport(
             $this->bus,
@@ -38,16 +36,17 @@ class AsyncDatabaseAuditTransportTest extends TestCase
 
     public function testSendDispatchesPersistMessage(): void
     {
+        [$bus, $messageFactory] = $this->useTransportMocks();
         $log = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
 
         $persistMessage = self::createStub(PersistAuditLogMessage::class);
 
-        $this->messageFactory->expects($this->once())
+        $messageFactory->expects($this->once())
             ->method('createPersistMessage')
             ->with($log, [])
             ->willReturn($persistMessage);
 
-        $this->bus->expects($this->once())
+        $bus->expects($this->once())
             ->method('dispatch')
             ->with($persistMessage)
             ->willReturn(new Envelope(new stdClass()));
@@ -57,17 +56,18 @@ class AsyncDatabaseAuditTransportTest extends TestCase
 
     public function testSendPassesContextToFactory(): void
     {
+        [$bus, $messageFactory] = $this->useTransportMocks();
         $log = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
         $context = ['phase' => 'post_flush', 'em' => 'mock'];
 
         $persistMessage = self::createStub(PersistAuditLogMessage::class);
 
-        $this->messageFactory->expects($this->once())
+        $messageFactory->expects($this->once())
             ->method('createPersistMessage')
             ->with($log, $context)
             ->willReturn($persistMessage);
 
-        $this->bus->expects($this->once())
+        $bus->expects($this->once())
             ->method('dispatch')
             ->willReturn(new Envelope(new stdClass()));
 
@@ -84,5 +84,19 @@ class AsyncDatabaseAuditTransportTest extends TestCase
     {
         self::assertFalse($this->transport->supports('on_flush'));
         self::assertFalse($this->transport->supports('pre_flush'));
+    }
+
+    /**
+     * @return array{0: MessageBusInterface&MockObject, 1: AuditLogMessageFactory&MockObject}
+     */
+    private function useTransportMocks(): array
+    {
+        $bus = $this->createMock(MessageBusInterface::class);
+        $messageFactory = $this->createMock(AuditLogMessageFactory::class);
+        $this->bus = $bus;
+        $this->messageFactory = $messageFactory;
+        $this->transport = new AsyncDatabaseAuditTransport($bus, $messageFactory);
+
+        return [$bus, $messageFactory];
     }
 }

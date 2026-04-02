@@ -62,7 +62,9 @@ final readonly class UserResolver implements UserResolverInterface
         $request = $this->requestStack->getCurrentRequest();
 
         if ($request !== null) {
-            return $this->trackIpAddress ? $request->getClientIp() : null;
+            $ip = $this->trackIpAddress ? $request->getClientIp() : null;
+
+            return $ip !== null && $this->isValidIpAddress($ip) ? $ip : null;
         }
 
         if ($this->trackIpAddress && PHP_SAPI === 'cli') {

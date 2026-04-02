@@ -9,6 +9,9 @@ use Doctrine\ORM\Event\LoadClassMetadataEventArgs;
 use Doctrine\ORM\Events;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
+use function array_filter;
+use function implode;
+
 #[AsDoctrineListener(event: Events::loadClassMetadata)]
 final class TablePrefixSubscriber
 {
@@ -32,7 +35,7 @@ final class TablePrefixSubscriber
 
         $tableName = $classMetadata->getTableName();
         $classMetadata->setPrimaryTable([
-            'name' => "{$this->tablePrefix}_{$tableName}_{$this->tableSuffix}",
+            'name' => implode('_', array_filter([$this->tablePrefix, $tableName, $this->tableSuffix], static fn (string $part): bool => $part !== '')),
         ]);
     }
 }

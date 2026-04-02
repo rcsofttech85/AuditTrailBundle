@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use BackedEnum;
+use DateTimeInterface;
 use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
 use Override;
@@ -16,12 +18,27 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Stringable;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 use Throwable;
+use UnitEnum;
 
+use function get_debug_type;
+use function get_resource_type;
+use function in_array;
+use function is_array;
+use function is_bool;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_resource;
+use function is_string;
+use function mb_check_encoding;
+use function method_exists;
 use function sprintf;
 use function strlen;
 
+use const FILTER_VALIDATE_IP;
 use const JSON_THROW_ON_ERROR;
 
 final readonly class AuditService implements AuditServiceInterface
@@ -29,6 +46,14 @@ final readonly class AuditService implements AuditServiceInterface
     private const string PENDING_ID = 'pending';
 
     private const int MAX_CONTEXT_BYTES = 65_536;
+
+    private const int MAX_CONTEXT_DEPTH = 5;
+
+    private const array DIFFABLE_ACTIONS = [
+        AuditLogInterface::ACTION_UPDATE,
+        AuditLogInterface::ACTION_SOFT_DELETE,
+        AuditLogInterface::ACTION_RESTORE,
+    ];
 
     private DateTimeZone $tz;
 
@@ -111,7 +136,7 @@ final readonly class AuditService implements AuditServiceInterface
             ) ?? self::PENDING_ID;
         }
 
-        $changedFields = ($action === AuditLogInterface::ACTION_UPDATE && $newValues !== null)
+        $changedFields = (in_array($action, self::DIFFABLE_ACTIONS, true) && $newValues !== null)
             ? array_keys($newValues)
             : null;
 
@@ -128,14 +153,17 @@ final readonly class AuditService implements AuditServiceInterface
             ];
         }
 
-        $contextData = $resolvedContext['context'];
-
-        $encoded = json_encode($contextData, JSON_THROW_ON_ERROR);
-        if (strlen($encoded) > self::MAX_CONTEXT_BYTES) {
-            $this->logger?->warning(
-                sprintf('Audit context for %s#%s truncated (%d bytes exceeded %d limit).', $entity::class, $entityId, strlen($encoded), self::MAX_CONTEXT_BYTES),
-            );
-            $contextData = ['_truncated' => true, '_original_size' => strlen($encoded)];
+        $oldValues = $oldValues !== null ? $this->sanitizeAuditValues($oldValues) : null;
+        $newValues = $newValues !== null ? $this->sanitizeAuditValues($newValues) : null;
+        $changedFields = $changedFields !== null ? $this->sanitizeChangedFields($changedFields) : null;
+        $contextData = $this->enforceContextSafety($entity::class, (string) $entityId, $resolvedContext['context']);
+        $userId = $this->sanitizeOptionalString($resolvedContext['userId']);
+        $username = $this->sanitizeOptionalString($resolvedContext['username']);
+        $ipAddress = $this->sanitizeOptionalString($resolvedContext['ipAddress']);
+        $userAgent = $this->sanitizeOptionalString($resolvedContext['userAgent']);
+        if ($ipAddress !== null && filter_var($ipAddress, FILTER_VALIDATE_IP) === false) {
+            $this->logger?->warning(sprintf('Invalid IP address format detected during audit: "%s". Nullifying.', $ipAddress));
+            $ipAddress = null;
         }
 
         return new AuditLog(
@@ -147,10 +175,10 @@ final readonly class AuditService implements AuditServiceInterface
             newValues: $newValues,
             changedFields: $changedFields,
             transactionHash: $this->transactionIdGenerator->getTransactionId(),
-            userId: $resolvedContext['userId'],
-            username: $resolvedContext['username'],
-            ipAddress: $resolvedContext['ipAddress'],
-            userAgent: $resolvedContext['userAgent'],
+            userId: $userId,
+            username: $username,
+            ipAddress: $ipAddress,
+            userAgent: $userAgent,
             context: $contextData
         );
     }
@@ -159,5 +187,125 @@ final readonly class AuditService implements AuditServiceInterface
     public function getSensitiveFields(object $entity): array
     {
         return $this->metadataManager->getSensitiveFields($entity::class);
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     *
+     * @return array<string, mixed>
+     */
+    private function enforceContextSafety(string $entityClass, string $entityId, array $context): array
+    {
+        try {
+            $context = $this->sanitizeArray($context, 0);
+
+            $encoded = json_encode($context, JSON_THROW_ON_ERROR);
+            $encodedSize = strlen($encoded);
+
+            if ($encodedSize > self::MAX_CONTEXT_BYTES) {
+                $this->logger?->warning(
+                    sprintf(
+                        'Audit context for %s#%s truncated (%d bytes exceeded %d limit).',
+                        $entityClass,
+                        $entityId,
+                        $encodedSize,
+                        self::MAX_CONTEXT_BYTES,
+                    ),
+                );
+
+                return ['_truncated' => true, '_original_size' => $encodedSize];
+            }
+
+            return $context;
+        } catch (Throwable $e) {
+            $this->logger?->warning(
+                sprintf(
+                    'Audit context safety failed for %s#%s: %s',
+                    $entityClass,
+                    $entityId,
+                    $e->getMessage(),
+                ),
+                ['exception' => $e],
+            );
+
+            return [
+                '_context_safety_error' => true,
+                '_message' => 'Context could not be normalized safely.',
+            ];
+        }
+    }
+
+    /**
+     * @param array<mixed> $values
+     *
+     * @return array<string, mixed>
+     */
+    private function sanitizeArray(array $values, int $depth): array
+    {
+        if ($depth >= self::MAX_CONTEXT_DEPTH) {
+            return ['_max_depth_reached' => true];
+        }
+
+        $sanitized = [];
+
+        foreach ($values as $key => $value) {
+            $sanitized[(string) $key] = $this->sanitizeValue($value, $depth + 1);
+        }
+
+        return $sanitized;
+    }
+
+    private function sanitizeValue(mixed $value, int $depth): mixed
+    {
+        return match (true) {
+            $value === null, is_bool($value), is_int($value), is_float($value) => $value,
+            is_string($value) => $this->sanitizeString($value),
+            $value instanceof DateTimeInterface => $value->format(DateTimeInterface::ATOM),
+            $value instanceof BackedEnum => $value->value,
+            $value instanceof UnitEnum => $value->name,
+            is_array($value) => $this->sanitizeArray($value, $depth),
+            is_resource($value) => sprintf('[resource:%s]', get_resource_type($value)),
+            is_object($value) && ($value instanceof Stringable || method_exists($value, '__toString')) => $this->sanitizeString((string) $value),
+            is_object($value) => $value::class,
+            default => sprintf('[%s]', get_debug_type($value)),
+        };
+    }
+
+    private function sanitizeString(string $value): string
+    {
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        return '[invalid utf-8]';
+    }
+
+    /**
+     * @param array<string, mixed> $values
+     *
+     * @return array<string, mixed>
+     */
+    private function sanitizeAuditValues(array $values): array
+    {
+        return $this->sanitizeArray($values, 0);
+    }
+
+    /**
+     * @param array<int, string> $fields
+     *
+     * @return array<int, string>
+     */
+    private function sanitizeChangedFields(array $fields): array
+    {
+        return array_map($this->sanitizeString(...), $fields);
+    }
+
+    private function sanitizeOptionalString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return $this->sanitizeString((string) $value);
     }
 }

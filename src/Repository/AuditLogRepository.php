@@ -8,11 +8,14 @@ use DateTimeImmutable;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
+use InvalidArgumentException;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
+use function in_array;
+use function is_array;
 use function is_string;
 
 /**
@@ -20,6 +23,14 @@ use function is_string;
  */
 class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepositoryInterface
 {
+    private const array STATE_CHANGING_ACTIONS = [
+        AuditLogInterface::ACTION_CREATE,
+        AuditLogInterface::ACTION_UPDATE,
+        AuditLogInterface::ACTION_DELETE,
+        AuditLogInterface::ACTION_SOFT_DELETE,
+        AuditLogInterface::ACTION_RESTORE,
+    ];
+
     public function __construct(ManagerRegistry $registry)
     {
         parent::__construct($registry, AuditLog::class);
@@ -38,6 +49,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
             ->setParameter('class', $entityClass)
             ->setParameter('id', $entityId)
             ->orderBy('a.createdAt', 'DESC')
+            ->addOrderBy('a.id', 'DESC')
             ->getQuery()
             ->getResult();
 
@@ -55,6 +67,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
             ->where('a.transactionHash = :hash')
             ->setParameter('hash', $transactionHash)
             ->orderBy('a.createdAt', 'DESC')
+            ->addOrderBy('a.id', 'DESC')
             ->getQuery()
             ->getResult();
 
@@ -67,11 +80,14 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
     #[Override]
     public function findByUser(string $userId, int $limit = 30): array
     {
+        $this->assertPositiveLimit($limit);
+
         /** @var array<AuditLog> $result */
         $result = $this->createQueryBuilder('a')
             ->where('a.userId = :userId')
             ->setParameter('userId', $userId)
             ->orderBy('a.createdAt', 'DESC')
+            ->addOrderBy('a.id', 'DESC')
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
@@ -93,6 +109,11 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
         return $count;
     }
 
+    /**
+     * @param array<string, mixed> $filters
+     *
+     * @return iterable<AuditLog>
+     */
     #[Override]
     public function findAllWithFilters(array $filters = []): iterable
     {
@@ -101,11 +122,12 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
         $this->applyEntityClassFilter($qb, $filters);
         $this->applyScalarFilters($qb, $filters);
         $this->applyDateRangeFilters($qb, $filters);
+        $qb->orderBy('a.id', 'DESC');
 
-        // For export, we always want the newest first by default
-        $qb->orderBy('a.createdAt', 'DESC');
+        /** @var iterable<AuditLog> $iterable */
+        $iterable = $qb->getQuery()->toIterable();
 
-        return $qb->getQuery()->toIterable();
+        return $iterable;
     }
 
     /**
@@ -118,6 +140,8 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
     #[Override]
     public function findWithFilters(array $filters = [], int $limit = 30): array
     {
+        $this->assertPositiveLimit($limit);
+
         $qb = $this->createQueryBuilder('a')
             ->setMaxResults($limit);
 
@@ -169,7 +193,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
         $scalarFilters = [
             'entityId' => 'a.entityId',
             'userId' => 'a.userId',
-            'action' => 'a.action',
+            'username' => 'a.username',
             'transactionHash' => 'a.transactionHash',
         ];
 
@@ -178,6 +202,16 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
                 $qb->andWhere("$fieldPath = :$filterKey")
                     ->setParameter($filterKey, $filters[$filterKey]);
             }
+        }
+
+        if (isset($filters['action'])) {
+            $qb->andWhere('a.action = :action')
+                ->setParameter('action', $filters['action']);
+        }
+
+        if (isset($filters['actions']) && is_array($filters['actions']) && $filters['actions'] !== []) {
+            $qb->andWhere('a.action IN (:actions)')
+                ->setParameter('actions', $filters['actions']);
         }
     }
 
@@ -202,25 +236,28 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
      */
     private function applyKeysetPagination(QueryBuilder $qb, array $filters): void
     {
-        // Default order: newest first
         $order = 'DESC';
 
         if (isset($filters['afterId'])) {
-            // Next page: get records with ID less than the cursor
             $qb->andWhere('a.id < :afterId')
                 ->setParameter('afterId', $filters['afterId'], 'uuid');
         }
 
         if (isset($filters['beforeId'])) {
-            // Previous page: get records with ID greater than the cursor
             $qb->andWhere('a.id > :beforeId')
                 ->setParameter('beforeId', $filters['beforeId'], 'uuid');
 
-            // Temporarily reverse order to fetch correct records
             $order = 'ASC';
         }
 
         $qb->orderBy('a.id', $order);
+    }
+
+    private function assertPositiveLimit(int $limit): void
+    {
+        if ($limit < 1) {
+            throw new InvalidArgumentException('Limit must be greater than zero.');
+        }
     }
 
     /**
@@ -236,6 +273,7 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
             ->where('a.createdAt < :before')
             ->setParameter('before', $before)
             ->orderBy('a.createdAt', 'ASC')
+            ->addOrderBy('a.id', 'ASC')
             ->getQuery()
             ->getResult();
 
@@ -263,18 +301,60 @@ class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepo
             return false;
         }
 
-        return (int) $this->createQueryBuilder('a')
-            ->select('COUNT(a.id)')
-            ->where('a.entityClass = :class')
+        $revertedLogId = $log->id->toRfc4122();
+
+        /** @var list<AuditLog> $revertLogs */
+        $revertLogs = $this->createQueryBuilder('a')
+            ->where('a.entityClass = :entityClass')
             ->andWhere('a.entityId = :entityId')
             ->andWhere('a.action = :action')
-            ->andWhere('a.context LIKE :revertedId')
-            ->setParameter('class', $log->entityClass)
+            ->andWhere('a.context LIKE :contextKey')
+            ->andWhere('a.context LIKE :revertedLogId')
+            ->setParameter('entityClass', $log->entityClass)
             ->setParameter('entityId', $log->entityId)
             ->setParameter('action', AuditLogInterface::ACTION_REVERT)
-            ->setParameter('revertedId', '%'.$log->id->toRfc4122().'%')
-            ->setMaxResults(1)
+            ->setParameter('contextKey', '%"reverted_log_id"%')
+            ->setParameter('revertedLogId', '%'.$revertedLogId.'%')
+            ->setMaxResults(25)
             ->getQuery()
-            ->getSingleScalarResult() > 0;
+            ->getResult();
+
+        foreach ($revertLogs as $revertLog) {
+            if (($revertLog->context['reverted_log_id'] ?? null) === $revertedLogId) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    #[Override]
+    public function hasNewerStateChangingLogs(AuditLog $log): bool
+    {
+        if (!$this->isStateChangingAction($log->action)) {
+            return false;
+        }
+
+        $logs = $this->findByEntity($log->entityClass, $log->entityId);
+        $foundNewerStateChange = false;
+
+        foreach ($logs as $candidate) {
+            if (!$this->isStateChangingAction($candidate->action)) {
+                continue;
+            }
+
+            if ($candidate->id?->toRfc4122() === $log->id?->toRfc4122()) {
+                return $foundNewerStateChange;
+            }
+
+            $foundNewerStateChange = true;
+        }
+
+        return false;
+    }
+
+    private function isStateChangingAction(string $action): bool
+    {
+        return in_array($action, self::STATE_CHANGING_ACTIONS, true);
     }
 }

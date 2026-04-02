@@ -27,6 +27,8 @@ services:
       tags: ['audit_trail.voter']
     Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface:
       tags: ['audit_trail.context_contributor']
+    Rcsofttech\AuditTrailBundle\Contract\AuditLogAiProcessorInterface:
+      tags: ['audit_trail.ai_processor']
 
 
   Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService:

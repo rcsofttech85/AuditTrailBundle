@@ -5,14 +5,15 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
 use Doctrine\ORM\EntityManagerInterface;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\Car;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\Dog;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpKernel\KernelInterface;
 
-#[AllowMockObjectsWithoutExpectations]
+use function assert;
+use function is_array;
+
 final class InheritanceTest extends KernelTestCase
 {
     protected static function getKernelClass(): string
@@ -38,13 +39,15 @@ final class InheritanceTest extends KernelTestCase
     {
         $kernel = parent::createKernel($options);
         if ($kernel instanceof TestKernel && isset($options['audit_config'])) {
-            $kernel->setAuditConfig($options['audit_config']);
+            assert(is_array($options['audit_config']));
+            /** @var array<string, mixed> $auditConfig */
+            $auditConfig = $options['audit_config'];
+            $kernel->setAuditConfig($auditConfig);
         }
 
         return $kernel;
     }
 
-    #[AllowMockObjectsWithoutExpectations]
     public function testSTIInheritanceAudit(): void
     {
         self::bootKernel();
@@ -68,7 +71,6 @@ final class InheritanceTest extends KernelTestCase
         self::assertSame(4, $newValues['doors']);
     }
 
-    #[AllowMockObjectsWithoutExpectations]
     public function testJTIInheritanceAudit(): void
     {
         self::bootKernel();
