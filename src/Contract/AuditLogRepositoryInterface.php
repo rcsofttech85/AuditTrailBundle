@@ -55,4 +55,9 @@ interface AuditLogRepositoryInterface
     public function find(mixed $id): ?object;
 
     public function isReverted(AuditLog $log): bool;
+
+    /**
+     * Returns true when a newer state-changing audit event exists for the same entity.
+     */
+    public function hasNewerStateChangingLogs(AuditLog $log): bool;
 }

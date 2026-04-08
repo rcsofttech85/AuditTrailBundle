@@ -36,6 +36,10 @@ interface AuditLogInterface
 
     public const string CONTEXT_USERNAME = '_audit_username';
 
+    public const string CONTEXT_IP_ADDRESS = '_audit_ip_address';
+
+    public const string CONTEXT_USER_AGENT = '_audit_user_agent';
+
     public string $entityId { get; set; }
 
     /** @var array<string, mixed> */

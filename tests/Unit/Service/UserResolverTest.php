@@ -17,9 +17,16 @@ use Symfony\Component\Security\Core\Authentication\Token\SwitchUserToken;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 
+use function filter_var;
+use function getenv;
+use function gethostbyname;
+use function gethostname;
+use function is_string;
 use function strlen;
 
-class UserResolverTest extends TestCase
+use const FILTER_VALIDATE_IP;
+
+final class UserResolverTest extends TestCase
 {
     public function testGetUserIdFallsBackToCliWhenNoUser(): void
     {
@@ -137,7 +144,7 @@ class UserResolverTest extends TestCase
             trackUserAgent: true
         );
 
-        self::assertEquals('127.0.0.1', $resolver->getIpAddress());
+        self::assertSame('127.0.0.1', $resolver->getIpAddress());
     }
 
     public function testGetIpAddressReturnsNullWhenTrackingDisabled(): void
@@ -150,7 +157,7 @@ class UserResolverTest extends TestCase
     {
         $resolver = $this->createResolver(trackIp: true, trackUserAgent: true);
 
-        self::assertEquals(gethostbyname((string) gethostname()), $resolver->getIpAddress());
+        self::assertSame($this->resolveExpectedCliIpAddress(), $resolver->getIpAddress());
     }
 
     public function testGetUserAgentReturnsHeaderWhenTrackingEnabled(): void
@@ -162,7 +169,7 @@ class UserResolverTest extends TestCase
             trackUserAgent: true
         );
 
-        self::assertEquals('Mozilla/5.0', $resolver->getUserAgent());
+        self::assertSame('Mozilla/5.0', $resolver->getUserAgent());
     }
 
     public function testGetUserAgentReturnsNullWhenTrackingDisabled(): void
@@ -183,7 +190,7 @@ class UserResolverTest extends TestCase
 
         $ua = $resolver->getUserAgent();
         self::assertNotNull($ua);
-        self::assertEquals(500, strlen($ua));
+        self::assertSame(500, strlen($ua));
     }
 
     public function testGetUserAgentFallsBackToCliInCliEnvironment(): void
@@ -367,8 +374,7 @@ class UserResolverTest extends TestCase
     {
         $resolver = $this->createResolver(trackIp: true, trackUserAgent: true);
 
-        $ip = $resolver->getIpAddress();
-        self::assertIsString($ip);
+        self::assertSame($this->resolveExpectedCliIpAddress(), $resolver->getIpAddress());
     }
 
     public function testGetUserAgentInCliWithoutRequestUsesHostname(): void
@@ -515,5 +521,23 @@ class UserResolverTest extends TestCase
         $security->method('getToken')->willReturn($token);
 
         return new UserResolver($security, new RequestStack());
+    }
+
+    private function resolveExpectedCliIpAddress(): ?string
+    {
+        $hostname = gethostname();
+        if ($hostname !== false) {
+            $resolved = gethostbyname($hostname);
+            if (filter_var($resolved, FILTER_VALIDATE_IP) !== false) {
+                return $resolved;
+            }
+        }
+
+        $environmentHost = getenv('HOSTNAME');
+        if (is_string($environmentHost) && filter_var($environmentHost, FILTER_VALIDATE_IP) !== false) {
+            return $environmentHost;
+        }
+
+        return null;
     }
 }

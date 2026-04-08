@@ -6,10 +6,9 @@ namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogMessageFactoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;
-use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -23,18 +22,15 @@ final class QueueAuditTransport implements AuditTransportInterface
         private readonly MessageBusInterface $bus,
         private readonly EventDispatcherInterface $eventDispatcher,
         private readonly AuditIntegrityServiceInterface $integrityService,
-        private readonly AuditLogMessageFactory $messageFactory,
+        private readonly AuditLogMessageFactoryInterface $messageFactory,
         private readonly ?string $apiKey = null,
     ) {
     }
 
-    /**
-     * @param array<string, mixed> $context
-     */
     #[Override]
-    public function send(AuditLog $log, array $context = []): void
+    public function send(AuditTransportContext $context): void
     {
-        $message = $this->messageFactory->createQueueMessage($log, $context);
+        $message = $this->messageFactory->createQueueMessage($context);
 
         $event = new AuditMessageStampEvent($message);
         $this->eventDispatcher->dispatch($event);
@@ -59,8 +55,8 @@ final class QueueAuditTransport implements AuditTransportInterface
     }
 
     #[Override]
-    public function supports(string $phase, array $context = []): bool
+    public function supports(AuditTransportContext $context): bool
     {
-        return $phase === 'post_flush' || $phase === 'post_load';
+        return $context->phase->isAsyncDispatchPhase();
     }
 }

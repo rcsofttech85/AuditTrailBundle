@@ -45,11 +45,15 @@ abstract class AbstractFunctionalTestCase extends KernelTestCase
         if ($kernel instanceof TestKernel) {
             if (isset($options['audit_config'])) {
                 assert(is_array($options['audit_config']));
-                $kernel->setAuditConfig($options['audit_config']);
+                /** @var array<string, mixed> $auditConfig */
+                $auditConfig = $options['audit_config'];
+                $kernel->setAuditConfig($auditConfig);
             }
             if (isset($options['doctrine_config'])) {
                 assert(is_array($options['doctrine_config']));
-                $kernel->setDoctrineConfig($options['doctrine_config']);
+                /** @var array<string, mixed> $doctrineConfig */
+                $doctrineConfig = $options['doctrine_config'];
+                $kernel->setDoctrineConfig($doctrineConfig);
             }
         }
 

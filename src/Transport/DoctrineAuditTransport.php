@@ -4,71 +4,62 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Transport;
 
-use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\UnitOfWork;
 use Override;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
 final class DoctrineAuditTransport implements AuditTransportInterface
 {
     public function __construct(
         private readonly EntityIdResolverInterface $idResolver,
+        private readonly AuditLogWriterInterface $auditLogWriter,
     ) {
     }
 
-    /**
-     * @param array<string, mixed> $context
-     */
     #[Override]
-    public function send(AuditLog $log, array $context = []): void
+    public function send(AuditTransportContext $context): void
     {
-        $phase = $context['phase'] ?? null;
+        if ($context->phase->isOnFlush()) {
+            $this->persistWithinCurrentUnitOfWork($context);
 
-        if ($phase === 'on_flush') {
-            $this->handleOnFlush($log, $context);
-        } elseif ($phase === 'post_flush' || $phase === 'post_load' || $phase === 'batch_flush') {
-            $this->handlePostFlush($log, $context);
+            return;
+        }
+
+        if ($context->phase->isDeferredPersistencePhase()) {
+            $this->persistDeferredAudit($context);
         }
     }
 
-    /**
-     * @param array<string, mixed> $context
-     */
-    private function handleOnFlush(AuditLog $log, array $context): void
+    private function persistWithinCurrentUnitOfWork(AuditTransportContext $context): void
     {
-        /** @var EntityManagerInterface $em */
-        $em = $context['em'];
-        /** @var UnitOfWork $uow */
-        $uow = $context['uow'];
-
-        $em->persist($log);
-        $uow->computeChangeSet($em->getClassMetadata(AuditLog::class), $log);
+        $context->entityManager->persist($context->audit);
+        $context->unitOfWork?->computeChangeSet(
+            $context->entityManager->getClassMetadata(\Rcsofttech\AuditTrailBundle\Entity\AuditLog::class),
+            $context->audit
+        );
     }
 
-    /**
-     * @param array<string, mixed> $context
-     */
-    private function handlePostFlush(AuditLog $log, array $context): void
+    private function persistDeferredAudit(AuditTransportContext $context): void
     {
-        /** @var EntityManagerInterface $em */
-        $em = $context['em'];
-
-        if (!$em->contains($log)) {
-            $em->persist($log);
-        }
-
+        $log = $context->audit;
         $entityId = $this->idResolver->resolve($log, $context);
 
         if ($entityId !== null) {
             $log->entityId = $entityId;
         }
+
+        $this->auditLogWriter->insert($log, $context->entityManager);
     }
 
     #[Override]
-    public function supports(string $phase, array $context = []): bool
+    public function supports(AuditTransportContext $context): bool
     {
+        if ($context->phase->isOnFlush()) {
+            return $context->audit->entityId !== AuditLogInterface::PENDING_ID;
+        }
+
         return true;
     }
 }

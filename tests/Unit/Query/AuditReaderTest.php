@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Query;
 
 use Exception;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
@@ -13,8 +12,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditReader;
 use stdClass;
 
-#[AllowMockObjectsWithoutExpectations]
-class AuditReaderTest extends TestCase
+final class AuditReaderTest extends TestCase
 {
     public function testCreateQueryReturnsAuditQuery(): void
     {
@@ -53,7 +51,7 @@ class AuditReaderTest extends TestCase
         $repository = self::createMock(AuditLogRepositoryInterface::class);
         $repository->expects($this->once())
             ->method('findWithFilters')
-            ->with(self::callback(static fn ($f) => $f['entityClass'] === stdClass::class && $f['entityId'] === '123'), 30)
+            ->with(self::callback(static fn (array $f) => ($f['entityClass'] ?? null) === stdClass::class && ($f['entityId'] ?? null) === '123'), 30)
             ->willReturn([]);
 
         $reader = new AuditReader($repository, $idResolver);

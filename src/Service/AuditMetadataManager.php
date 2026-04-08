@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use Override;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 use Rcsofttech\AuditTrailBundle\Attribute\AuditAccess;
 use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
 
 use function in_array;
 
@@ -17,17 +19,19 @@ final class AuditMetadataManager implements AuditMetadataManagerInterface
      * @param array<string> $ignoredProperties
      */
     public function __construct(
-        private readonly MetadataCache $metadataCache,
+        private readonly MetadataCacheInterface $metadataCache,
         private readonly array $ignoredEntities = [],
         private readonly array $ignoredProperties = [],
     ) {
     }
 
+    #[Override]
     public function getAuditableAttribute(string $class): ?Auditable
     {
         return $this->metadataCache->getAuditableAttribute($class);
     }
 
+    #[Override]
     public function getAuditAccessAttribute(string $class): ?AuditAccess
     {
         return $this->metadataCache->getAuditAccessAttribute($class);
@@ -36,6 +40,7 @@ final class AuditMetadataManager implements AuditMetadataManagerInterface
     /**
      * @return array<string, string>
      */
+    #[Override]
     public function getSensitiveFields(string $class): array
     {
         return $this->metadataCache->getSensitiveFields($class);
@@ -46,6 +51,7 @@ final class AuditMetadataManager implements AuditMetadataManagerInterface
      *
      * @return array<string>
      */
+    #[Override]
     public function getIgnoredProperties(object $entity, array $additionalIgnored = []): array
     {
         $ignored = [...$this->ignoredProperties, ...$additionalIgnored];
@@ -58,6 +64,7 @@ final class AuditMetadataManager implements AuditMetadataManagerInterface
         return array_unique($ignored);
     }
 
+    #[Override]
     public function isEntityIgnored(string $class): bool
     {
         if (in_array($class, $this->ignoredEntities, true)) {

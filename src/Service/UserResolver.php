@@ -12,12 +12,15 @@ use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Security\Core\Authentication\Token\SwitchUserToken;
 
 use function array_key_exists;
+use function filter_var;
 use function function_exists;
 use function get_object_vars;
+use function getenv;
 use function is_scalar;
 use function is_string;
 use function sprintf;
 
+use const FILTER_VALIDATE_IP;
 use const PHP_SAPI;
 
 final readonly class UserResolver implements UserResolverInterface
@@ -59,14 +62,13 @@ final readonly class UserResolver implements UserResolverInterface
         $request = $this->requestStack->getCurrentRequest();
 
         if ($request !== null) {
-            return $this->trackIpAddress ? $request->getClientIp() : null;
+            $ip = $this->trackIpAddress ? $request->getClientIp() : null;
+
+            return $ip !== null && $this->isValidIpAddress($ip) ? $ip : null;
         }
 
         if ($this->trackIpAddress && PHP_SAPI === 'cli') {
-            $hostname = gethostname();
-            if ($hostname !== false) {
-                return gethostbyname($hostname);
-            }
+            return $this->resolveCliIpAddress();
         }
 
         return null;
@@ -147,12 +149,48 @@ final readonly class UserResolver implements UserResolverInterface
 
     private function getServerUser(): ?string
     {
-        $user = $_SERVER['USER'] ?? $_SERVER['USERNAME'] ?? null;
+        $user = $this->readCliUserValue('USER') ?? $this->readCliUserValue('USERNAME');
+
         if (is_string($user) && $user !== '') {
             return 'cli:'.$user;
         }
 
         return null;
+    }
+
+    private function readCliUserValue(string $key): ?string
+    {
+        $value = getenv($key);
+        if (is_string($value) && $value !== '') {
+            return $value;
+        }
+
+        $serverValue = $_SERVER[$key] ?? null;
+
+        return is_string($serverValue) && $serverValue !== '' ? $serverValue : null;
+    }
+
+    private function resolveCliIpAddress(): ?string
+    {
+        $hostname = gethostname();
+        if ($hostname !== false) {
+            $resolved = gethostbyname($hostname);
+            if ($this->isValidIpAddress($resolved)) {
+                return $resolved;
+            }
+        }
+
+        $environmentHost = getenv('HOSTNAME');
+        if (is_string($environmentHost) && $this->isValidIpAddress($environmentHost)) {
+            return $environmentHost;
+        }
+
+        return null;
+    }
+
+    private function isValidIpAddress(string $value): bool
+    {
+        return filter_var($value, FILTER_VALIDATE_IP) !== false;
     }
 
     private function resolveUserIdValue(object $user): ?string

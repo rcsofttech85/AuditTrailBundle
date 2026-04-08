@@ -7,8 +7,8 @@ namespace Rcsofttech\AuditTrailBundle\Command;
 use InvalidArgumentException;
 use JsonException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -32,7 +32,7 @@ abstract class BaseAuditCommand extends Command
     protected const array VALID_ACTIONS = AuditLogInterface::ALL_ACTIONS;
 
     public function __construct(
-        protected readonly AuditLogRepository $auditLogRepository,
+        protected readonly AuditLogRepositoryInterface $auditLogRepository,
     ) {
         parent::__construct();
     }

@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Contract;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 
 interface AuditDispatcherInterface
 {
@@ -18,7 +19,8 @@ interface AuditDispatcherInterface
     public function dispatch(
         AuditLog $audit,
         EntityManagerInterface $em,
-        string $phase,
+        AuditPhase $phase,
         ?UnitOfWork $uow = null,
+        ?object $entity = null,
     ): bool;
 }

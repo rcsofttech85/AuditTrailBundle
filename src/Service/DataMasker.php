@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\DataMaskerInterface;
 
 use function array_key_exists;
 use function is_array;
-use function str_contains;
 use function strtolower;
 
 final class DataMasker implements DataMaskerInterface
@@ -24,19 +24,28 @@ final class DataMasker implements DataMaskerInterface
         'session',
     ];
 
+    private readonly string $sensitiveKeyPattern;
+
+    /**
+     * @param list<string> $sensitiveKeys
+     */
+    public function __construct(array $sensitiveKeys = self::DEFAULT_SENSITIVE_KEYS)
+    {
+        $this->sensitiveKeyPattern = '/'.implode('|', array_map(static fn (string $key): string => preg_quote($key, '/'), $sensitiveKeys)).'/';
+    }
+
     /**
      * @param array<string, mixed> $data
      *
      * @return array<string, mixed>
      */
+    #[Override]
     public function redact(array $data): array
     {
         foreach ($data as $key => $value) {
-            foreach (self::DEFAULT_SENSITIVE_KEYS as $sensitive) {
-                if (str_contains(strtolower($key), $sensitive)) {
-                    $data[$key] = '********';
-                    continue 2;
-                }
+            if (preg_match($this->sensitiveKeyPattern, strtolower($key)) === 1) {
+                $data[$key] = '********';
+                continue;
             }
 
             if (is_array($value)) {
@@ -54,6 +63,7 @@ final class DataMasker implements DataMaskerInterface
      *
      * @return array<string, mixed>
      */
+    #[Override]
     public function mask(array $data, array $sensitiveFields): array
     {
         foreach ($sensitiveFields as $field => $mask) {

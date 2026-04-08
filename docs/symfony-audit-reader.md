@@ -45,10 +45,10 @@ $history = $this->auditReader->getHistoryFor($user);
 foreach ($history as $entry) {
     printf(
         "%s: %s by %s at %s\n",
-        $entry->getAction(),          // create, update, delete
-        $entry->getEntityShortName(), // User
-        $entry->getUsername(),        // admin@example.com
-        $entry->getCreatedAt()->format('Y-m-d H:i:s')
+        $entry->action,          // create, update, delete
+        $entry->entityShortName, // User
+        $entry->username,        // admin@example.com
+        $entry->createdAt->format('Y-m-d H:i:s')
     );
 }
 ```
@@ -60,7 +60,7 @@ foreach ($history as $entry) {
 
 declare(strict_types=1);
 
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 
 // Find all updates to User entities in the last 30 days
 $recentUpdates = $this->auditReader
@@ -72,10 +72,10 @@ $recentUpdates = $this->auditReader
 
 // Find all deletions by a specific admin
 $deletions = $this->auditReader
-    ->byUser(adminUserId: 1)
+    ->byUser('1')
     ->action(
-        AuditLog::ACTION_DELETE,
-        AuditLog::ACTION_SOFT_DELETE
+        AuditLogInterface::ACTION_DELETE,
+        AuditLogInterface::ACTION_SOFT_DELETE
     )
     ->getResults();
 ```
@@ -119,7 +119,7 @@ $entry = $this->auditReader
     ->getFirstResult();
 
 if ($entry) {
-    $diff = $entry->getDiff();
+    $diff = $entry->diff;
     /*
      * Example:
      * [
@@ -135,7 +135,7 @@ if ($entry) {
         echo "Email changed from $oldEmail to $newEmail";
     }
 
-    $changedFields = $entry->getChangedFields(); // ['name', 'email']
+    $changedFields = $entry->changedFields; // ['name', 'email']
 }
 ```
 
@@ -194,7 +194,7 @@ $count = $audits->count();
 $empty = $audits->isEmpty();
 ```
 
-## Pagination
+## Cursor Pagination
 
 ```php
 <?php
@@ -204,8 +204,44 @@ declare(strict_types=1);
 $page1 = $this->auditReader
     ->forEntity(Product::class)
     ->limit(25)
-    ->offset(0)
     ->getResults();
+
+$nextCursor = $this->auditReader
+    ->forEntity(Product::class)
+    ->limit(25)
+    ->getNextCursor();
+
+$page2 = $this->auditReader
+    ->forEntity(Product::class)
+    ->after($nextCursor)
+    ->limit(25)
+    ->getResults();
+```
+
+Cursor and limit rules:
+
+- `limit()` must be greater than `0`, otherwise the query throws an `InvalidArgumentException`.
+- `after()` and `before()` expect a valid audit-log UUID string.
+- `changedField()` supports forward keyset pagination with `after()`, but reverse pagination with `before()` is intentionally rejected because the bundle cannot guarantee stable changed-field filtering in that direction.
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use InvalidArgumentException;
+use LogicException;
+
+try {
+    $this->auditReader
+        ->forEntity(Product::class)
+        ->changedField('price')
+        ->before('not-a-uuid')
+        ->limit(0)
+        ->getResults();
+} catch (InvalidArgumentException|LogicException $e) {
+    // invalid limit, invalid cursor, or unsupported reverse changedField() pagination
+}
 ```
 
 ## Check if matching records exist

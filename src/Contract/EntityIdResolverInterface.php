@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Contract;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 
 interface EntityIdResolverInterface
 {
@@ -15,8 +16,5 @@ interface EntityIdResolverInterface
      */
     public function resolveFromValues(object $entity, array $values, EntityManagerInterface $em): int|string|null;
 
-    /**
-     * @param array<string, mixed> $context
-     */
-    public function resolve(object $object, array $context = []): ?string;
+    public function resolve(object $object, AuditTransportContext $context): ?string;
 }

@@ -62,11 +62,14 @@ class Author
     {
         if (!$this->tags->contains($tag)) {
             $this->tags->add($tag);
+            $tag->addAuthor($this);
         }
     }
 
     public function removeTag(Tag $tag): void
     {
-        $this->tags->removeElement($tag);
+        if ($this->tags->removeElement($tag)) {
+            $tag->removeAuthor($this);
+        }
     }
 }

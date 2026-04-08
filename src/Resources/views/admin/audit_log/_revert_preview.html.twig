@@ -25,8 +25,16 @@
                         <td>
                             {% if value is null %}
                                 <em class="text-muted">null</em>
-                            {% elseif value is iterable %}
+                            {% elseif value is sequence %}
+                                <div class="d-flex flex-column gap-1">
+                                    {% for item in value %}
+                                        <div>{{ item is iterable ? audit_format_json(item) : item }}</div>
+                                    {% endfor %}
+                                </div>
+                            {% elseif value is mapping %}
                                 <pre class="mb-0" style="background:transparent; padding:0; border:none; font-size:inherit;">{{ audit_format_json(value) }}</pre>
+                            {% elseif value is iterable %}
+                                <div>{{ audit_format_json(value) }}</div>
                             {% else %}
                                 {{ value }}
                             {% endif %}

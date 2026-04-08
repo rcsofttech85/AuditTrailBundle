@@ -6,9 +6,15 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditKernelSubscriber;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\CooldownPost;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Event\TerminateEvent;
+use Symfony\Component\HttpKernel\KernelInterface;
+
+use function assert;
 
 final class AuditAccessCooldownTest extends AbstractFunctionalTestCase
 {
@@ -21,7 +27,8 @@ final class AuditAccessCooldownTest extends AbstractFunctionalTestCase
         // Simulate a GET request to allow access logs
         /** @var RequestStack $requestStack */
         $requestStack = self::getContainer()->get(RequestStack::class);
-        $requestStack->push(Request::create('/', 'GET'));
+        $request = Request::create('/', 'GET');
+        $requestStack->push($request);
 
         $post = new CooldownPost();
         $post->setTitle('Deduplication Test');
@@ -34,11 +41,20 @@ final class AuditAccessCooldownTest extends AbstractFunctionalTestCase
 
         // Load the entity multiple times in the same request
         $em->find(CooldownPost::class, $postId);
-        $em->flush(); // Save first log
-
         $em->clear();
         $em->find(CooldownPost::class, $postId);
-        $em->flush(); // Attempt second log (should be skipped)
+
+        $subscriber = $this->getService(AuditKernelSubscriber::class);
+        assert($subscriber instanceof AuditKernelSubscriber);
+
+        $kernel = $this->getService('kernel');
+        assert($kernel instanceof KernelInterface);
+
+        $subscriber->onKernelTerminate(new TerminateEvent(
+            $kernel,
+            $request,
+            new Response()
+        ));
 
         /** @var AuditLog[] $logs */
         $logs = $em->getRepository(AuditLog::class)->findBy([
@@ -59,7 +75,8 @@ final class AuditAccessCooldownTest extends AbstractFunctionalTestCase
         // Simulate a GET request to allow access logs
         /** @var RequestStack $requestStack */
         $requestStack = self::getContainer()->get(RequestStack::class);
-        $requestStack->push(Request::create('/', 'GET'));
+        $request = Request::create('/', 'GET');
+        $requestStack->push($request);
 
         $post = new CooldownPost();
         $post->setTitle('Cooldown Test');
@@ -72,7 +89,18 @@ final class AuditAccessCooldownTest extends AbstractFunctionalTestCase
 
         // First access
         $em->find(CooldownPost::class, $postId);
-        $em->flush(); // Save first access log
+
+        $subscriber = $this->getService(AuditKernelSubscriber::class);
+        assert($subscriber instanceof AuditKernelSubscriber);
+
+        $kernel = $this->getService('kernel');
+        assert($kernel instanceof KernelInterface);
+
+        $subscriber->onKernelTerminate(new TerminateEvent(
+            $kernel,
+            $request,
+            new Response()
+        ));
 
         $logs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => CooldownPost::class,
@@ -84,9 +112,25 @@ final class AuditAccessCooldownTest extends AbstractFunctionalTestCase
         self::bootKernel();
         $em = $this->getEntityManager();
 
+        /** @var RequestStack $requestStack */
+        $requestStack = self::getContainer()->get(RequestStack::class);
+        $secondRequest = Request::create('/', 'GET');
+        $requestStack->push($secondRequest);
+
         // Second access (within cooldown)
         $em->find(CooldownPost::class, $postId);
-        $em->flush();
+
+        $subscriber = $this->getService(AuditKernelSubscriber::class);
+        assert($subscriber instanceof AuditKernelSubscriber);
+
+        $kernel = $this->getService('kernel');
+        assert($kernel instanceof KernelInterface);
+
+        $subscriber->onKernelTerminate(new TerminateEvent(
+            $kernel,
+            $secondRequest,
+            new Response()
+        ));
 
         $logs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => CooldownPost::class,

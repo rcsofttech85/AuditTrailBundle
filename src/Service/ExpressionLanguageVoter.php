@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Override;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
+use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 use Symfony\Component\ExpressionLanguage\ParsedExpression;
@@ -46,7 +47,7 @@ final class ExpressionLanguageVoter implements AuditVoterInterface
     ];
 
     public function __construct(
-        private readonly MetadataCache $metadataCache,
+        private readonly MetadataCacheInterface $metadataCache,
         private readonly UserResolverInterface $userResolver,
         private readonly ?LoggerInterface $logger = null,
     ) {

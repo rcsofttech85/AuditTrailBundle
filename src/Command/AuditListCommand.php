@@ -7,8 +7,8 @@ namespace Rcsofttech\AuditTrailBundle\Command;
 use DateTimeImmutable;
 use Exception;
 use InvalidArgumentException;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Rcsofttech\AuditTrailBundle\Service\AuditRenderer;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -32,7 +32,7 @@ final class AuditListCommand extends BaseAuditCommand
     use ClassNameHelperTrait;
 
     public function __construct(
-        AuditLogRepository $repository,
+        AuditLogRepositoryInterface $repository,
         private readonly AuditRenderer $renderer,
     ) {
         parent::__construct($repository);

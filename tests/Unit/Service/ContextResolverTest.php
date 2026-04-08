@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use ArrayIterator;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface;
@@ -17,12 +16,11 @@ use Rcsofttech\AuditTrailBundle\Service\ContextResolver;
 use RuntimeException;
 use stdClass;
 
-#[AllowMockObjectsWithoutExpectations]
 final class ContextResolverTest extends TestCase
 {
     public function testResolveWithContext(): void
     {
-        $userResolver = $this->createMock(UserResolverInterface::class);
+        $userResolver = self::createStub(UserResolverInterface::class);
         $userResolver->method('getUserId')->willReturn('u1');
         $userResolver->method('getUsername')->willReturn('admin');
         $userResolver->method('getIpAddress')->willReturn('127.0.0.1');
@@ -30,16 +28,16 @@ final class ContextResolverTest extends TestCase
         $userResolver->method('getImpersonatorId')->willReturn('u2');
         $userResolver->method('getImpersonatorUsername')->willReturn('superadmin');
 
-        $dataMasker = $this->createMock(DataMaskerInterface::class);
+        $dataMasker = self::createStub(DataMaskerInterface::class);
         $dataMasker->method('redact')->willReturnArgument(0);
 
-        $contributor = $this->createMock(AuditContextContributorInterface::class);
+        $contributor = self::createStub(AuditContextContributorInterface::class);
         $contributor->method('contribute')->willReturn(['custom' => 'data']);
 
-        $serializer = $this->createMock(ValueSerializerInterface::class);
+        $serializer = self::createStub(ValueSerializerInterface::class);
         $serializer->method('serialize')->willReturnArgument(0);
 
-        $logger = $this->createMock(LoggerInterface::class);
+        $logger = self::createStub(LoggerInterface::class);
 
         $resolver = new ContextResolver(
             $userResolver,
@@ -62,21 +60,60 @@ final class ContextResolverTest extends TestCase
         self::assertSame('TestAgent', $result['userAgent']);
 
         $context = $result['context'];
-        self::assertSame('val', $context['other']);
-        self::assertSame('u2', $context['impersonation']['impersonator_id']);
-        self::assertSame('superadmin', $context['impersonation']['impersonator_username']);
-        self::assertSame('data', $context['custom']);
+        self::assertSame('val', $context['other'] ?? null);
+        self::assertIsArray($context['impersonation'] ?? null);
+        self::assertSame('u2', $context['impersonation']['impersonator_id'] ?? null);
+        self::assertSame('superadmin', $context['impersonation']['impersonator_username'] ?? null);
+        self::assertSame('data', $context['custom'] ?? null);
+    }
+
+    public function testResolvePrefersCapturedIpAndUserAgentFromContext(): void
+    {
+        $userResolver = self::createStub(UserResolverInterface::class);
+        $userResolver->method('getUserId')->willReturn('live_u1');
+        $userResolver->method('getUsername')->willReturn('live_admin');
+        $userResolver->method('getIpAddress')->willReturn(null);
+        $userResolver->method('getUserAgent')->willReturn(null);
+        $userResolver->method('getImpersonatorId')->willReturn(null);
+        $userResolver->method('getImpersonatorUsername')->willReturn(null);
+
+        $dataMasker = self::createStub(DataMaskerInterface::class);
+        $dataMasker->method('redact')->willReturnArgument(0);
+
+        $serializer = self::createStub(ValueSerializerInterface::class);
+        $serializer->method('serialize')->willReturnArgument(0);
+
+        $resolver = new ContextResolver(
+            $userResolver,
+            $dataMasker,
+            $serializer,
+            new ArrayIterator([])
+        );
+
+        $entity = new stdClass();
+        $result = $resolver->resolve($entity, 'access', [], [
+            AuditLogInterface::CONTEXT_USER_ID => 'captured_u1',
+            AuditLogInterface::CONTEXT_USERNAME => 'captured_admin',
+            AuditLogInterface::CONTEXT_IP_ADDRESS => '127.0.0.10',
+            AuditLogInterface::CONTEXT_USER_AGENT => 'CapturedAgent',
+        ]);
+
+        self::assertSame('captured_u1', $result['userId']);
+        self::assertSame('captured_admin', $result['username']);
+        self::assertSame('127.0.0.10', $result['ipAddress']);
+        self::assertSame('CapturedAgent', $result['userAgent']);
+        self::assertSame([], $result['context']);
     }
 
     public function testResolveCatchesExceptionAndLogs(): void
     {
-        $userResolver = $this->createMock(UserResolverInterface::class);
+        $userResolver = self::createStub(UserResolverInterface::class);
         $userResolver->method('getUserId')->willThrowException(new RuntimeException('fail'));
 
-        $dataMasker = $this->createMock(DataMaskerInterface::class);
+        $dataMasker = self::createStub(DataMaskerInterface::class);
         $dataMasker->method('redact')->willReturnArgument(0);
 
-        $serializer = $this->createMock(ValueSerializerInterface::class);
+        $serializer = self::createStub(ValueSerializerInterface::class);
 
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects($this->once())->method('error');

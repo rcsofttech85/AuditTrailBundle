@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Controller\Admin;
 
 use DateTimeImmutable;
+use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Actions;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Assets;
@@ -29,6 +30,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Service\AuditLogAdminRequestMapper;
 use Rcsofttech\AuditTrailBundle\Service\RevertPreviewFormatter;
 use Rcsofttech\AuditTrailBundle\Service\TransactionDrilldownService;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
@@ -40,6 +42,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Throwable;
 
+use function htmlspecialchars;
+use function in_array;
 use function is_scalar;
 use function sprintf;
 
@@ -60,6 +64,37 @@ class AuditLogCrudController extends AbstractCrudController
 
     private const int DRILLDOWN_LIMIT = 15;
 
+    private const array UI_REVERTABLE_ACTIONS = [
+        AuditLogInterface::ACTION_UPDATE,
+        AuditLogInterface::ACTION_CREATE,
+        AuditLogInterface::ACTION_SOFT_DELETE,
+    ];
+
+    private const array ACTION_LABELS = [
+        AuditLogInterface::ACTION_CREATE => 'Create',
+        AuditLogInterface::ACTION_UPDATE => 'Update',
+        AuditLogInterface::ACTION_DELETE => 'Delete',
+        AuditLogInterface::ACTION_SOFT_DELETE => 'Soft Delete',
+        AuditLogInterface::ACTION_RESTORE => 'Restore',
+        AuditLogInterface::ACTION_REVERT => 'Revert',
+        AuditLogInterface::ACTION_ACCESS => 'Access',
+    ];
+
+    private const array ACTION_BADGES = [
+        AuditLogInterface::ACTION_CREATE => 'success',
+        AuditLogInterface::ACTION_UPDATE => 'warning',
+        AuditLogInterface::ACTION_DELETE => 'danger',
+        AuditLogInterface::ACTION_SOFT_DELETE => 'danger',
+        AuditLogInterface::ACTION_RESTORE => 'info',
+        AuditLogInterface::ACTION_REVERT => 'primary',
+        AuditLogInterface::ACTION_ACCESS => 'secondary',
+    ];
+
+    private const array EXPORT_CONTENT_TYPES = [
+        'json' => 'application/json',
+        'csv' => 'text/csv',
+    ];
+
     public function __construct(
         private readonly AuditReverterInterface $reverter,
         private readonly AuditLogRepositoryInterface $repository,
@@ -68,6 +103,8 @@ class AuditLogCrudController extends AbstractCrudController
         private readonly AuditExporterInterface $exporter,
         private readonly RevertPreviewFormatter $formatter,
         private readonly TransactionDrilldownService $drilldownService,
+        private readonly AuditLogAdminRequestMapper $requestMapper,
+        private readonly string $adminPermission,
     ) {
     }
 
@@ -100,7 +137,9 @@ class AuditLogCrudController extends AbstractCrudController
             $entityDto = $responseParameters->get('entity');
             /** @var AuditLog $log */
             $log = $entityDto->getInstance();
-            $responseParameters->set('is_reverted', $this->repository->isReverted($log));
+            $isReverted = $this->repository->isReverted($log);
+            $responseParameters->set('is_reverted', $isReverted);
+            $responseParameters->set('can_revert', $this->isUiRevertable($log, $isReverted));
         }
 
         return $responseParameters;
@@ -111,6 +150,8 @@ class AuditLogCrudController extends AbstractCrudController
     {
         return $actions
             ->disable(Action::NEW, Action::EDIT, Action::DELETE)
+            ->setPermission(Action::INDEX, $this->adminPermission)
+            ->setPermission(Action::DETAIL, $this->adminPermission)
             ->add(Crud::PAGE_INDEX, Action::DETAIL);
     }
 
@@ -123,7 +164,16 @@ class AuditLogCrudController extends AbstractCrudController
     #[Override]
     public function configureFields(string $pageName): iterable
     {
-        yield from $this->configureIndexFields();
+        if ($pageName === Crud::PAGE_INDEX) {
+            yield from $this->configureIndexFields();
+
+            return;
+        }
+
+        if ($pageName !== Crud::PAGE_DETAIL) {
+            return;
+        }
+
         yield from $this->configureOverviewTabFields();
         yield from $this->configureChangesTabFields();
         yield from $this->configureTechnicalContextTabFields();
@@ -134,17 +184,26 @@ class AuditLogCrudController extends AbstractCrudController
      *
      * @param AdminContext<AuditLog> $context
      */
+    #[AdminRoute(path: '/{entityId}/preview-revert', name: 'preview_revert', options: ['methods' => ['GET']])]
     public function previewRevert(AdminContext $context): Response
     {
+        $this->denyAccessUnlessGranted($this->adminPermission);
+
         $auditLog = $this->loadEntityFromContext($context);
 
         if ($auditLog === null) {
             return new Response('<div class="alert alert-danger"><i class="fa fa-times-circle"></i> Audit log not found.</div>', Response::HTTP_NOT_FOUND);
         }
 
+        if (!$this->isUiRevertable($auditLog)) {
+            return new Response(
+                '<div class="alert alert-warning"><i class="fa fa-ban"></i> This audit log is no longer revertable.</div>',
+                Response::HTTP_CONFLICT
+            );
+        }
+
         try {
-            // Optimization: Skip signature verification for preview (it's checked on final revert anyway)
-            $changes = $this->reverter->revert($auditLog, dryRun: true, force: true, verifySignature: false);
+            $changes = $this->reverter->revert($auditLog, dryRun: true, force: true);
 
             $formattedChanges = [];
             foreach ($changes as $field => $value) {
@@ -167,8 +226,11 @@ class AuditLogCrudController extends AbstractCrudController
      *
      * @param AdminContext<AuditLog> $context
      */
+    #[AdminRoute(path: '/{entityId}/revert', name: 'revert', options: ['methods' => ['POST']])]
     public function revertAuditLog(AdminContext $context): RedirectResponse
     {
+        $this->denyAccessUnlessGranted($this->adminPermission);
+
         $request = $context->getRequest();
         if (!$request->isMethod('POST')) {
             throw new MethodNotAllowedHttpException(['POST'], 'Reverting can only be performed via POST.');
@@ -182,7 +244,13 @@ class AuditLogCrudController extends AbstractCrudController
             return $this->redirect($this->generateIndexUrl());
         }
 
-        if (!$this->isCsrfTokenValid('revert', $context->getRequest()->request->getString('_token'))) {
+        if (!$this->isUiRevertable($auditLog)) {
+            $this->addFlash('warning', 'This audit log is no longer revertable.');
+
+            return $this->redirect($this->generateIndexUrl());
+        }
+
+        if (!$this->isCsrfTokenValid('revert', $request->request->getString('_token'))) {
             $this->addFlash('danger', 'Invalid CSRF token.');
 
             return $this->redirect($this->generateIndexUrl());
@@ -207,14 +275,27 @@ class AuditLogCrudController extends AbstractCrudController
      *
      * @param AdminContext<AuditLog> $context
      */
+    #[AdminRoute(path: '/transaction-drilldown', name: 'transaction_drilldown', options: ['methods' => ['GET']])]
     public function transactionDrilldown(AdminContext $context): Response
     {
+        $this->denyAccessUnlessGranted($this->adminPermission);
+
         $transactionHash = $context->getRequest()->query->getString('transactionHash');
         $afterId = $context->getRequest()->query->getString('afterId');
         $beforeId = $context->getRequest()->query->getString('beforeId');
 
         if ($transactionHash === '') {
             $this->addFlash('warning', 'No transaction hash provided.');
+
+            return $this->redirect($this->generateIndexUrl());
+        }
+
+        if (
+            !$this->requestMapper->isValidCursor($afterId)
+            || !$this->requestMapper->isValidCursor($beforeId)
+            || $this->requestMapper->hasConflictingCursors($afterId, $beforeId)
+        ) {
+            $this->addFlash('warning', 'Invalid pagination cursor provided for transaction drill-down.');
 
             return $this->redirect($this->generateIndexUrl());
         }
@@ -236,6 +317,7 @@ class AuditLogCrudController extends AbstractCrudController
     /**
      * @param AdminContext<AuditLog> $context
      */
+    #[AdminRoute(path: '/export/json', name: 'export_json', options: ['methods' => ['GET']])]
     public function exportJson(AdminContext $context): Response
     {
         return $this->doExport($context, 'json');
@@ -244,6 +326,7 @@ class AuditLogCrudController extends AbstractCrudController
     /**
      * @param AdminContext<AuditLog> $context
      */
+    #[AdminRoute(path: '/export/csv', name: 'export_csv', options: ['methods' => ['GET']])]
     public function exportCsv(AdminContext $context): Response
     {
         return $this->doExport($context, 'csv');
@@ -254,6 +337,8 @@ class AuditLogCrudController extends AbstractCrudController
      */
     private function doExport(AdminContext $context, string $format): StreamedResponse
     {
+        $this->denyAccessUnlessGranted($this->adminPermission);
+
         $filters = $this->getFiltersFromRequest($context);
         $fileName = sprintf('audit_logs_%s.%s', new DateTimeImmutable()->format('Y-m-d_His'), $format);
 
@@ -273,7 +358,7 @@ class AuditLogCrudController extends AbstractCrudController
             }
         });
 
-        $response->headers->set('Content-Type', $format === 'json' ? 'application/json' : 'text/csv');
+        $response->headers->set('Content-Type', self::EXPORT_CONTENT_TYPES[$format] ?? 'application/octet-stream');
         $response->headers->set('Content-Disposition', sprintf('attachment; filename="%s"', $fileName));
 
         return $response;
@@ -289,15 +374,8 @@ class AuditLogCrudController extends AbstractCrudController
         $request = $context->getRequest();
         /** @var array<string, array{value?: mixed, comparison?: string}> $filters */
         $filters = $request->query->all()['filters'] ?? [];
-        $processedFilters = [];
 
-        foreach ($filters as $property => $data) {
-            if (isset($data['value']) && $data['value'] !== '') {
-                $processedFilters[$property] = $data['value'];
-            }
-        }
-
-        return $processedFilters;
+        return $this->requestMapper->mapExportFilters($filters);
     }
 
     #[Override]
@@ -319,24 +397,8 @@ class AuditLogCrudController extends AbstractCrudController
         yield IdField::new('id')->onlyOnIndex();
 
         yield ChoiceField::new('action', 'Action')
-            ->setChoices([
-                'Create' => AuditLogInterface::ACTION_CREATE,
-                'Update' => AuditLogInterface::ACTION_UPDATE,
-                'Delete' => AuditLogInterface::ACTION_DELETE,
-                'Soft Delete' => AuditLogInterface::ACTION_SOFT_DELETE,
-                'Restore' => AuditLogInterface::ACTION_RESTORE,
-                'Revert' => AuditLogInterface::ACTION_REVERT,
-                'Access' => AuditLogInterface::ACTION_ACCESS,
-            ])
-            ->renderAsBadges([
-                AuditLogInterface::ACTION_CREATE => 'success',
-                AuditLogInterface::ACTION_UPDATE => 'warning',
-                AuditLogInterface::ACTION_DELETE => 'danger',
-                AuditLogInterface::ACTION_SOFT_DELETE => 'danger',
-                AuditLogInterface::ACTION_RESTORE => 'info',
-                AuditLogInterface::ACTION_REVERT => 'primary',
-                AuditLogInterface::ACTION_ACCESS => 'secondary',
-            ])
+            ->setChoices(array_flip(self::ACTION_LABELS))
+            ->renderAsBadges(self::ACTION_BADGES)
             ->onlyOnIndex();
 
         yield TextField::new('entityClass', 'Entity')
@@ -374,7 +436,6 @@ class AuditLogCrudController extends AbstractCrudController
         yield FormField::addRow();
         yield TextField::new('ipAddress', 'IP Address')
             ->formatValue(static fn ($value): string => ($value !== null && $value !== '') ? (string) (is_scalar($value) || $value instanceof Stringable ? $value : '') : 'N/A')
-            ->renderAsHtml()
             ->onlyOnDetail()
             ->setColumns(6);
 
@@ -440,9 +501,15 @@ class AuditLogCrudController extends AbstractCrudController
     private function loadEntityFromContext(AdminContext $context): ?AuditLog
     {
         $request = $context->getRequest();
-        $entityId = $request->query->get('entityId') ?? $request->attributes->get('entityId');
+        $entityId = $request->query->getString('entityId');
+        if ($entityId === '') {
+            $attributeEntityId = $request->attributes->get('entityId');
+            $entityId = is_scalar($attributeEntityId) || $attributeEntityId instanceof Stringable
+                ? (string) $attributeEntityId
+                : '';
+        }
 
-        if ($entityId === null || $entityId === '') {
+        if ($entityId === '') {
             return null;
         }
 
@@ -450,6 +517,19 @@ class AuditLogCrudController extends AbstractCrudController
         $auditLog = $this->repository->find($entityId);
 
         return $auditLog;
+    }
+
+    private function isUiRevertable(AuditLog $log, ?bool $isReverted = null): bool
+    {
+        if (!in_array($log->action, self::UI_REVERTABLE_ACTIONS, true)) {
+            return false;
+        }
+
+        if ($isReverted ?? $this->repository->isReverted($log)) {
+            return false;
+        }
+
+        return !$this->repository->hasNewerStateChangingLogs($log);
     }
 
     private function generateIndexUrl(): string

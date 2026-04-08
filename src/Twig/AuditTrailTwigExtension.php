@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Twig;
 
+use JsonException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFilter;
@@ -13,6 +14,7 @@ use function is_array;
 use function is_scalar;
 
 use const JSON_PRETTY_PRINT;
+use const JSON_THROW_ON_ERROR;
 use const JSON_UNESCAPED_SLASHES;
 
 /**
@@ -79,9 +81,11 @@ final class AuditTrailTwigExtension extends AbstractExtension
         }
 
         if (is_array($value)) {
-            $json = json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-
-            return $json !== false ? $json : '';
+            try {
+                return json_encode($value, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            } catch (JsonException) {
+                return '[unencodable data]';
+            }
         }
 
         return is_scalar($value) ? (string) $value : '';

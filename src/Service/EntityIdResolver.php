@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\Persistence\Proxy;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use Stringable;
 use Throwable;
 
@@ -28,11 +28,8 @@ final class EntityIdResolver implements EntityIdResolverInterface
     ) {
     }
 
-    /**
-     * @param array<string, mixed> $context
-     */
     #[Override]
-    public function resolve(object $object, array $context = []): ?string
+    public function resolve(object $object, AuditTransportContext $context): ?string
     {
         if (!$object instanceof AuditLogInterface) {
             return null;
@@ -41,7 +38,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
         $currentId = $object->entityId;
 
         if ($currentId !== AuditLogInterface::PENDING_ID) {
-            return (bool) ($context['is_insert'] ?? false) ? $currentId : null;
+            return $context->phase->isOnFlush() ? $currentId : null;
         }
 
         return $this->resolveFromContext($context);
@@ -88,7 +85,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
                 return null;
             }
 
-            return count($ids) > 1
+            return 1 < count($ids)
                 ? json_encode($ids, JSON_THROW_ON_ERROR)
                 : ($ids[0] ?? null);
         } catch (Throwable) {
@@ -117,7 +114,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
         }
 
         if (count($idValues) === 1) {
-            return reset($idValues);
+            return $idValues[0];
         }
 
         return json_encode($idValues, JSON_THROW_ON_ERROR);
@@ -128,14 +125,44 @@ final class EntityIdResolver implements EntityIdResolverInterface
      */
     private function extractEntityIds(object $entity, EntityManagerInterface $em): array
     {
-        if ($entity instanceof Proxy) {
-            $ids = $em->getUnitOfWork()->getEntityIdentifier($entity);
+        try {
+            $meta = $em->getClassMetadata($entity::class);
+            $ids = $meta->getIdentifierValues($entity);
             if ($ids !== []) {
+                /** @var array<string, mixed> $ids */
+                return $ids;
+            }
+        } catch (Throwable) {
+        }
+
+        $uow = $em->getUnitOfWork();
+        if ($uow->isInIdentityMap($entity)) {
+            $ids = $uow->getEntityIdentifier($entity);
+            if ($ids !== []) {
+                /** @var array<string, mixed> $ids */
                 return $ids;
             }
         }
 
-        return $em->getClassMetadata($entity::class)->getIdentifierValues($entity);
+        // Final fallback: Reflection
+        try {
+            $meta = $em->getClassMetadata($entity::class);
+            $idFields = $meta->getIdentifierFieldNames();
+            $idValues = [];
+            foreach ($idFields as $field) {
+                $reflProp = $meta->getReflectionProperty($field);
+                $val = $reflProp?->getValue($entity);
+                if ($val !== null) {
+                    $idValues[$field] = $val;
+                }
+            }
+            if ($idValues !== []) {
+                return $idValues;
+            }
+        } catch (Throwable) {
+        }
+
+        return [];
     }
 
     private function resolveFromMethod(object $entity): ?string
@@ -155,6 +182,9 @@ final class EntityIdResolver implements EntityIdResolverInterface
 
     private function formatId(mixed $id): ?string
     {
+        if ($id === null) {
+            return null;
+        }
         if (is_scalar($id) || $id instanceof Stringable) {
             return (string) $id;
         }
@@ -176,21 +206,23 @@ final class EntityIdResolver implements EntityIdResolverInterface
                 return null;
             }
             $val = $values[$idField];
-            $ids[] = $this->formatId($val) ?? '';
+            $formatted = $this->formatId($val);
+            if ($formatted === null) {
+                return null;
+            }
+
+            $ids[] = $formatted;
         }
 
         return $ids;
     }
 
-    /**
-     * @param array<string, mixed> $context
-     */
-    private function resolveFromContext(array $context): ?string
+    private function resolveFromContext(AuditTransportContext $context): ?string
     {
-        $entity = $context['entity'] ?? null;
-        $em = $context['em'] ?? null;
+        $entity = $context->entity;
+        $em = $context->entityManager;
 
-        if (!is_object($entity) || !$em instanceof EntityManagerInterface) {
+        if (!is_object($entity)) {
             return null;
         }
 

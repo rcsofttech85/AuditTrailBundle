@@ -6,14 +6,17 @@ namespace Rcsofttech\AuditTrailBundle\Query;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use InvalidArgumentException;
+use LogicException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Symfony\Component\Uid\Uuid;
 
 use function array_key_exists;
+use function array_slice;
 use function count;
 use function in_array;
-
-use const PHP_INT_MAX;
+use function sprintf;
 
 /**
  * Fluent, immutable query builder for audit logs.
@@ -26,6 +29,8 @@ use const PHP_INT_MAX;
 readonly class AuditQuery
 {
     private const int DEFAULT_LIMIT = 30;
+
+    private const int FILTER_BATCH_SIZE = 250;
 
     /**
      * @param array<string> $actions
@@ -140,6 +145,10 @@ readonly class AuditQuery
      */
     public function changedField(string ...$fields): self
     {
+        if ($fields !== [] && $this->beforeId !== null) {
+            throw new LogicException('Reverse pagination with changedField() is not supported.');
+        }
+
         return $this->with(['changedFields' => $fields]);
     }
 
@@ -148,6 +157,10 @@ readonly class AuditQuery
      */
     public function limit(int $limit): self
     {
+        if ($limit < 1) {
+            throw new InvalidArgumentException('Limit must be greater than zero.');
+        }
+
         return $this->with(['limit' => $limit]);
     }
 
@@ -156,6 +169,8 @@ readonly class AuditQuery
      */
     public function after(string $id): self
     {
+        $this->assertValidCursor($id);
+
         return $this->with(['afterId' => $id, 'beforeId' => null]);
     }
 
@@ -164,7 +179,20 @@ readonly class AuditQuery
      */
     public function before(string $id): self
     {
+        if ($this->changedFields !== []) {
+            throw new LogicException('Reverse pagination with changedField() is not supported.');
+        }
+
+        $this->assertValidCursor($id);
+
         return $this->with(['afterId' => null, 'beforeId' => $id]);
+    }
+
+    private function assertValidCursor(string $id): void
+    {
+        if (!Uuid::isValid($id)) {
+            throw new InvalidArgumentException(sprintf('Invalid audit cursor "%s". Expected a UUID.', $id));
+        }
     }
 
     /**
@@ -227,14 +255,10 @@ readonly class AuditQuery
      */
     public function count(): int
     {
-        if ($this->changedFields !== []) {
-            return $this->getResults()->count();
-        }
-
         $filters = $this->buildFilters();
         unset($filters['afterId'], $filters['beforeId']);
 
-        return count($this->repository->findWithFilters($filters, PHP_INT_MAX));
+        return $this->countMatchingResults($filters);
     }
 
     /**
@@ -242,9 +266,11 @@ readonly class AuditQuery
      */
     private function fetchLogs(int $limit): array
     {
-        $logs = $this->repository->findWithFilters($this->buildFilters(), $limit);
+        if ($this->changedFields !== []) {
+            return $this->fetchLogsWithChangedFieldFilter($limit);
+        }
 
-        return $this->changedFields !== [] ? $this->filterByChangedFields($logs) : $logs;
+        return $this->repository->findWithFilters($this->buildFilters(), $limit);
     }
 
     /**
@@ -284,6 +310,7 @@ readonly class AuditQuery
             'afterId' => $this->afterId,
             'beforeId' => $this->beforeId,
             'action' => 1 === count($this->actions) ? $this->actions[0] : null,
+            'actions' => count($this->actions) > 1 ? $this->actions : null,
         ], static fn ($v) => $v !== null);
 
         if ($this->since !== null) {
@@ -298,8 +325,82 @@ readonly class AuditQuery
     }
 
     /**
-     * Filter logs by changed fields (post-fetch).
+     * @param array<string, mixed> $filters
+     */
+    private function countMatchingResults(array $filters): int
+    {
+        $count = 0;
+        $cursor = null;
+
+        do {
+            $batch = $this->fetchFilterBatch($filters, $cursor);
+            $count += $this->countBatchMatches($batch);
+            $cursor = $this->resolveBatchCursor($batch);
+        } while ($this->shouldContinueFilteredBatchLoop($batch, $cursor));
+
+        return $count;
+    }
+
+    /**
+     * @return array<AuditLog>
+     */
+    private function fetchLogsWithChangedFieldFilter(int $limit): array
+    {
+        $results = [];
+        $filters = $this->buildFilters();
+        $cursor = $this->afterId;
+
+        do {
+            $batch = $this->fetchFilterBatch($filters, $cursor);
+            $results = [...$results, ...$this->filterByChangedFields($batch)];
+            $cursor = $this->resolveBatchCursor($batch);
+        } while ($limit > count($results) && $this->shouldContinueFilteredBatchLoop($batch, $cursor));
+
+        return array_slice($results, 0, $limit);
+    }
+
+    /**
+     * @param array<string, mixed> $filters
      *
+     * @return array<AuditLog>
+     */
+    private function fetchFilterBatch(array $filters, ?string $cursor): array
+    {
+        $batchFilters = $filters;
+        $batchFilters['afterId'] = $cursor;
+
+        return $this->repository->findWithFilters($batchFilters, self::FILTER_BATCH_SIZE);
+    }
+
+    /**
+     * @param array<AuditLog> $batch
+     */
+    private function countBatchMatches(array $batch): int
+    {
+        return $this->changedFields !== []
+            ? count($this->filterByChangedFields($batch))
+            : count($batch);
+    }
+
+    /**
+     * @param array<AuditLog> $batch
+     */
+    private function resolveBatchCursor(array $batch): ?string
+    {
+        $lastLog = $batch[array_key_last($batch)] ?? null;
+
+        return $lastLog?->id?->toRfc4122();
+    }
+
+    /**
+     * @param array<AuditLog> $batch
+     */
+    private function shouldContinueFilteredBatchLoop(array $batch, ?string $cursor): bool
+    {
+        return $batch !== [] && $cursor !== null && count($batch) === self::FILTER_BATCH_SIZE;
+    }
+
+    /**
      * @param array<AuditLog> $logs
      *
      * @return array<AuditLog>
@@ -308,7 +409,7 @@ readonly class AuditQuery
     {
         return array_values(array_filter($logs, fn (AuditLog $log) => array_any(
             $this->changedFields,
-            static fn ($f) => in_array($f, $log->changedFields ?? [], true)
+            static fn ($field) => in_array($field, $log->changedFields ?? [], true)
         )));
     }
 }

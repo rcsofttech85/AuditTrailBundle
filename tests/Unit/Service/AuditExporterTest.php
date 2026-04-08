@@ -6,14 +6,12 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use DateTimeImmutable;
 use InvalidArgumentException;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditExporter;
 use ReflectionClass;
 use Symfony\Component\Uid\Uuid;
 
-#[AllowMockObjectsWithoutExpectations]
 final class AuditExporterTest extends TestCase
 {
     private AuditExporter $exporter;
@@ -41,7 +39,6 @@ final class AuditExporterTest extends TestCase
 
         $reflection = new ReflectionClass($log);
         $property = $reflection->getProperty('id');
-        $property->setAccessible(true);
         $property->setValue($log, Uuid::v7());
 
         $audits = [$log];
@@ -102,8 +99,8 @@ final class AuditExporterTest extends TestCase
         // This direct call will kill the PublicVisibility mutant on formatAsJson
         $json = $this->exporter->formatAsJson([$log1, $log2]);
 
+        /** @var array<int, array<string, mixed>> $decoded */
         $decoded = json_decode($json, true);
-        self::assertIsArray($decoded);
         self::assertCount(2, $decoded);
 
         self::assertSame('User', $decoded[0]['entity_class']);

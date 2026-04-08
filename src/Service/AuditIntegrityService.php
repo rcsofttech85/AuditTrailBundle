@@ -89,9 +89,11 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
             return false;
         }
 
-        $expectedSignature = $this->generateSignature($log);
+        if ($this->signatureMatches($log, $storedSignature, true)) {
+            return true;
+        }
 
-        return hash_equals($expectedSignature, $storedSignature);
+        return $this->signatureMatches($log, $storedSignature, false);
     }
 
     #[Override]
@@ -109,6 +111,14 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
      */
     private function normalizeData(AuditLog $log): array
     {
+        return $this->normalizeDataForVersion($log, true);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizeDataForVersion(AuditLog $log, bool $includeChangedFields): array
+    {
         $data = [
             'entity_class' => $log->entityClass,
             'entity_id' => $log->entityId,
@@ -124,15 +134,34 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
             'created_at' => $log->createdAt->setTimezone($this->utc)->format('Y-m-d H:i:s'),
         ];
 
+        if ($includeChangedFields) {
+            $data['changed_fields'] = $this->normalizeValues($log->changedFields);
+        }
+
         ksort($data, SORT_STRING);
 
         return $data;
     }
 
+    private function signatureMatches(AuditLog $log, string $storedSignature, bool $includeChangedFields): bool
+    {
+        if ($this->secret === null) {
+            throw new RuntimeException('Cannot verify signature: secret key is not configured.');
+        }
+
+        $payload = json_encode(
+            $this->normalizeDataForVersion($log, $includeChangedFields),
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
+        $expectedSignature = hash_hmac($this->algorithm, $payload, $this->secret);
+
+        return hash_equals($expectedSignature, $storedSignature);
+    }
+
     /**
-     * @param array<string, mixed>|null $values
+     * @param array<mixed>|null $values
      *
-     * @return array<string, mixed>|null
+     * @return array<mixed>|null
      */
     private function normalizeValues(?array $values, int $depth = 0): ?array
     {
@@ -141,7 +170,10 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
         }
 
         if ($depth >= self::MAX_NORMALIZATION_DEPTH) {
-            return ['_error' => 'max_depth_reached'];
+            /** @var array<string, mixed> $normalized */
+            $normalized = ['_error' => 'max_depth_reached'];
+
+            return $normalized;
         }
 
         $normalized = [];
@@ -149,11 +181,11 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
             $normalized[$key] = $this->normalizeValue($value, $depth + 1);
         }
 
-        /** @var array<mixed> $normalized */
         if (!array_is_list($normalized)) {
             ksort($normalized, SORT_STRING);
         }
 
+        /** @var array<mixed> $normalized */
         return $normalized;
     }
 
@@ -199,7 +231,7 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
 
     private function normalizeString(string $value): string
     {
-        if (strlen($value) >= 10 && preg_match('/^\d{4}-\d{2}-\d{2}/', $value) === 1) {
+        if (strlen($value) >= 10 && preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/', $value) === 1) {
             try {
                 $dt = new DateTimeImmutable($value);
 

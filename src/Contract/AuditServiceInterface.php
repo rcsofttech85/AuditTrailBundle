@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Contract;
 
+use Doctrine\ORM\EntityManagerInterface;
 use Rcsofttech\AuditTrailBundle\Attribute\AuditAccess;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
@@ -30,7 +31,11 @@ interface AuditServiceInterface
      *
      * @return array<string, mixed>
      */
-    public function getEntityData(object $entity, array $additionalIgnored = []): array;
+    public function getEntityData(
+        object $entity,
+        array $additionalIgnored = [],
+        ?EntityManagerInterface $entityManager = null,
+    ): array;
 
     /**
      * @param array<string, mixed>|null $oldValues
@@ -43,6 +48,7 @@ interface AuditServiceInterface
         ?array $oldValues = null,
         ?array $newValues = null,
         array $context = [],
+        ?EntityManagerInterface $entityManager = null,
     ): AuditLog;
 
     /**

@@ -6,19 +6,22 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Override;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\EntityDataExtractorInterface;
+use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Throwable;
 
 use function array_key_exists;
 use function in_array;
 
-readonly class EntityDataExtractor
+final readonly class EntityDataExtractor implements EntityDataExtractorInterface
 {
     public function __construct(
         private EntityManagerInterface $entityManager,
         private ValueSerializerInterface $serializer,
-        private MetadataCache $metadataCache,
+        private MetadataCacheInterface $metadataCache,
         private ?LoggerInterface $logger = null,
     ) {
     }
@@ -28,15 +31,17 @@ readonly class EntityDataExtractor
      *
      * @return array<string, mixed>
      */
-    public function extract(object $entity, array $ignored = []): array
+    #[Override]
+    public function extract(object $entity, array $ignored = [], ?EntityManagerInterface $entityManager = null): array
     {
         $class = $entity::class;
         try {
-            $meta = $this->entityManager->getClassMetadata($class);
+            $entityManager ??= $this->entityManager;
+            $meta = $entityManager->getClassMetadata($class);
             $data = [];
 
             $this->processFields($meta, $entity, $ignored, $data);
-            $this->processAssociations($meta, $entity, $ignored, $data);
+            $this->processAssociations($meta, $entity, $ignored, $data, $entityManager);
             $this->applySensitiveMasking($class, $data);
 
             return $data;
@@ -66,9 +71,9 @@ readonly class EntityDataExtractor
                 continue;
             }
 
-            $value = $this->getFieldValueSafely($meta, $entity, $field);
-            if ($value !== null) {
-                $data[$field] = $this->serializer->serialize($value);
+            $resolved = $this->tryGetFieldValue($meta, $entity, $field);
+            if ($resolved['success']) {
+                $data[$field] = $this->serializer->serialize($resolved['value']);
             }
         }
     }
@@ -78,16 +83,26 @@ readonly class EntityDataExtractor
      * @param array<string>         $ignored
      * @param array<string, mixed>  $data
      */
-    private function processAssociations(ClassMetadata $meta, object $entity, array $ignored, array &$data): void
-    {
-        $uow = $this->entityManager->getUnitOfWork();
+    private function processAssociations(
+        ClassMetadata $meta,
+        object $entity,
+        array $ignored,
+        array &$data,
+        EntityManagerInterface $entityManager,
+    ): void {
+        $uow = $entityManager->getUnitOfWork();
 
         foreach ($meta->getAssociationNames() as $assoc) {
             if (in_array($assoc, $ignored, true)) {
                 continue;
             }
 
-            $value = $this->getFieldValueSafely($meta, $entity, $assoc);
+            $resolved = $this->tryGetFieldValue($meta, $entity, $assoc);
+            if (!$resolved['success']) {
+                continue;
+            }
+
+            $value = $resolved['value'];
 
             // Optimization: If it's an uninitialized proxy, extract only the ID to prevent N+1 query
             if ($value instanceof \Doctrine\Persistence\Proxy && !$value->__isInitialized()) {
@@ -115,13 +130,21 @@ readonly class EntityDataExtractor
 
     /**
      * @param ClassMetadata<object> $meta
+     *
+     * @return array{success: bool, value: mixed}
      */
-    private function getFieldValueSafely(ClassMetadata $meta, object $entity, string $field): mixed
+    private function tryGetFieldValue(ClassMetadata $meta, object $entity, string $field): array
     {
         try {
-            return $meta->getFieldValue($entity, $field);
+            return [
+                'success' => true,
+                'value' => $meta->getFieldValue($entity, $field),
+            ];
         } catch (Throwable) {
-            return null;
+            return [
+                'success' => false,
+                'value' => null,
+            ];
         }
     }
 }

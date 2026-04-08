@@ -8,36 +8,19 @@ use DateTime;
 use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
-use ReflectionProperty;
 use stdClass;
 
-#[AllowMockObjectsWithoutExpectations]
-class ChangeProcessorTest extends TestCase
+final class ChangeProcessorTest extends TestCase
 {
-    private AuditMetadataManagerInterface&MockObject $metadataManager;
-
-    private ChangeProcessor $processor;
-
-    protected function setUp(): void
-    {
-        $this->metadataManager = $this->createMock(AuditMetadataManagerInterface::class);
-        $this->processor = new ChangeProcessor(
-            $this->metadataManager,
-            new ValueSerializer(),
-            true,
-            'deletedAt'
-        );
-    }
-
     public function testExtractChanges(): void
     {
+        $metadataManager = self::createStub(AuditMetadataManagerInterface::class);
+        $processor = $this->createProcessor($metadataManager);
         $entity = new stdClass();
         $changeSet = [
             'name' => ['old', 'new'],
@@ -47,18 +30,18 @@ class ChangeProcessorTest extends TestCase
             'password' => ['old_pass', 'new_pass'],
         ];
 
-        $this->metadataManager->method('getSensitiveFields')->with($entity::class)->willReturn(['password' => '***']);
-        $this->metadataManager->method('getIgnoredProperties')->with($entity)->willReturn([]);
+        $metadataManager->method('getSensitiveFields')->willReturn(['password' => '***']);
+        $metadataManager->method('getIgnoredProperties')->willReturn([]);
 
-        $changes = $this->processor->extractChanges($entity, $changeSet);
+        $changes = $processor->extractChanges($entity, $changeSet);
 
-        self::assertEquals([
+        self::assertSame([
             'name' => 'old',
             'age' => 20,
             'password' => '***',
         ], $changes[0]);
 
-        self::assertEquals([
+        self::assertSame([
             'name' => 'new',
             'age' => 21,
             'password' => '***',
@@ -67,6 +50,8 @@ class ChangeProcessorTest extends TestCase
 
     public function testExtractChangesFloatPrecision(): void
     {
+        $metadataManager = self::createStub(AuditMetadataManagerInterface::class);
+        $processor = $this->createProcessor($metadataManager);
         $entity = new stdClass();
         $changeSet = [
             'float_diff' => [1.0, 1.1],
@@ -74,15 +59,15 @@ class ChangeProcessorTest extends TestCase
             'null_same' => [null, null],
         ];
 
-        $this->metadataManager->method('getSensitiveFields')->willReturn([]);
-        $this->metadataManager->method('getIgnoredProperties')->willReturn([]);
+        $metadataManager->method('getSensitiveFields')->willReturn([]);
+        $metadataManager->method('getIgnoredProperties')->willReturn([]);
 
-        $changes = $this->processor->extractChanges($entity, $changeSet);
+        $changes = $processor->extractChanges($entity, $changeSet);
 
         // float_diff should be present
         self::assertArrayHasKey('float_diff', $changes[0]);
-        self::assertEquals(1.0, $changes[0]['float_diff']);
-        self::assertEquals(1.1, $changes[1]['float_diff']);
+        self::assertSame(1.0, $changes[0]['float_diff']);
+        self::assertSame(1.1, $changes[1]['float_diff']);
 
         // float_same should be absent (difference < 1e-9)
         self::assertArrayNotHasKey('float_same', $changes[0]);
@@ -91,33 +76,29 @@ class ChangeProcessorTest extends TestCase
 
     public function testDetermineUpdateAction(): void
     {
+        $processor = $this->createProcessor();
         // Normal update
-        self::assertEquals(
+        self::assertSame(
             AuditLogInterface::ACTION_UPDATE,
-            $this->processor->determineUpdateAction(['name' => ['old', 'new']])
+            $processor->determineUpdateAction(['name' => ['old', 'new']])
         );
 
         // Restore (deletedAt: not null -> null)
-        self::assertEquals(
+        self::assertSame(
             AuditLogInterface::ACTION_RESTORE,
-            $this->processor->determineUpdateAction(['deletedAt' => [new DateTime(), null]])
+            $processor->determineUpdateAction(['deletedAt' => [new DateTime(), null]])
         );
-        self::assertEquals(
+        self::assertSame(
             AuditLogInterface::ACTION_SOFT_DELETE,
-            $this->processor->determineUpdateAction(['deletedAt' => [null, new DateTime()]])
+            $processor->determineUpdateAction(['deletedAt' => [null, new DateTime()]])
         );
     }
 
     public function testDetermineUpdateActionSoftDeleteDisabled(): void
     {
-        $processor = new ChangeProcessor(
-            $this->metadataManager,
-            new ValueSerializer(),
-            false,
-            'deletedAt'
-        );
+        $processor = $this->createProcessor(enabledSoftDelete: false);
 
-        self::assertEquals(
+        self::assertSame(
             AuditLogInterface::ACTION_UPDATE,
             $processor->determineUpdateAction(['deletedAt' => [new DateTime(), null]])
         );
@@ -125,70 +106,79 @@ class ChangeProcessorTest extends TestCase
 
     public function testDetermineDeletionActionSoftDelete(): void
     {
-        $em = $this->createMock(EntityManagerInterface::class);
-        $meta = $this->createMock(ClassMetadata::class);
+        $processor = $this->createProcessor();
+        $em = self::createStub(EntityManagerInterface::class);
+        $meta = self::createStub(ClassMetadata::class);
         $entity = new class {
             public ?DateTimeInterface $deletedAt = null;
         };
         $entity->deletedAt = new DateTime();
 
         $em->method('getClassMetadata')->willReturn($meta);
-        $meta->method('hasField')->with('deletedAt')->willReturn(true);
+        $meta->method('hasField')->willReturn(true);
+        $meta->method('getFieldValue')->willReturn($entity->deletedAt);
 
-        $reflProp = new ReflectionProperty($entity, 'deletedAt');
-        $meta->method('getReflectionProperty')->with('deletedAt')->willReturn($reflProp);
-
-        $action = $this->processor->determineDeletionAction($em, $entity, true);
-        self::assertEquals(AuditLogInterface::ACTION_SOFT_DELETE, $action);
+        $action = $processor->determineDeletionAction($em, $entity, true);
+        self::assertSame(AuditLogInterface::ACTION_SOFT_DELETE, $action);
     }
 
     public function testDetermineDeletionActionHardDelete(): void
     {
-        $em = $this->createMock(EntityManagerInterface::class);
-        $meta = $this->createMock(ClassMetadata::class);
+        $processor = $this->createProcessor();
+        $em = self::createStub(EntityManagerInterface::class);
+        $meta = self::createStub(ClassMetadata::class);
         $entity = new class {
             public ?DateTimeInterface $deletedAt = null;
         };
         $entity->deletedAt = null;
 
         $em->method('getClassMetadata')->willReturn($meta);
-        $meta->method('hasField')->with('deletedAt')->willReturn(true);
+        $meta->method('hasField')->willReturn(true);
+        $meta->method('getFieldValue')->willReturn($entity->deletedAt);
 
-        $reflProp = new ReflectionProperty($entity, 'deletedAt');
-        $meta->method('getReflectionProperty')->with('deletedAt')->willReturn($reflProp);
-
-        $action = $this->processor->determineDeletionAction($em, $entity, true);
-        self::assertEquals(AuditLogInterface::ACTION_DELETE, $action);
+        $action = $processor->determineDeletionAction($em, $entity, true);
+        self::assertSame(AuditLogInterface::ACTION_DELETE, $action);
     }
 
     public function testDetermineDeletionActionHardDeleteDisabled(): void
     {
-        $em = $this->createMock(EntityManagerInterface::class);
-        $meta = $this->createMock(ClassMetadata::class);
+        $processor = $this->createProcessor();
+        $em = self::createStub(EntityManagerInterface::class);
+        $meta = self::createStub(ClassMetadata::class);
         $entity = new class {
             public ?DateTimeInterface $deletedAt = null;
         };
         $entity->deletedAt = null; // Not soft deleted
 
         $em->method('getClassMetadata')->willReturn($meta);
-        $meta->method('hasField')->with('deletedAt')->willReturn(true);
-        $reflProp = new ReflectionProperty($entity, 'deletedAt');
-        $meta->method('getReflectionProperty')->with('deletedAt')->willReturn($reflProp);
+        $meta->method('hasField')->willReturn(true);
+        $meta->method('getFieldValue')->willReturn($entity->deletedAt);
 
-        $action = $this->processor->determineDeletionAction($em, $entity, false);
+        $action = $processor->determineDeletionAction($em, $entity, false);
         self::assertNull($action);
     }
 
     public function testDetermineDeletionActionNoSoftDeleteField(): void
     {
-        $em = $this->createMock(EntityManagerInterface::class);
-        $meta = $this->createMock(ClassMetadata::class);
+        $processor = $this->createProcessor();
+        $em = self::createStub(EntityManagerInterface::class);
+        $meta = self::createStub(ClassMetadata::class);
         $entity = new stdClass();
 
         $em->method('getClassMetadata')->willReturn($meta);
-        $meta->method('hasField')->with('deletedAt')->willReturn(false);
+        $meta->method('hasField')->willReturn(false);
 
-        $action = $this->processor->determineDeletionAction($em, $entity, true);
-        self::assertEquals(AuditLogInterface::ACTION_DELETE, $action);
+        $action = $processor->determineDeletionAction($em, $entity, true);
+        self::assertSame(AuditLogInterface::ACTION_DELETE, $action);
+    }
+
+    private function createProcessor(?AuditMetadataManagerInterface $metadataManager = null, bool $enabledSoftDelete = true): ChangeProcessor
+    {
+        return new ChangeProcessor(
+            $metadataManager ?? self::createStub(AuditMetadataManagerInterface::class),
+            new ValueSerializer(self::createStub(\Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface::class)),
+            $enabledSoftDelete,
+            'deletedAt'
+        );
     }
 }

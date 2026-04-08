@@ -11,6 +11,7 @@ use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
 use Doctrine\ORM\Events;
 use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditAccessHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
@@ -18,11 +19,12 @@ use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
-use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
+use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Symfony\Contracts\Service\ResetInterface;
 use Throwable;
 
+use function count;
 use function sprintf;
 
 #[AsDoctrineListener(event: Events::onFlush, priority: 1000)]
@@ -31,9 +33,9 @@ use function sprintf;
 #[AsDoctrineListener(event: Events::onClear)]
 final class AuditSubscriber implements ResetInterface
 {
-    private bool $isFlushing = false;
+    private bool $onFlushProcessing = false;
 
-    private int $recursionDepth = 0;
+    private int $postFlushDepth = 0;
 
     public function __construct(
         private readonly AuditServiceInterface $auditService,
@@ -42,7 +44,7 @@ final class AuditSubscriber implements ResetInterface
         private readonly ScheduledAuditManagerInterface $auditManager,
         private readonly EntityProcessorInterface $entityProcessor,
         private readonly TransactionIdGenerator $transactionIdGenerator,
-        private readonly AuditAccessHandler $accessHandler,
+        private readonly AuditAccessHandlerInterface $accessHandler,
         private readonly EntityIdResolverInterface $idResolver,
         private readonly ?LoggerInterface $logger = null,
         private readonly bool $enableHardDelete = true,
@@ -56,11 +58,11 @@ final class AuditSubscriber implements ResetInterface
 
     public function onFlush(OnFlushEventArgs $args): void
     {
-        if (!$this->auditManager->isEnabled() || $this->isFlushing || $this->recursionDepth > 0) {
+        if (!$this->auditManager->isEnabled() || $this->onFlushProcessing || $this->postFlushDepth > 0) {
             return;
         }
 
-        ++$this->recursionDepth;
+        $this->onFlushProcessing = true;
 
         try {
             $em = $args->getObjectManager();
@@ -74,13 +76,16 @@ final class AuditSubscriber implements ResetInterface
             $this->entityProcessor->processCollectionUpdates($em, $uow, $uow->getScheduledCollectionDeletions());
             $this->entityProcessor->processDeletions($em, $uow);
         } finally {
-            --$this->recursionDepth;
+            $this->onFlushProcessing = false;
         }
     }
 
     public function postLoad(PostLoadEventArgs $args): void
     {
-        if (!$this->auditManager->isEnabled()) {
+        // Skip postLoad-driven access auditing while we are already inside
+        // flush/postFlush processing to avoid re-entrant audit work caused by
+        // Doctrine hydration during the audit dispatch lifecycle itself.
+        if (!$this->auditManager->isEnabled() || $this->onFlushProcessing || $this->postFlushDepth > 0) {
             return;
         }
 
@@ -89,77 +94,95 @@ final class AuditSubscriber implements ResetInterface
 
     public function postFlush(PostFlushEventArgs $args): void
     {
-        if (!$this->auditManager->isEnabled() || $this->isFlushing || $this->recursionDepth > 0) {
+        if (!$this->auditManager->isEnabled() || $this->postFlushDepth > 0) {
             return;
         }
 
-        ++$this->recursionDepth;
+        ++$this->postFlushDepth;
 
         try {
             $em = $args->getObjectManager();
-            $hasDeletions = $this->processPendingDeletions($em);
-            $hasScheduled = $this->processScheduledAudits($em);
+            $failedPendingDeletions = $this->processPendingDeletions($em);
+            $failedScheduledAudits = $this->processScheduledAudits($em);
 
             $this->auditManager->clear();
-            $this->transactionIdGenerator->reset();
-
-            if ($hasDeletions || $hasScheduled) {
-                $this->flushNewAuditsIfNeeded($em, true);
+            $this->retainFailedDispatches($failedPendingDeletions, $failedScheduledAudits);
+            if ($failedPendingDeletions !== [] || $failedScheduledAudits !== []) {
+                $this->logger?->warning('Audit delivery deferred until a later flush.', [
+                    'pending_deletions' => count($failedPendingDeletions),
+                    'scheduled_audits' => count($failedScheduledAudits),
+                ]);
             }
+
+            $this->transactionIdGenerator->reset();
         } finally {
-            --$this->recursionDepth;
+            --$this->postFlushDepth;
         }
     }
 
-    private function processPendingDeletions(EntityManagerInterface $em): bool
+    /**
+     * @return list<array{entity: object, data: array<string, mixed>, is_managed: bool}>
+     */
+    private function processPendingDeletions(EntityManagerInterface $em): array
     {
-        $hasNewAudits = false;
-        // @phpstan-ignore-next-line
-        foreach ($this->auditManager->pendingDeletions as $pending) {
-            $action = $this->changeProcessor->determineDeletionAction($em, $pending['entity'], $this->enableHardDelete);
+        /** @var list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $failedPendingDeletions */
+        $failedPendingDeletions = [];
+        /** @var list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $pendingDeletions */
+        $pendingDeletions = $this->auditManager->getPendingDeletions();
+        foreach ($pendingDeletions as $pending) {
+            $entity = $pending['entity'];
+            $oldData = $pending['data'];
+
+            $action = $this->changeProcessor->determineDeletionAction($em, $entity, $this->enableHardDelete);
             if ($action === null) {
                 continue;
             }
 
             $newData = $action === AuditLogInterface::ACTION_SOFT_DELETE
-                ? $this->auditService->getEntityData($pending['entity'])
+                ? $this->auditService->getEntityData($entity, [], $em)
                 : null;
-            $audit = $this->auditService->createAuditLog($pending['entity'], $action, $pending['data'], $newData);
+            $audit = $this->auditService->createAuditLog($entity, $action, $oldData, $newData, [], $em);
 
-            $this->dispatcher->dispatch($audit, $em, 'post_flush');
-
-            $this->markAsAudited($pending['entity'], $em);
-
-            if ($em->contains($audit)) {
-                $hasNewAudits = true;
+            if (!$this->dispatcher->dispatch($audit, $em, AuditPhase::PostFlush, null, $entity)) {
+                $failedPendingDeletions[] = $pending;
+                continue;
             }
+
+            $this->markAsAudited($entity, $em);
         }
 
-        return $hasNewAudits;
+        return $failedPendingDeletions;
     }
 
-    private function processScheduledAudits(EntityManagerInterface $em): bool
+    /**
+     * @return array<int, array{entity: object, audit: \Rcsofttech\AuditTrailBundle\Entity\AuditLog, is_insert: bool}>
+     */
+    private function processScheduledAudits(EntityManagerInterface $em): array
     {
-        $hasNewAudits = false;
-        // @phpstan-ignore-next-line
-        foreach ($this->auditManager->scheduledAudits as $scheduled) {
+        /** @var array<int, array{entity: object, audit: \Rcsofttech\AuditTrailBundle\Entity\AuditLog, is_insert: bool}> $failedScheduledAudits */
+        $failedScheduledAudits = [];
+        /** @var array<int, array{entity: object, audit: \Rcsofttech\AuditTrailBundle\Entity\AuditLog, is_insert: bool}> $scheduledAudits */
+        $scheduledAudits = $this->auditManager->getScheduledAudits();
+        foreach ($scheduledAudits as $scheduled) {
+            $entity = $scheduled['entity'];
+            $audit = $scheduled['audit'];
+
             if ($scheduled['is_insert']) {
-                $id = $this->idResolver->resolveFromEntity($scheduled['entity'], $em);
+                $id = $this->idResolver->resolveFromEntity($entity, $em);
                 if ($id !== AuditLogInterface::PENDING_ID) {
-                    $scheduled['audit']->entityId = $id;
+                    $audit->entityId = $id;
                 }
             }
 
-            $this->dispatcher->dispatch($scheduled['audit'], $em, 'post_flush');
-
-            $this->markAsAudited($scheduled['entity'], $em);
-
-            if ($em->contains($scheduled['audit'])) {
-                $hasNewAudits = true;
+            if (!$this->dispatcher->dispatch($audit, $em, AuditPhase::PostFlush, null, $entity)) {
+                $failedScheduledAudits[] = $scheduled;
+                continue;
             }
+
+            $this->markAsAudited($entity, $em);
         }
 
-        return $hasNewAudits;
+        return $failedScheduledAudits;
     }
 
     public function onClear(): void
@@ -171,8 +194,8 @@ final class AuditSubscriber implements ResetInterface
     {
         $this->auditManager->clear();
         $this->transactionIdGenerator->reset();
-        $this->isFlushing = false;
-        $this->recursionDepth = 0;
+        $this->onFlushProcessing = false;
+        $this->postFlushDepth = 0;
         $this->accessHandler->reset();
     }
 
@@ -180,23 +203,28 @@ final class AuditSubscriber implements ResetInterface
     {
         $id = $this->idResolver->resolveFromEntity($entity, $em);
         if ($id !== AuditLogInterface::PENDING_ID) {
-            $this->accessHandler->markAsAudited(sprintf('%s:%s', $entity::class, $id));
+            try {
+                $class = $em->getClassMetadata($entity::class)->getName();
+            } catch (Throwable) {
+                $class = $entity::class;
+            }
+
+            $this->accessHandler->markAsAudited(sprintf('%s:%s', $class, $id));
         }
     }
 
-    private function flushNewAuditsIfNeeded(EntityManagerInterface $em, bool $hasNewAudits): void
+    /**
+     * @param list<array{entity: object, data: array<string, mixed>, is_managed: bool}>                               $failedPendingDeletions
+     * @param array<int, array{entity: object, audit: \Rcsofttech\AuditTrailBundle\Entity\AuditLog, is_insert: bool}> $failedScheduledAudits
+     */
+    private function retainFailedDispatches(array $failedPendingDeletions, array $failedScheduledAudits): void
     {
-        if (!$hasNewAudits) {
-            return;
+        if ($failedPendingDeletions !== []) {
+            $this->auditManager->replacePendingDeletions($failedPendingDeletions);
         }
 
-        $this->isFlushing = true;
-        try {
-            $em->flush();
-        } catch (Throwable $e) {
-            $this->logger?->critical('Failed to flush audits', ['exception' => $e->getMessage()]);
-        } finally {
-            $this->isFlushing = false;
+        if ($failedScheduledAudits !== []) {
+            $this->auditManager->replaceScheduledAudits($failedScheduledAudits);
         }
     }
 }

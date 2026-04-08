@@ -5,41 +5,39 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
 use DateTimeInterface;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditPurgeCommand;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
-use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Symfony\Component\Console\Tester\CommandTester;
 
-#[AllowMockObjectsWithoutExpectations]
-class AuditPurgeCommandTest extends TestCase
+final class AuditPurgeCommandTest extends TestCase
 {
     use ConsoleOutputTestTrait;
 
-    private AuditLogRepository&MockObject $repository;
+    private AuditLogRepositoryInterface $repository;
 
-    private AuditIntegrityServiceInterface&MockObject $integrityService;
+    private AuditIntegrityServiceInterface $integrityService;
 
     private CommandTester $commandTester;
 
     protected function setUp(): void
     {
-        $this->repository = $this->createMock(AuditLogRepository::class);
-        $this->integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
+        $this->repository = self::createStub(AuditLogRepositoryInterface::class);
+        $this->integrityService = self::createStub(AuditIntegrityServiceInterface::class);
         $this->integrityService->method('isEnabled')->willReturn(false);
-        $command = new AuditPurgeCommand($this->repository, $this->integrityService);
-        $this->commandTester = new CommandTester($command);
+        $this->resetCommandTester();
     }
 
     public function testPurgeRequiresBeforeOption(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->never())
             ->method('countOlderThan');
 
-        $this->repository
+        $repository
             ->expects($this->never())
             ->method('deleteOldLogs');
 
@@ -53,11 +51,12 @@ class AuditPurgeCommandTest extends TestCase
 
     public function testPurgeWithInvalidDate(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->never())
             ->method('countOlderThan');
 
-        $this->repository
+        $repository
             ->expects($this->never())
             ->method('deleteOldLogs');
 
@@ -73,13 +72,14 @@ class AuditPurgeCommandTest extends TestCase
 
     public function testPurgeWithNoLogsToDelete(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('countOlderThan')
             ->with(self::isInstanceOf(DateTimeInterface::class))
             ->willReturn(0);
 
-        $this->repository
+        $repository
             ->expects($this->never())
             ->method('deleteOldLogs');
 
@@ -99,13 +99,14 @@ class AuditPurgeCommandTest extends TestCase
 
     public function testPurgeDryRun(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('countOlderThan')
             ->with(self::isInstanceOf(DateTimeInterface::class))
             ->willReturn(100);
 
-        $this->repository
+        $repository
             ->expects($this->never())
             ->method('deleteOldLogs');
 
@@ -124,13 +125,14 @@ class AuditPurgeCommandTest extends TestCase
 
     public function testPurgeWithForce(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('countOlderThan')
             ->with(self::isInstanceOf(DateTimeInterface::class))
             ->willReturn(50);
 
-        $this->repository
+        $repository
             ->expects($this->once())
             ->method('deleteOldLogs')
             ->with(self::isInstanceOf(DateTimeInterface::class))
@@ -150,13 +152,14 @@ class AuditPurgeCommandTest extends TestCase
 
     public function testPurgeCancelledByUser(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('countOlderThan')
             ->with(self::isInstanceOf(DateTimeInterface::class))
             ->willReturn(50);
 
-        $this->repository
+        $repository
             ->expects($this->never())
             ->method('deleteOldLogs');
 
@@ -172,12 +175,13 @@ class AuditPurgeCommandTest extends TestCase
 
     public function testPurgeDefaultCancelled(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('countOlderThan')
             ->willReturn(50);
 
-        $this->repository
+        $repository
             ->expects($this->never())
             ->method('deleteOldLogs');
 
@@ -194,13 +198,14 @@ class AuditPurgeCommandTest extends TestCase
 
     public function testPurgeConfirmedByUser(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('countOlderThan')
             ->with(self::isInstanceOf(DateTimeInterface::class))
             ->willReturn(75);
 
-        $this->repository
+        $repository
             ->expects($this->once())
             ->method('deleteOldLogs')
             ->with(self::isInstanceOf(DateTimeInterface::class))
@@ -220,7 +225,8 @@ class AuditPurgeCommandTest extends TestCase
 
     public function testPurgeWithSpecificDateFormat(): void
     {
-        $this->repository
+        $repository = $this->useRepositoryMock();
+        $repository
             ->expects($this->once())
             ->method('countOlderThan')
             ->with(self::callback(static function (DateTimeInterface $date) {
@@ -228,7 +234,7 @@ class AuditPurgeCommandTest extends TestCase
             }))
             ->willReturn(25);
 
-        $this->repository
+        $repository
             ->expects($this->once())
             ->method('deleteOldLogs')
             ->with(self::isInstanceOf(DateTimeInterface::class))
@@ -244,13 +250,14 @@ class AuditPurgeCommandTest extends TestCase
 
     public function testPurgeWithLargeCountWarning(): void
     {
+        $repository = $this->useRepositoryMock();
         // Test boundary 10000
-        $this->repository
+        $repository
             ->expects($this->exactly(2))
             ->method('countOlderThan')
             ->willReturnOnConsecutiveCalls(10000, 10001);
 
-        $this->repository
+        $repository
             ->expects($this->exactly(2))
             ->method('deleteOldLogs')
             ->willReturn(10000);
@@ -265,5 +272,20 @@ class AuditPurgeCommandTest extends TestCase
         $this->commandTester->setInputs(['yes']);
         $this->commandTester->execute(['--before' => '30 days ago']);
         self::assertStringContainsString('large operation', $this->normalizeOutput($this->commandTester));
+    }
+
+    private function useRepositoryMock(): AuditLogRepositoryInterface&MockObject
+    {
+        $repository = $this->createMock(AuditLogRepositoryInterface::class);
+        $this->repository = $repository;
+        $this->resetCommandTester();
+
+        return $repository;
+    }
+
+    private function resetCommandTester(): void
+    {
+        $command = new AuditPurgeCommand($this->repository, $this->integrityService);
+        $this->commandTester = new CommandTester($command);
     }
 }

@@ -15,7 +15,7 @@ use Symfony\Component\HttpKernel\KernelInterface;
 use function assert;
 use function is_string;
 
-class AuditCommandTest extends AbstractFunctionalTestCase
+final class AuditCommandTest extends AbstractFunctionalTestCase
 {
     public function testAuditListCommand(): void
     {

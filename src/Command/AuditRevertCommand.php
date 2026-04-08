@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Command;
 
 use Exception;
+use InvalidArgumentException;
+use JsonException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -22,6 +24,7 @@ use function is_string;
 use function sprintf;
 
 use const JSON_PRETTY_PRINT;
+use const JSON_THROW_ON_ERROR;
 
 #[AsCommand(
     name: 'audit:revert',
@@ -30,7 +33,7 @@ use const JSON_PRETTY_PRINT;
 class AuditRevertCommand extends BaseAuditCommand
 {
     public function __construct(
-        AuditLogRepository $auditLogRepository,
+        AuditLogRepositoryInterface $auditLogRepository,
         private readonly AuditReverterInterface $auditReverter,
     ) {
         parent::__construct($auditLogRepository);
@@ -73,8 +76,16 @@ class AuditRevertCommand extends BaseAuditCommand
     {
         $io = new SymfonyStyle($input, $output);
 
-        $auditId = $this->parseAuditId($input);
+        try {
+            $auditId = $this->parseAuditId($input);
+        } catch (InvalidArgumentException $e) {
+            $io->error($e->getMessage());
+
+            return Command::FAILURE;
+        }
+
         $context = $this->parseContext($input, $io);
+        $raw = (bool) $input->getOption('raw');
 
         if ($context === null) {
             return Command::FAILURE;
@@ -86,7 +97,9 @@ class AuditRevertCommand extends BaseAuditCommand
             return Command::FAILURE;
         }
 
-        $this->displayRevertHeader($io, $auditId, $log, (bool) $input->getOption('dry-run'));
+        if (!$raw) {
+            $this->displayRevertHeader($io, $auditId, $log, (bool) $input->getOption('dry-run'));
+        }
 
         return $this->performRevert($io, $input, $log, $context);
     }
@@ -135,7 +148,7 @@ class AuditRevertCommand extends BaseAuditCommand
     private function displayRevertResult(SymfonyStyle $io, array $changes, bool $raw): void
     {
         if ($raw) {
-            $io->writeln((string) json_encode($changes, JSON_PRETTY_PRINT));
+            $io->writeln($this->encodeJsonValue($changes, JSON_PRETTY_PRINT));
 
             return;
         }
@@ -150,8 +163,17 @@ class AuditRevertCommand extends BaseAuditCommand
         $io->section('Changes Applied:');
 
         foreach ($changes as $field => $value) {
-            $valStr = is_scalar($value) ? (string) $value : json_encode($value);
+            $valStr = is_scalar($value) ? (string) $value : $this->encodeJsonValue($value);
             $io->writeln(sprintf(' - %s: %s', $field, $valStr));
+        }
+    }
+
+    private function encodeJsonValue(mixed $value, int $flags = 0): string
+    {
+        try {
+            return json_encode($value, $flags | JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return '[unencodable data]';
         }
     }
 }

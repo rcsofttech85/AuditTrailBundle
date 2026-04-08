@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Factory;
 
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogMessageFactoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\PersistAuditLogMessage;
+use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 
 /**
  * Centralises the creation of message DTOs from AuditLog entities.
@@ -15,7 +16,7 @@ use Rcsofttech\AuditTrailBundle\Message\PersistAuditLogMessage;
  * Both QueueAuditTransport and AsyncDatabaseAuditTransport delegate here,
  * eliminating duplicated entity-ID resolution and DTO mapping logic (DRY).
  */
-readonly class AuditLogMessageFactory
+final readonly class AuditLogMessageFactory implements AuditLogMessageFactoryInterface
 {
     public function __construct(
         private EntityIdResolverInterface $idResolver,
@@ -24,33 +25,26 @@ readonly class AuditLogMessageFactory
 
     /**
      * Create a message for the Queue transport (external dispatch).
-     *
-     * @param array<string, mixed> $context
      */
-    public function createQueueMessage(AuditLog $log, array $context = []): AuditLogMessage
+    public function createQueueMessage(AuditTransportContext $context): AuditLogMessage
     {
-        $entityId = $this->resolveEntityId($log, $context);
+        $entityId = $this->resolveEntityId($context);
 
-        return AuditLogMessage::createFromAuditLog($log, $entityId);
+        return AuditLogMessage::createFromAuditLog($context->audit, $entityId);
     }
 
     /**
      * Create a message for the async Database transport (internal persistence).
-     *
-     * @param array<string, mixed> $context
      */
-    public function createPersistMessage(AuditLog $log, array $context = []): PersistAuditLogMessage
+    public function createPersistMessage(AuditTransportContext $context): PersistAuditLogMessage
     {
-        $entityId = $this->resolveEntityId($log, $context);
+        $entityId = $this->resolveEntityId($context);
 
-        return PersistAuditLogMessage::createFromAuditLog($log, $entityId);
+        return PersistAuditLogMessage::createFromAuditLog($context->audit, $entityId);
     }
 
-    /**
-     * @param array<string, mixed> $context
-     */
-    private function resolveEntityId(AuditLog $log, array $context): string
+    private function resolveEntityId(AuditTransportContext $context): string
     {
-        return $this->idResolver->resolve($log, $context) ?? $log->entityId;
+        return $this->idResolver->resolve($context->audit, $context) ?? $context->audit->entityId;
     }
 }

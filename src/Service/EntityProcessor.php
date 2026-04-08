@@ -5,19 +5,19 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\PersistentCollection;
 use Doctrine\ORM\UnitOfWork;
+use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
-use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 
-use function in_array;
-use function is_string;
+use function array_key_exists;
+use function is_array;
 
 final readonly class EntityProcessor implements EntityProcessorInterface
 {
@@ -26,15 +26,19 @@ final readonly class EntityProcessor implements EntityProcessorInterface
         private ChangeProcessorInterface $changeProcessor,
         private AuditDispatcherInterface $dispatcher,
         private ScheduledAuditManagerInterface $auditManager,
-        private EntityIdResolverInterface $idResolver,
+        private AssociationImpactAnalyzer $associationImpactAnalyzer,
+        private CollectionChangeResolver $collectionChangeResolver,
+        private CollectionTransitionMerger $collectionTransitionMerger,
         private bool $deferTransportUntilCommit = true,
+        private bool $failOnTransportError = false,
     ) {
     }
 
+    #[Override]
     public function processInsertions(EntityManagerInterface $em, UnitOfWork $uow): void
     {
         foreach ($uow->getScheduledEntityInsertions() as $entity) {
-            $data = $this->auditService->getEntityData($entity);
+            $data = $this->auditService->getEntityData($entity, [], $em);
             if (!$this->auditService->shouldAudit($entity, AuditLogInterface::ACTION_CREATE, $data)) {
                 continue;
             }
@@ -43,18 +47,27 @@ final readonly class EntityProcessor implements EntityProcessorInterface
                 $entity,
                 AuditLogInterface::ACTION_CREATE,
                 null,
-                $data
+                $data,
+                [],
+                $em,
             );
             $this->dispatchOrSchedule($audit, $entity, $em, $uow, true);
         }
     }
 
+    #[Override]
     public function processUpdates(EntityManagerInterface $em, UnitOfWork $uow): void
     {
+        $deletedAssociationImpacts = $this->associationImpactAnalyzer->buildAggregatedDeletedAssociationImpacts($em, $uow);
+
         foreach ($uow->getScheduledEntityUpdates() as $entity) {
             $changeSet = $uow->getEntityChangeSet($entity);
             /* @var array<string, array{mixed, mixed}> $changeSet */
             [$old, $new] = $this->changeProcessor->extractChanges($entity, $changeSet);
+            [$collectionOld, $collectionNew] = $this->collectionChangeResolver->extractCollectionChangesForOwner($entity, $em, $uow);
+            [$deletedAssocOld, $deletedAssocNew] = $this->associationImpactAnalyzer->extractDeletedEntityAssociationChangesForOwner($entity, $deletedAssociationImpacts);
+            $this->mergeFieldTransitions($old, $new, $collectionOld, $collectionNew);
+            $this->mergeFieldTransitions($old, $new, $deletedAssocOld, $deletedAssocNew);
 
             if ($old === [] && $new === []) {
                 continue;
@@ -67,7 +80,7 @@ final readonly class EntityProcessor implements EntityProcessorInterface
                 continue;
             }
 
-            $audit = $this->auditService->createAuditLog($entity, $action, $old, $new);
+            $audit = $this->auditService->createAuditLog($entity, $action, $old, $new, [], $em);
             $this->dispatchOrSchedule($audit, $entity, $em, $uow, false);
         }
     }
@@ -75,43 +88,33 @@ final readonly class EntityProcessor implements EntityProcessorInterface
     /**
      * @param iterable<object> $collectionUpdates
      */
+    #[Override]
     public function processCollectionUpdates(
         EntityManagerInterface $em,
         UnitOfWork $uow,
         iterable $collectionUpdates,
     ): void {
         foreach ($collectionUpdates as $collection) {
-            if (!method_exists($collection, 'getInsertDiff')) {
+            if (!$this->collectionChangeResolver->isTrackableCollection($collection)) {
                 continue;
             }
-            /** @var PersistentCollection<int|string, object> $collection */
-            $owner = $collection->getOwner();
+
+            $owner = $this->collectionChangeResolver->getCollectionOwner($collection);
             if ($owner === null) {
                 continue;
             }
 
-            $insertDiff = $collection->getInsertDiff();
-            $deleteDiff = $collection->getDeleteDiff();
-            if ($insertDiff === [] && $deleteDiff === []) {
+            if ($this->isScheduledForInsertion($owner, $uow) || $this->isScheduledForUpdate($owner, $uow)) {
                 continue;
             }
 
-            $mapping = $collection->getMapping();
-            $fieldName = $mapping['fieldName'];
-            if (!is_string($fieldName)) {
+            $transition = $this->collectionChangeResolver->buildCollectionTransition($collection, $em);
+            if ($transition === null) {
                 continue;
             }
-            /** @var array<int, object> $snapshot */
-            $snapshot = $collection->getSnapshot();
-            $oldIds = $this->extractIdsFromCollection($snapshot, $em);
-            /** @var array<int, object> $insertElements */
-            $insertElements = array_values($insertDiff);
-            /** @var array<int, object> $deleteElements */
-            $deleteElements = array_values($deleteDiff);
-            $newIds = $this->computeNewIds($oldIds, $insertElements, $deleteElements, $em);
 
-            $oldValues = [$fieldName => $oldIds];
-            $newValues = [$fieldName => $newIds];
+            $oldValues = [$transition['field'] => $transition['old']];
+            $newValues = [$transition['field'] => $transition['new']];
 
             if (!$this->auditService->shouldAudit($owner, AuditLogInterface::ACTION_UPDATE, $newValues)) {
                 continue;
@@ -121,22 +124,35 @@ final readonly class EntityProcessor implements EntityProcessorInterface
                 $owner,
                 AuditLogInterface::ACTION_UPDATE,
                 $oldValues,
-                $newValues
+                $newValues,
+                [],
+                $em,
             );
             $this->dispatchOrSchedule($audit, $owner, $em, $uow, false);
         }
     }
 
+    #[Override]
     public function processDeletions(EntityManagerInterface $em, UnitOfWork $uow): void
     {
+        $this->processRelatedEntityCollectionImpacts(
+            $this->associationImpactAnalyzer->buildAggregatedDeletedAssociationImpacts($em, $uow),
+            $em,
+            $uow,
+        );
+
         foreach ($uow->getScheduledEntityDeletions() as $entity) {
             if (!$this->shouldProcessEntity($entity)) {
                 continue;
             }
 
+            if ($this->isAlreadyTrackedAsSoftDelete($entity, $uow)) {
+                continue;
+            }
+
             $this->auditManager->addPendingDeletion(
                 $entity,
-                $this->auditService->getEntityData($entity),
+                $this->auditService->getEntityData($entity, [], $em),
                 $em->contains($entity)
             );
         }
@@ -154,59 +170,143 @@ final readonly class EntityProcessor implements EntityProcessorInterface
         UnitOfWork $uow,
         bool $isInsert,
     ): void {
-        // Smart flush detection
-        $canDispatchNow = !$this->deferTransportUntilCommit
-            || ($isInsert && $audit->entityId !== AuditLogInterface::PENDING_ID);
+        $hasResolvedEntityId = $audit->entityId !== AuditLogInterface::PENDING_ID;
+        $canDispatchNow = (!$isInsert && !$this->deferTransportUntilCommit)
+            || ($isInsert && !$hasResolvedEntityId && !$this->deferTransportUntilCommit && $this->failOnTransportError)
+            || ($isInsert && $hasResolvedEntityId);
 
-        if ($canDispatchNow && $this->dispatcher->dispatch($audit, $em, 'on_flush', $uow)) {
+        if ($canDispatchNow && $this->dispatcher->dispatch($audit, $em, AuditPhase::OnFlush, $uow, $entity)) {
             return;
         }
 
         $this->auditManager->schedule($entity, $audit, $isInsert);
     }
 
-    /**
-     * @param array<int, object> $items
-     *
-     * @return array<int, int|string>
-     */
-    private function extractIdsFromCollection(array $items, EntityManagerInterface $em): array
+    private function isAlreadyTrackedAsSoftDelete(object $entity, UnitOfWork $uow): bool
     {
-        $ids = [];
-        foreach ($items as $item) {
-            $id = $this->idResolver->resolveFromEntity($item, $em);
-            if ($id !== AuditLogInterface::PENDING_ID) {
-                $ids[] = $id;
+        $changeSet = $uow->getEntityChangeSet($entity);
+
+        return $this->isSoftDeleteChangeSet($changeSet);
+    }
+
+    private function isScheduledForInsertion(object $entity, UnitOfWork $uow): bool
+    {
+        foreach ($uow->getScheduledEntityInsertions() as $scheduledEntity) {
+            if ($scheduledEntity === $entity) {
+                return true;
             }
         }
 
-        return $ids;
+        return false;
+    }
+
+    private function isScheduledForUpdate(object $entity, UnitOfWork $uow): bool
+    {
+        foreach ($uow->getScheduledEntityUpdates() as $scheduledEntity) {
+            if ($scheduledEntity === $entity) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
-     * @param array<int, int|string> $oldIds
-     * @param array<int, object>     $insertDiff
-     * @param array<int, object>     $deleteDiff
-     *
-     * @return array<int, int|string>
+     * @param list<array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}> $impacts
      */
-    private function computeNewIds(
-        array $oldIds,
-        array $insertDiff,
-        array $deleteDiff,
+    private function processRelatedEntityCollectionImpacts(
+        array $impacts,
         EntityManagerInterface $em,
-    ): array {
-        $newIds = $oldIds;
+        UnitOfWork $uow,
+    ): void {
+        foreach ($impacts as $impact) {
+            $relatedEntity = $impact['entity'];
 
-        $insertedIds = $this->extractIdsFromCollection($insertDiff, $em);
-        foreach ($insertedIds as $id) {
-            if (!in_array($id, $newIds, true)) {
-                $newIds[] = $id;
+            if ($this->isScheduledForInsertion($relatedEntity, $uow) || $this->isScheduledForUpdate($relatedEntity, $uow)) {
+                continue;
+            }
+
+            $newValues = [$impact['field'] => $impact['new']];
+            if (!$this->auditService->shouldAudit($relatedEntity, AuditLogInterface::ACTION_UPDATE, $newValues)) {
+                continue;
+            }
+
+            $audit = $this->auditService->createAuditLog(
+                $relatedEntity,
+                AuditLogInterface::ACTION_UPDATE,
+                [$impact['field'] => $impact['old']],
+                $newValues,
+                [],
+                $em,
+            );
+            $this->dispatchOrSchedule($audit, $relatedEntity, $em, $uow, false);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $oldValues
+     * @param array<string, mixed> $newValues
+     * @param array<string, mixed> $incomingOldValues
+     * @param array<string, mixed> $incomingNewValues
+     */
+    private function mergeFieldTransitions(
+        array &$oldValues,
+        array &$newValues,
+        array $incomingOldValues,
+        array $incomingNewValues,
+    ): void {
+        foreach ($incomingNewValues as $field => $incomingNewValue) {
+            $incomingOldValue = $incomingOldValues[$field] ?? [];
+
+            if (!$this->canMergeFieldTransition($oldValues, $newValues, $field, $incomingOldValue, $incomingNewValue)) {
+                $oldValues[$field] = $incomingOldValue;
+                $newValues[$field] = $incomingNewValue;
+                continue;
+            }
+
+            $this->collectionTransitionMerger->mergeSingleFieldTransition(
+                $oldValues[$field],
+                $newValues[$field],
+                $incomingOldValue,
+                $incomingNewValue,
+            );
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $oldValues
+     * @param array<string, mixed> $newValues
+     */
+    private function canMergeFieldTransition(
+        array $oldValues,
+        array $newValues,
+        string $field,
+        mixed $incomingOldValue,
+        mixed $incomingNewValue,
+    ): bool {
+        return isset($oldValues[$field], $newValues[$field])
+            && is_array($oldValues[$field])
+            && is_array($newValues[$field])
+            && is_array($incomingOldValue)
+            && is_array($incomingNewValue);
+    }
+
+    /**
+     * @param array<string, mixed> $changeSet
+     */
+    private function isSoftDeleteChangeSet(array $changeSet): bool
+    {
+        if ($changeSet === []) {
+            return false;
+        }
+
+        foreach ($changeSet as $change) {
+            if (!is_array($change) || !array_key_exists(0, $change) || !array_key_exists(1, $change)) {
+                return false;
             }
         }
 
-        $deletedIds = $this->extractIdsFromCollection($deleteDiff, $em);
-
-        return array_filter($newIds, static fn ($id) => !in_array($id, $deletedIds, true));
+        /** @var array<string, array{0: mixed, 1: mixed}> $changeSet */
+        return $this->changeProcessor->determineUpdateAction($changeSet) === AuditLogInterface::ACTION_SOFT_DELETE;
     }
 }

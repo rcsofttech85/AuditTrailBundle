@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Serializer;
 use DateTimeImmutable;
 use DateTimeInterface;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\AuditTrailBundle;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
@@ -14,7 +15,7 @@ use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessageSerializer;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 
-class AuditLogMessageSerializerTest extends TestCase
+final class AuditLogMessageSerializerTest extends TestCase
 {
     private AuditLogMessageSerializer $serializer;
 
@@ -52,7 +53,6 @@ class AuditLogMessageSerializerTest extends TestCase
         $body = json_decode($encoded['body'], true);
         self::assertIsArray($body);
 
-        // Assert all fields are present and correct
         $expectedBody = [
             'entity_class' => 'TestEntity',
             'entity_id' => '123',
@@ -69,13 +69,12 @@ class AuditLogMessageSerializerTest extends TestCase
             'context' => ['ctx' => 'val'],
         ];
 
-        // Strict comparison of the entire array to ensure no extra or missing keys
-        self::assertEquals($expectedBody, $body);
+        self::assertSame($expectedBody, $body);
 
-        // Assert headers
-        self::assertEquals('test_api_key', $encoded['headers']['X-Audit-Api-Key']);
-        self::assertEquals('test_signature', $encoded['headers']['X-Audit-Signature']);
-        self::assertEquals('application/json', $encoded['headers']['Content-Type']);
+        self::assertSame('test_api_key', $encoded['headers']['X-Audit-Api-Key']);
+        self::assertSame('test_signature', $encoded['headers']['X-Audit-Signature']);
+        self::assertSame('application/json', $encoded['headers']['Content-Type']);
+        self::assertSame('RcsoftTech-AuditTrailBundle/'.AuditTrailBundle::VERSION, $encoded['headers']['User-Agent']);
     }
 
     public function testDecodeThrowsException(): void

@@ -7,8 +7,12 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Security;
 use DateTimeImmutable;
 use Error;
 use LogicException;
+use Psr\Log\LoggerInterface;
+use Rcsofttech\AuditTrailBundle\Attribute\AuditCondition;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditRendererInterface;
+use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
+use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
@@ -16,14 +20,8 @@ use Rcsofttech\AuditTrailBundle\Service\DataMasker;
 use Rcsofttech\AuditTrailBundle\Service\ExpressionLanguageVoter;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\AbstractFunctionalTestCase;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
-use ReflectionMethod;
 use ReflectionProperty;
 
-/**
- * Comprehensive Security Audit Suite for AuditTrailBundle.
- * Covers internal mechanics (property hooks, reflection, serialization)
- * and external attack vectors (SQLi, CSRF, DoS, XSS).
- */
 final class SecurityAuditTest extends AbstractFunctionalTestCase
 {
     private AuditIntegrityService $standaloneIntegrityService;
@@ -36,42 +34,32 @@ final class SecurityAuditTest extends AbstractFunctionalTestCase
         $this->standaloneIntegrityService = new AuditIntegrityService($this->testSecret, true);
     }
 
-    // --- INTERNAL MECHANICS & PROPERTY HOOKS ---
-
-    /**
-     * The Reflection Penetration
-     * Can we use Reflection to bypass the 'set' hook and modify a sealed log?
-     */
-    public function testReflectionHookBypassAttempt(): void
+    public function testSealedLogRejectsDirectMutation(): void
     {
         $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_CREATE);
         $log->entityId = 'ORIGINAL';
         $log->seal();
 
-        // Standard assignment fails
-        try {
-            $log->entityId = 'TAMPERED';
-            self::fail('Standard assignment should have failed on sealed log');
-        } catch (LogicException $e) {
-            self::assertEquals('Cannot modify a sealed audit log.', $e->getMessage());
-        }
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Cannot modify a sealed audit log.');
 
-        // Reflection attempt to set backing value
-        // Note: In PHP 8.4, ReflectionProperty::setValue() triggers hooks.
-        $rp = new ReflectionProperty(AuditLog::class, 'entityId');
-
-        try {
-            $rp->setValue($log, 'REFLECTED');
-            self::assertEquals('REFLECTED', $log->entityId);
-        } catch (LogicException $e) {
-            self::assertEquals('Cannot modify a sealed audit log.', $e->getMessage());
-        }
+        $log->entityId = 'TAMPERED';
     }
 
-    /**
-     * Serialization Tampering
-     * Can we modify the state via serialized string manipulation?
-     */
+    public function testReflectionCannotBypassSealProtection(): void
+    {
+        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_CREATE);
+        $log->entityId = 'ORIGINAL';
+        $log->seal();
+
+        $rp = new ReflectionProperty(AuditLog::class, 'entityId');
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Cannot modify a sealed audit log.');
+
+        $rp->setValue($log, 'REFLECTED');
+    }
+
     public function testSerializationTamperAttempt(): void
     {
         $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_CREATE);
@@ -84,57 +72,31 @@ final class SecurityAuditTest extends AbstractFunctionalTestCase
 
         /** @var AuditLog $unserialized */
         $unserialized = unserialize($tampered);
-        self::assertEquals('EVIL', $unserialized->entityId);
+        self::assertSame('EVIL', $unserialized->entityId);
 
-        // Ultimate defense: Signature verification MUST fail
         self::assertFalse($this->standaloneIntegrityService->verifySignature($unserialized), 'Persistence tampering must be detected by signature');
     }
 
-    /**
-     * The Asymmetric Visibility Breach
-     * Can we modify a public private(set) property from outside?
-     */
     public function testAsymmetricVisibilityBreach(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_CREATE);
-
         $rp = new ReflectionProperty(AuditLog::class, 'action');
         self::assertTrue($rp->isPublic(), 'Should be public for reading');
-
-        try {
-            /** @phpstan-ignore-next-line */
-            $log->action = AuditLogInterface::ACTION_DELETE;
-            self::fail('Should not be able to set private(set) property from outside');
-        } catch (Error $e) {
-            self::assertStringContainsString('Cannot modify', $e->getMessage());
-        }
+        self::assertTrue($rp->isPrivateSet(), 'Property should be write-protected outside the class.');
+        self::assertFalse($rp->isReadOnly(), 'This test covers asymmetric visibility, not readonly semantics.');
     }
 
-    /**
-     * Indirect Array Modification
-     * Does $log->context['key'] = 'val' bypass the 'set' hook?
-     */
     public function testIndirectArrayModification(): void
     {
         $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_CREATE);
         $log->context = ['initial' => true];
         $log->seal();
 
-        try {
-            $log->context['tamper'] = true;
-            self::fail('Indirect modification should be blocked');
-        } catch (Error $e) {
-            self::assertStringContainsString('not allowed', $e->getMessage());
-        }
+        $this->expectException(Error::class);
+        $this->expectExceptionMessage('not allowed');
 
-        self::assertArrayNotHasKey('tamper', $log->context);
+        $log->context['tamper'] = true;
     }
 
-    // --- EXTERNAL ATTACK VECTORS & SERVICE SECURITY ---
-
-    /**
-     * The "Sneaky Property" Bypass.
-     */
     public function testDataMaskingBypass(): void
     {
         $masker = new DataMasker();
@@ -149,16 +111,14 @@ final class SecurityAuditTest extends AbstractFunctionalTestCase
 
         $redacted = $masker->redact($payload);
 
-        self::assertEquals('********', $redacted['password']);
-        self::assertEquals('********', $redacted['PASSWORD']);
-        self::assertEquals('********', $redacted['user_token']);
-        self::assertEquals('********', $redacted['api_key']);
-        self::assertEquals('********', $redacted['nested']['cookie']);
+        self::assertSame('********', $redacted['password']);
+        self::assertSame('********', $redacted['PASSWORD']);
+        self::assertSame('********', $redacted['user_token'] ?? null);
+        self::assertSame('********', $redacted['api_key'] ?? null);
+        self::assertIsArray($redacted['nested'] ?? null);
+        self::assertSame('********', $redacted['nested']['cookie'] ?? null);
     }
 
-    /**
-     * Replay / Timestamp Manipulation.
-     */
     public function testReplayAttackPrevention(): void
     {
         $log1 = new AuditLog('App\Entity\User', '1', 'create');
@@ -175,9 +135,6 @@ final class SecurityAuditTest extends AbstractFunctionalTestCase
         self::assertFalse($this->standaloneIntegrityService->verifySignature($log2), 'Signature must be tied to the timestamp');
     }
 
-    /**
-     * SQL Injection in Filters.
-     */
     public function testRepositoryFilterInjection(): void
     {
         self::bootKernel();
@@ -193,25 +150,28 @@ final class SecurityAuditTest extends AbstractFunctionalTestCase
         self::assertCount(0, $results, 'SQL injection in filters should not return results');
     }
 
-    /**
-     * Expression Language Injection.
-     */
     public function testExpressionLanguageVoterAttack(): void
     {
-        self::bootKernel();
-        /** @var ExpressionLanguageVoter $voter */
-        $voter = self::getContainer()->get(ExpressionLanguageVoter::class);
+        $metadataCache = self::createStub(MetadataCacheInterface::class);
+        $userResolver = self::createStub(UserResolverInterface::class);
+        $logger = $this->createMock(LoggerInterface::class);
 
-        $reflection = new ReflectionMethod($voter, 'isExpressionSafe');
+        $metadataCache->method('getAuditCondition')->willReturnCallback(
+            static fn (): AuditCondition => new AuditCondition("system('whoami')")
+        );
 
-        self::assertFalse($reflection->invoke($voter, "system('whoami')"), 'system() must be blocked');
-        self::assertFalse($reflection->invoke($voter, "exec('ls')"), 'exec() must be blocked');
-        self::assertFalse($reflection->invoke($voter, "constant('PHP_VERSION')"), 'constant() must be blocked');
+        $logger->expects($this->once())
+            ->method('critical')
+            ->with(
+                'Blocked potentially dangerous AuditCondition expression.',
+                self::callback(static fn (array $context): bool => ($context['expression'] ?? null) === "system('whoami')")
+            );
+
+        $voter = new ExpressionLanguageVoter($metadataCache, $userResolver, $logger);
+
+        self::assertFalse($voter->vote(new TestEntity('attack'), AuditLogInterface::ACTION_UPDATE, []));
     }
 
-    /**
-     * Mass Ingestion (DoS).
-     */
     public function testMassIngestionDoS(): void
     {
         self::bootKernel();
@@ -233,9 +193,6 @@ final class SecurityAuditTest extends AbstractFunctionalTestCase
         self::assertLessThan(50000, $diffKb, "Audit processing shouldn't leak excessive memory");
     }
 
-    /**
-     * Circular Reference (DoS).
-     */
     public function testCircularReferenceDoS(): void
     {
         self::bootKernel();

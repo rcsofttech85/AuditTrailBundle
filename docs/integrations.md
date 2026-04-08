@@ -9,9 +9,12 @@ Add the `AuditLogCrudController` to your `DashboardController`:
 
 declare(strict_types=1);
 
+use EasyCorp\Bundle\EasyAdminBundle\Config\MenuItem;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Controller\Admin\AuditLogCrudController;
 
-yield MenuItem::linkTo(AuditLogCrudController::class, 'Audit Logs', 'fas fa-history');
+yield MenuItem::linkToCrud('Audit Logs', 'fas fa-history', AuditLog::class)
+    ->setController(AuditLogCrudController::class);
 ```
 
 ### Publishing Assets
@@ -19,7 +22,7 @@ yield MenuItem::linkTo(AuditLogCrudController::class, 'Audit Logs', 'fas fa-hist
 To ensure the custom styling for the Audit Log UI (diffs, action badges, and revert modals) loads correctly, you must install the bundle's public assets:
 
 ```bash
-php bin/console assets:install
+php bin/console assets:install public
 ```
 
 ![EasyAdmin Integration Showcase](../.github/assets/easyadmin_integration_dark.png)
@@ -30,11 +33,11 @@ php bin/console assets:install
 
 AuditTrailBundle integrates with the **Symfony Web Profiler** to provide real-time visibility into audit logs generated during each request — directly in the debug toolbar and profiler panel.
 
-### Zero Configuration
+### Automatic Registration
 
 This integration activates **automatically** when `WebProfilerBundle` is installed (typically in `dev` and `test` environments). No additional configuration is required.
 
-In production, where `WebProfilerBundle` is absent, the profiler services are never registered — adding **zero overhead** to your application.
+In production, where `WebProfilerBundle` is absent, the profiler services are not registered.
 
 ### What You Get
 

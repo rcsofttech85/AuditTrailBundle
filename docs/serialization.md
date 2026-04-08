@@ -1,9 +1,9 @@
 # Cross-Platform Serializer
 
-The bundle includes a `AuditLogMessageSerializer` that supports **cross-platform** JSON serialization. This allows you to:
+The bundle includes an `AuditLogMessageSerializer` that supports **cross-platform** JSON serialization. This allows you to:
 
 1. **Publish** audit logs from your Symfony app to a queue (RabbitMQ, Redis, etc.) in a clean, language-agnostic JSON format.
-2. **Consume** these logs in **any application** (Node.js, Python, Go, or another Symfony app).
+2. **Consume** these logs in **any application** (Node.js, Python, Go, or another Symfony app) using the flat JSON body and transport headers.
 
 ## JSON Format
 
@@ -26,4 +26,12 @@ The serializer produces a flat JSON structure that is easy to parse:
 
 ## Consuming in Symfony
 
-If you are consuming these messages in another Symfony application using this bundle, the serializer automatically handles **decoding** back into an `AuditLogMessage` object, including verifying signatures if integrity is enabled.
+`AuditLogMessageSerializer` is currently **encode-only**. It is intended for publishing outbound audit messages and it throws if `decode()` is called.
+
+If you are consuming these messages in another Symfony application, treat the payload as plain JSON and read any transport-level metadata from headers or stamps:
+
+- Queue transport: integrity is carried in a `SignatureStamp`
+- Custom HTTP delivery: integrity is carried in the `X-Signature` header
+- `AuditLogMessageSerializer` headers: `X-Audit-Api-Key` and `X-Audit-Signature` when the corresponding stamps are present
+
+In other words, the documented interoperability guarantee is the flat JSON payload shape, not automatic reverse deserialization by this serializer class.

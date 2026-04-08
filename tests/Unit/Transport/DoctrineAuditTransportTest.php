@@ -10,22 +10,30 @@ use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
+use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
 use stdClass;
 
 #[AllowMockObjectsWithoutExpectations]
-class DoctrineAuditTransportTest extends TestCase
+final class DoctrineAuditTransportTest extends TestCase
 {
-    private EntityIdResolverInterface&\PHPUnit\Framework\MockObject\MockObject $idResolver;
+    /** @var EntityIdResolverInterface&\PHPUnit\Framework\MockObject\Stub */
+    private EntityIdResolverInterface $idResolver;
+
+    /** @var AuditLogWriterInterface&\PHPUnit\Framework\MockObject\MockObject */
+    private AuditLogWriterInterface $auditLogWriter;
 
     private DoctrineAuditTransport $transport;
 
     protected function setUp(): void
     {
-        $this->idResolver = $this->createMock(EntityIdResolverInterface::class);
-        $this->transport = new DoctrineAuditTransport($this->idResolver);
+        $this->idResolver = self::createStub(EntityIdResolverInterface::class);
+        $this->auditLogWriter = $this->createMock(AuditLogWriterInterface::class);
+        $this->transport = new DoctrineAuditTransport($this->idResolver, $this->auditLogWriter);
     }
 
     public function testSendOnFlushPersistsLog(): void
@@ -40,11 +48,7 @@ class DoctrineAuditTransportTest extends TestCase
         $em->expects($this->once())->method('persist')->with($log);
         $uow->expects($this->once())->method('computeChangeSet')->with($meta, $log);
 
-        $this->transport->send($log, [
-            'phase' => 'on_flush',
-            'em' => $em,
-            'uow' => $uow,
-        ]);
+        $this->transport->send(new AuditTransportContext(AuditPhase::OnFlush, $em, $log, $uow));
     }
 
     public function testSendPostFlushUpdatesId(): void
@@ -53,20 +57,13 @@ class DoctrineAuditTransportTest extends TestCase
 
         $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
-        $meta = self::createStub(ClassMetadata::class);
-
-        $em->method('getClassMetadata')->willReturn($meta);
-        $em->method('contains')->willReturn(false);
         $this->idResolver->method('resolve')->willReturn('100');
+        $this->auditLogWriter->expects($this->once())->method('insert')->with($log, $em);
 
-        $this->transport->send($log, [
-            'phase' => 'post_flush',
-            'em' => $em,
-            'entity' => $entity,
-        ]);
+        $this->transport->send(new AuditTransportContext(AuditPhase::PostFlush, $em, $log, null, $entity));
 
         // The new implementation calls setEntityId instead of executeStatement
-        self::assertEquals('100', $log->entityId);
+        self::assertSame('100', $log->entityId);
     }
 
     public function testSendPostFlushWithIsInsertUpdatesId(): void
@@ -75,20 +72,34 @@ class DoctrineAuditTransportTest extends TestCase
 
         $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
-        $meta = self::createStub(ClassMetadata::class);
-
-        $em->method('getClassMetadata')->willReturn($meta);
-        $em->method('contains')->willReturn(true); // Already managed
         $this->idResolver->method('resolve')->willReturn('456');
+        $this->auditLogWriter->expects($this->once())->method('insert')->with($log, $em);
 
-        $this->transport->send($log, [
-            'phase' => 'post_flush',
-            'em' => $em,
-            'entity' => $entity,
-            'is_insert' => true,
-        ]);
+        $this->transport->send(new AuditTransportContext(AuditPhase::PostFlush, $em, $log, null, $entity));
 
         // Verify setEntityId was called with resolved ID
-        self::assertEquals('456', $log->entityId);
+        self::assertSame('456', $log->entityId);
+    }
+
+    public function testSupportsOnFlushForResolvedEntityId(): void
+    {
+        $log = new AuditLog(stdClass::class, '123', AuditLogInterface::ACTION_CREATE);
+
+        self::assertTrue($this->transport->supports(new AuditTransportContext(
+            AuditPhase::OnFlush,
+            self::createStub(EntityManagerInterface::class),
+            $log,
+        )));
+    }
+
+    public function testDoesNotSupportOnFlushForPendingEntityId(): void
+    {
+        $log = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditLogInterface::ACTION_CREATE);
+
+        self::assertFalse($this->transport->supports(new AuditTransportContext(
+            AuditPhase::OnFlush,
+            self::createStub(EntityManagerInterface::class),
+            $log,
+        )));
     }
 }

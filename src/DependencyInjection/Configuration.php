@@ -9,8 +9,13 @@ use Symfony\Component\Config\Definition\Builder\ArrayNodeDefinition;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
 
+use function is_string;
+use function str_starts_with;
+
 final class Configuration implements ConfigurationInterface
 {
+    private const array VALID_HTTP_SCHEMES = ['http://', 'https://'];
+
     #[Override]
     public function getConfigTreeBuilder(): TreeBuilder
     {
@@ -52,6 +57,11 @@ final class Configuration implements ConfigurationInterface
             ->booleanNode('fail_on_transport_error')->defaultFalse()->end()
             ->booleanNode('fallback_to_database')->defaultTrue()->end()
             ->scalarNode('cache_pool')->defaultNull()->end()
+            ->scalarNode('admin_permission')
+            ->defaultValue('ROLE_ADMIN')
+            ->cannotBeEmpty()
+            ->info('Required Symfony permission/role for EasyAdmin audit UI actions such as export and revert.')
+            ->end()
             ->arrayNode('audited_methods')
             ->scalarPrototype()->end()
             ->defaultValue(['GET'])
@@ -89,10 +99,9 @@ final class Configuration implements ConfigurationInterface
             ->canBeEnabled()
             ->children()
             ->scalarNode('endpoint')
-            ->isRequired()
-            ->cannotBeEmpty()
+            ->defaultNull()
             ->validate()
-            ->ifTrue(static fn ($v): bool => !str_starts_with($v, 'http://') && !str_starts_with($v, 'https://'))
+            ->ifTrue(fn (mixed $value): bool => $this->isInvalidHttpEndpoint($value))
             ->thenInvalid('The endpoint must start with http:// or https://')
             ->end()
             ->end()
@@ -101,6 +110,10 @@ final class Configuration implements ConfigurationInterface
             ->defaultValue([])
             ->end()
             ->integerNode('timeout')->defaultValue(5)->min(1)->end()
+            ->end()
+            ->validate()
+            ->ifTrue(static fn (array $v): bool => $v['enabled'] && ($v['endpoint'] === null || $v['endpoint'] === ''))
+            ->thenInvalid('The "endpoint" must be configured when the HTTP transport is enabled.')
             ->end()
             ->end()
             ->arrayNode('queue')
@@ -141,5 +154,24 @@ final class Configuration implements ConfigurationInterface
             ->end()
             ->end()
             ->end();
+    }
+
+    private function isInvalidHttpEndpoint(mixed $value): bool
+    {
+        if ($value === null) {
+            return false;
+        }
+
+        if (!is_string($value)) {
+            return true;
+        }
+
+        foreach (self::VALID_HTTP_SCHEMES as $scheme) {
+            if (str_starts_with($value, $scheme)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

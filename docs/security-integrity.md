@@ -48,6 +48,18 @@ php bin/console audit:verify-integrity
 > [!WARNING]
 > Any tampered logs indicate a serious security breach. Investigate immediately and review access controls to your database.
 
+Signed audit metadata includes:
+
+- entity identity and action
+- old and new values
+- `changed_fields`
+- user and request metadata
+- transaction hash
+- persisted context
+- creation timestamp
+
+The bundle also enforces a maximum persisted context payload of 65,536 bytes. Oversized context is truncated to a safe marker payload before storage and signing.
+
 ## Transport Payload Signing
 
 When using **HTTP** or **Queue** transports with integrity enabled, the bundle automatically signs the payload to ensure data authenticity during transit.

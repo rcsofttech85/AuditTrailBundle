@@ -18,7 +18,7 @@
     ],
     "support": {
         "issues": "https://github.com/rcsofttech85/AuditTrailBundle/issues",
-        "source": "https://github.com/rcsofttech/AuditTrailBundle"
+        "source": "https://github.com/rcsofttech85/AuditTrailBundle"
     },
     "autoload": {
         "psr-4": {

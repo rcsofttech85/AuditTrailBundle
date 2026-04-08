@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use Override;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogMessageFactoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
@@ -20,24 +19,21 @@ final class AsyncDatabaseAuditTransport implements AuditTransportInterface
 {
     public function __construct(
         private readonly MessageBusInterface $bus,
-        private readonly AuditLogMessageFactory $messageFactory,
+        private readonly AuditLogMessageFactoryInterface $messageFactory,
     ) {
     }
 
-    /**
-     * @param array<string, mixed> $context
-     */
     #[Override]
-    public function send(AuditLog $log, array $context = []): void
+    public function send(AuditTransportContext $context): void
     {
-        $message = $this->messageFactory->createPersistMessage($log, $context);
+        $message = $this->messageFactory->createPersistMessage($context);
 
         $this->bus->dispatch($message);
     }
 
     #[Override]
-    public function supports(string $phase, array $context = []): bool
+    public function supports(AuditTransportContext $context): bool
     {
-        return $phase === 'post_flush' || $phase === 'post_load';
+        return $context->phase->isAsyncDispatchPhase();
     }
 }

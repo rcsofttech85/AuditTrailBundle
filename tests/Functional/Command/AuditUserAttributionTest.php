@@ -12,11 +12,18 @@ use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\HttpKernel\KernelInterface;
 
 use function assert;
+use function filter_var;
+use function getenv;
+use function gethostbyname;
+use function gethostname;
+use function is_string;
+
+use const FILTER_VALIDATE_IP;
 
 /**
  * Ensures that audit logs created via CLI commands have proper user attribution.
  */
-class AuditUserAttributionTest extends AbstractFunctionalTestCase
+final class AuditUserAttributionTest extends AbstractFunctionalTestCase
 {
     public function testAuditRevertWithUserOption(): void
     {
@@ -47,8 +54,8 @@ class AuditUserAttributionTest extends AbstractFunctionalTestCase
 
         $revertLog = $em->getRepository(AuditLog::class)->findOneBy(['action' => 'revert']);
         self::assertNotNull($revertLog);
-        self::assertEquals('admin_tester', $revertLog->username);
-        self::assertEquals('admin_tester', $revertLog->userId);
+        self::assertSame('admin_tester', $revertLog->username);
+        self::assertSame('admin_tester', $revertLog->userId);
     }
 
     public function testAuditRevertDefaultCliUser(): void
@@ -80,11 +87,28 @@ class AuditUserAttributionTest extends AbstractFunctionalTestCase
         $revertLog = $em->getRepository(AuditLog::class)->findOneBy(['action' => 'revert']);
         self::assertNotNull($revertLog);
 
-        // Should have cli: prefix and machine defaults
         self::assertStringStartsWith('cli:', (string) $revertLog->username);
         self::assertStringStartsWith('cli:', (string) $revertLog->userId);
-        self::assertEquals(gethostbyname((string) gethostname()), $revertLog->ipAddress);
+        self::assertSame($this->resolveExpectedCliIpAddress(), $revertLog->ipAddress);
         self::assertStringContainsString('cli-console', (string) $revertLog->userAgent);
         self::assertStringContainsString((string) gethostname(), (string) $revertLog->userAgent);
+    }
+
+    private function resolveExpectedCliIpAddress(): ?string
+    {
+        $hostname = gethostname();
+        if ($hostname !== false) {
+            $resolved = gethostbyname($hostname);
+            if (filter_var($resolved, FILTER_VALIDATE_IP) !== false) {
+                return $resolved;
+            }
+        }
+
+        $environmentHost = getenv('HOSTNAME');
+        if (is_string($environmentHost) && filter_var($environmentHost, FILTER_VALIDATE_IP) !== false) {
+            return $environmentHost;
+        }
+
+        return null;
     }
 }

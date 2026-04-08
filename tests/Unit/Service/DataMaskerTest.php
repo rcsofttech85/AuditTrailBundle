@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Service\DataMasker;
 
-#[AllowMockObjectsWithoutExpectations]
 final class DataMaskerTest extends TestCase
 {
     private DataMasker $dataMasker;
@@ -35,8 +33,9 @@ final class DataMaskerTest extends TestCase
         self::assertSame('john_doe', $redacted['username']);
         self::assertSame('********', $redacted['Password']);
         self::assertSame('********', $redacted['api_TOken']);
-        self::assertSame('********', $redacted['nested']['session_id']);
-        self::assertSame('value', $redacted['nested']['normal']);
+        self::assertIsArray($redacted['nested'] ?? null);
+        self::assertSame('********', $redacted['nested']['session_id'] ?? null);
+        self::assertSame('value', $redacted['nested']['normal'] ?? null);
     }
 
     public function testMaskExplicitFields(): void
