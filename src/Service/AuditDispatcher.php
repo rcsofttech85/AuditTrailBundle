@@ -50,16 +50,14 @@ final class AuditDispatcher implements AuditDispatcherInterface
             return false;
         }
 
-        $this->contextProcessor->prepare($audit, $entity, $phase);
-        $context = $context->withAudit($audit);
-
         if ($this->eventDispatcher !== null) {
             $event = new AuditLogCreatedEvent($audit, $entity);
             $this->eventDispatcher->dispatch($event);
             $audit = $event->auditLog;
-            $this->contextProcessor->prepare($audit, $entity, $phase);
-            $context = $context->withAudit($audit);
         }
+
+        $this->contextProcessor->prepare($audit, $entity, $phase);
+        $context = $context->withAudit($audit);
 
         if ($this->integrityService?->isEnabled() === true) {
             $audit->signature = $this->integrityService->generateSignature($audit);

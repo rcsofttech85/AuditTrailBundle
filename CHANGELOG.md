@@ -47,7 +47,7 @@ This release focuses on hardening the bundle for production use, simplifying a f
 - **More predictable integrity upgrades**: Existing signed audit records continue to verify during upgrade while new signatures cover more audit metadata.
 - **Safer audit transport fallback**: Database fallback failures now surface more clearly when they would otherwise destroy the Doctrine entity manager.
 - **Cleaner enterprise extension points**: The bundle removes more deprecation-era behavior and favors explicit, testable contracts.
-- **AI-ready processing hook**: Optional `AuditLogAiProcessorInterface` implementations can now add structured AI insights before signing and dispatch without introducing a hard AI dependency into the bundle core.
+- **AI-ready processing hook**: Optional `AuditLogAiProcessorInterface` implementations can now add structured, namespaced AI insights before signing and dispatch without introducing a hard AI dependency into the bundle core.
 - **Safer admin revert UX**: EasyAdmin now only exposes revert for the latest meaningful state-changing log of an entity. Older `create`, `update`, or `soft_delete` entries no longer offer revert once a newer state-changing audit exists, reducing accidental destructive reverts from stale history.
 
 ## [2.3.0]
