@@ -234,6 +234,11 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogAiProcessorInterface;
 
 final class AuditInsightAiProcessor implements AuditLogAiProcessorInterface
 {
+    public function getNamespace(): string
+    {
+        return 'insight_engine';
+    }
+
     public function process(array $context, ?object $entity = null): array
     {
         return [
@@ -247,7 +252,8 @@ final class AuditInsightAiProcessor implements AuditLogAiProcessorInterface
 Guidelines for AI processor implementations:
 
 - Treat AI output as optional metadata, not business-critical logic.
-- Return metadata only; the dispatcher stores it under `context['ai']`.
+- Return metadata only; the dispatcher stores it under `context['ai'][your_namespace]`.
+- Always use a stable namespace so multiple AI processors can coexist cleanly.
 - AI processors run only in delivery-safe phases such as `post_flush`, `batch_flush`, and `manual_flush`.
 - Keep payloads structured and compact so they remain compatible with context-size limits.
 - If AI metadata alone would push context over the size limit, the dispatcher drops only the AI payload and preserves the rest of the audit context.

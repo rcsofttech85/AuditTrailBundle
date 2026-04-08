@@ -21,9 +21,14 @@ use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 interface AuditLogAiProcessorInterface
 {
     /**
+     * Returns the namespace used under context["ai"] for this processor.
+     */
+    public function getNamespace(): string;
+
+    /**
      * @param array<string, mixed> $context
      *
-     * @return array<string, mixed> AI metadata that will be stored under context["ai"]
+     * @return array<string, mixed> AI metadata that will be stored under context["ai"][namespace]
      */
     public function process(array $context, ?object $entity = null): array;
 }

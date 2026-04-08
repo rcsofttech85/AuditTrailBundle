@@ -248,18 +248,157 @@ final class AuditDispatcherTest extends TestCase
         $transport->method('supports')->willReturn(true);
         $transport->expects($this->once())->method('send');
         $aiProcessor->expects($this->once())
+            ->method('getNamespace')
+            ->willReturn('default_ai');
+        $aiProcessor->expects($this->once())
             ->method('process')
             ->with($this->audit->context, null)
             ->willReturn(['summary' => 'Potential risk']);
         $integrityService->method('isEnabled')->willReturn(true);
         $integrityService->expects($this->once())
             ->method('generateSignature')
-            ->with(self::callback(static fn (AuditLog $audit): bool => ($audit->context['ai']['summary'] ?? null) === 'Potential risk'))
+            ->with(self::callback(static fn (AuditLog $audit): bool => ($audit->context['ai']['default_ai']['summary'] ?? null) === 'Potential risk'))
             ->willReturn('sig');
 
         $dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush);
 
-        self::assertSame('Potential risk', $this->audit->context['ai']['summary'] ?? null);
+        self::assertSame('Potential risk', $this->audit->context['ai']['default_ai']['summary'] ?? null);
+    }
+
+    public function testDispatchRunsAiProcessorsOnceAfterEventMutations(): void
+    {
+        $transport = $this->useTransportMock();
+        $eventDispatcher = $this->useEventDispatcherMock();
+        $integrityService = $this->useIntegrityServiceMock();
+        $aiProcessor = $this->useAiProcessorMock();
+        $dispatcher = $this->createDispatcher($transport, $eventDispatcher, $integrityService, null, null, false, true, [$aiProcessor]);
+
+        $transport->method('supports')->willReturn(true);
+        $eventDispatcher->expects($this->once())
+            ->method('dispatch')
+            ->willReturnCallback(static function (AuditLogCreatedEvent $event): AuditLogCreatedEvent {
+                $event->auditLog->context = ['source' => 'event'];
+
+                return $event;
+            });
+        $aiProcessor->expects($this->once())
+            ->method('getNamespace')
+            ->willReturn('derived_ai');
+        $aiProcessor->expects($this->once())
+            ->method('process')
+            ->with(['source' => 'event'], null)
+            ->willReturn(['summary' => 'Derived after event']);
+        $integrityService->method('isEnabled')->willReturn(true);
+        $integrityService->expects($this->once())
+            ->method('generateSignature')
+            ->with(self::callback(static fn (AuditLog $audit): bool => ($audit->context['source'] ?? null) === 'event'
+                && ($audit->context['ai']['derived_ai']['summary'] ?? null) === 'Derived after event'))
+            ->willReturn('sig');
+        $transport->expects($this->once())
+            ->method('send')
+            ->with(
+                self::callback(static fn (AuditTransportContext $context): bool => ($context->audit->context['source'] ?? null) === 'event'
+                    && ($context->audit->context['ai']['derived_ai']['summary'] ?? null) === 'Derived after event')
+            );
+
+        self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
+        self::assertSame('Derived after event', $this->audit->context['ai']['derived_ai']['summary'] ?? null);
+    }
+
+    public function testDispatchPreservesExistingAiContextWhenProcessorAddsMetadata(): void
+    {
+        $transport = $this->useTransportMock();
+        $aiProcessor = $this->useAiProcessorMock();
+        $dispatcher = $this->createDispatcher($transport, null, null, null, null, false, true, [$aiProcessor]);
+        $this->audit->context = [
+            'ai' => ['existing_ai' => ['existing' => 'kept']],
+            'request_id' => 'req-123',
+        ];
+
+        $transport->method('supports')->willReturn(true);
+        $aiProcessor->expects($this->once())
+            ->method('getNamespace')
+            ->willReturn('new_ai');
+        $aiProcessor->expects($this->once())
+            ->method('process')
+            ->with($this->audit->context, null)
+            ->willReturn(['summary' => 'New insight']);
+        $transport->expects($this->once())
+            ->method('send')
+            ->with(
+                self::callback(static fn (AuditTransportContext $context): bool => ($context->audit->context['ai']['existing_ai']['existing'] ?? null) === 'kept'
+                    && ($context->audit->context['ai']['new_ai']['summary'] ?? null) === 'New insight')
+            );
+
+        self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
+        self::assertSame('kept', $this->audit->context['ai']['existing_ai']['existing'] ?? null);
+        self::assertSame('New insight', $this->audit->context['ai']['new_ai']['summary'] ?? null);
+    }
+
+    public function testDispatchNamespacedAiProcessorsAvoidKeyCollisions(): void
+    {
+        $transport = $this->useTransportMock();
+        $firstProcessor = new class implements AuditLogAiProcessorInterface {
+            public function getNamespace(): string
+            {
+                return 'summary_engine';
+            }
+
+            public function process(array $context, ?object $entity = null): array
+            {
+                return ['summary' => 'Price changed'];
+            }
+        };
+        $secondProcessor = new class implements AuditLogAiProcessorInterface {
+            public function getNamespace(): string
+            {
+                return 'risk_engine';
+            }
+
+            public function process(array $context, ?object $entity = null): array
+            {
+                return ['summary' => 'Elevated risk'];
+            }
+        };
+        $dispatcher = $this->createDispatcher($transport, null, null, null, null, false, true, [$firstProcessor, $secondProcessor]);
+
+        $transport->method('supports')->willReturn(true);
+        $transport->expects($this->once())
+            ->method('send')
+            ->with(
+                self::callback(static fn (AuditTransportContext $context): bool => ($context->audit->context['ai']['summary_engine']['summary'] ?? null) === 'Price changed'
+                    && ($context->audit->context['ai']['risk_engine']['summary'] ?? null) === 'Elevated risk')
+            );
+
+        self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
+        self::assertSame('Price changed', $this->audit->context['ai']['summary_engine']['summary'] ?? null);
+        self::assertSame('Elevated risk', $this->audit->context['ai']['risk_engine']['summary'] ?? null);
+    }
+
+    public function testDispatchSkipsAiProcessorWithEmptyNamespace(): void
+    {
+        $transport = $this->useTransportMock();
+        $logger = $this->useLoggerMock();
+        $aiProcessor = $this->useAiProcessorMock();
+        $dispatcher = $this->createDispatcher($transport, null, null, null, $logger, false, true, [$aiProcessor]);
+
+        $transport->method('supports')->willReturn(true);
+        $aiProcessor->expects($this->once())
+            ->method('getNamespace')
+            ->willReturn(' ');
+        $aiProcessor->expects($this->never())
+            ->method('process');
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with(self::stringContains('empty namespace'));
+        $transport->expects($this->once())
+            ->method('send')
+            ->with(
+                self::callback(static fn (AuditTransportContext $context): bool => !isset($context->audit->context['ai']))
+            );
+
+        self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
+        self::assertArrayNotHasKey('ai', $this->audit->context);
     }
 
     public function testDispatchIgnoresAiProcessorFailures(): void
@@ -271,6 +410,9 @@ final class AuditDispatcherTest extends TestCase
 
         $transport->method('supports')->willReturn(true);
         $transport->expects($this->once())->method('send');
+        $aiProcessor->expects($this->once())
+            ->method('getNamespace')
+            ->willReturn('default_ai');
         $aiProcessor->expects($this->once())
             ->method('process')
             ->willThrowException(new Exception('AI unavailable'));
@@ -290,6 +432,7 @@ final class AuditDispatcherTest extends TestCase
 
         $transport->method('supports')->willReturn(true);
         $transport->expects($this->once())->method('send');
+        $aiProcessor->expects($this->never())->method('getNamespace');
         $aiProcessor->expects($this->never())->method('process');
 
         self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::OnFlush, $uow));
@@ -302,12 +445,14 @@ final class AuditDispatcherTest extends TestCase
         $dispatcher = $this->createDispatcher($transport, null, null, new DataMasker(), null, false, true, [$aiProcessor]);
 
         $transport->method('supports')->willReturn(true);
+        $aiProcessor->method('getNamespace')
+            ->willReturn('masking_ai');
         $aiProcessor->method('process')
             ->willReturn(['ai_secret' => 'raw-token']);
         $transport->expects($this->once())->method('send');
 
         self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
-        self::assertSame('********', $this->audit->context['ai']['ai_secret'] ?? null);
+        self::assertSame('********', $this->audit->context['ai']['masking_ai']['ai_secret'] ?? null);
     }
 
     public function testDispatchSanitizesNonJsonSafeEventContextBeforeSigningAndSending(): void
@@ -357,6 +502,9 @@ final class AuditDispatcherTest extends TestCase
         $dispatcher = $this->createDispatcher($transport, null, null, null, $logger, false, true, [$aiProcessor]);
 
         $transport->method('supports')->willReturn(true);
+        $aiProcessor->expects($this->once())
+            ->method('getNamespace')
+            ->willReturn('large_ai');
         $aiProcessor->expects($this->once())
             ->method('process')
             ->willReturn(['summary' => str_repeat('x', 70_000)]);

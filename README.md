@@ -63,7 +63,7 @@ Most audit bundles capture changes synchronously, which can significantly slow d
 - **Access Auditing**: Track sensitive entity read operations (GET requests) with configurable cooldowns.
 - **Conditional Auditing**: Skip logs based on runtime conditions or Expressions.
 - **Rich Context**: Automatically tracks IP, User Agent, impersonation context, and custom metadata.
-- **AI-Ready Extension Hooks**: Optional AI processors can add summaries, anomaly flags, or structured insights before audit signing and transport dispatch.
+- **AI-Ready Extension Hooks**: Optional AI processors can add namespaced summaries, anomaly flags, or structured insights before audit signing and transport dispatch.
 - **Web Profiler Integration**: Real-time audit log visibility in the Symfony debug toolbar and profiler panel.
 
 ---
