@@ -29,6 +29,7 @@ use function count;
 use function is_string;
 use function method_exists;
 use function preg_replace;
+use function spl_object_id;
 use function sprintf;
 
 final readonly class AuditReverter implements AuditReverterInterface
@@ -408,7 +409,7 @@ final readonly class AuditReverter implements AuditReverterInterface
         $identifierValues = $metadata->getIdentifierValues($entity);
 
         if ($identifierValues === []) {
-            return spl_object_hash($entity);
+            return (string) spl_object_id($entity);
         }
 
         $normalized = [];

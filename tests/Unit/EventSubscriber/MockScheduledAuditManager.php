@@ -7,13 +7,13 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\EventSubscriber;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
-class MockScheduledAuditManager implements ScheduledAuditManagerInterface
+final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
 {
     /** @var array<int, array{entity: object, audit: AuditLog, is_insert: bool}> */
-    public array $scheduledAudits = [];
+    private array $scheduledAudits = [];
 
     /** @var list<array{entity: object, data: array<string, mixed>, is_managed: bool}> */
-    public array $pendingDeletions = [];
+    private array $pendingDeletions = [];
 
     public function schedule(object $entity, AuditLog $audit, bool $isInsert): void
     {
@@ -53,6 +53,28 @@ class MockScheduledAuditManager implements ScheduledAuditManagerInterface
     public function getPendingDeletions(): array
     {
         return $this->pendingDeletions;
+    }
+
+    public function hasScheduledAudits(): bool
+    {
+        return $this->scheduledAudits !== [];
+    }
+
+    public function hasPendingDeletions(): bool
+    {
+        return $this->pendingDeletions !== [];
+    }
+
+    /** @param array<int, array{entity: object, audit: AuditLog, is_insert: bool}> $scheduledAudits */
+    public function seedScheduledAudits(array $scheduledAudits): void
+    {
+        $this->scheduledAudits = $scheduledAudits;
+    }
+
+    /** @param list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $pendingDeletions */
+    public function seedPendingDeletions(array $pendingDeletions): void
+    {
+        $this->pendingDeletions = $pendingDeletions;
     }
 
     private bool $enabled = true;

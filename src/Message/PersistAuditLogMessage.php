@@ -58,7 +58,7 @@ readonly class PersistAuditLogMessage
             transactionHash: $log->transactionHash,
             createdAt: $log->createdAt->format(DateTimeInterface::ATOM),
             signature: $log->signature,
-            deliveryId: Uuid::v7()->toRfc4122(),
+            deliveryId: $log->deliveryId ?? Uuid::v7()->toRfc4122(),
             context: $log->context,
         );
     }

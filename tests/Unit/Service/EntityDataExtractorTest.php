@@ -8,6 +8,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Exception;
 use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\MockObject\Stub;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
@@ -18,16 +19,16 @@ use stdClass;
 
 final class EntityDataExtractorTest extends AbstractAuditTestCase
 {
-    /** @var (EntityManagerInterface&\PHPUnit\Framework\MockObject\Stub)|(EntityManagerInterface&MockObject) */
+    /** @var (EntityManagerInterface&Stub)|(EntityManagerInterface&MockObject) */
     private EntityManagerInterface $em;
 
-    /** @var ValueSerializerInterface&\PHPUnit\Framework\MockObject\Stub */
+    /** @var ValueSerializerInterface&Stub */
     private ValueSerializerInterface $serializer;
 
-    /** @var MetadataCacheInterface&\PHPUnit\Framework\MockObject\Stub */
+    /** @var MetadataCacheInterface&Stub */
     private MetadataCacheInterface $metadataCache;
 
-    /** @var (LoggerInterface&\PHPUnit\Framework\MockObject\Stub)|(LoggerInterface&MockObject) */
+    /** @var (LoggerInterface&Stub)|(LoggerInterface&MockObject) */
     private LoggerInterface $logger;
 
     private EntityDataExtractor $extractor;
@@ -50,7 +51,7 @@ final class EntityDataExtractorTest extends AbstractAuditTestCase
     public function testExtractSuccess(): void
     {
         $entity = new stdClass();
-        $meta = self::createStub(ClassMetadata::class);
+        $meta = $this->createMetadataStub();
 
         $this->em->method('getClassMetadata')->willReturn($meta);
         $this->metadataCache->method('getAuditableAttribute')->willReturn(null);
@@ -85,7 +86,7 @@ final class EntityDataExtractorTest extends AbstractAuditTestCase
     public function testExtractWithIgnoredProperties(): void
     {
         $entity = new stdClass();
-        $meta = self::createStub(ClassMetadata::class);
+        $meta = $this->createMetadataStub();
 
         $this->em->method('getClassMetadata')->willReturn($meta);
         $this->metadataCache->method('getAuditableAttribute')
@@ -108,7 +109,7 @@ final class EntityDataExtractorTest extends AbstractAuditTestCase
     public function testExtractPreservesNullableFields(): void
     {
         $entity = new stdClass();
-        $meta = self::createStub(ClassMetadata::class);
+        $meta = $this->createMetadataStub();
         $serializer = self::createMock(ValueSerializerInterface::class);
         $this->extractor = new EntityDataExtractor(
             $this->em,
@@ -153,13 +154,13 @@ final class EntityDataExtractorTest extends AbstractAuditTestCase
         $data = $this->extractor->extract($entity);
 
         self::assertTrue($data['_extraction_failed']);
-        self::assertSame('Error', $data['_error']);
+        self::assertSame('entity_data_extraction_failed', $data['_error']);
     }
 
     public function testGetFieldValueSafelyException(): void
     {
         $entity = new stdClass();
-        $meta = self::createStub(ClassMetadata::class);
+        $meta = $this->createMetadataStub();
 
         $this->em->method('getClassMetadata')->willReturn($meta);
         $this->metadataCache->method('getAuditableAttribute')->willReturn(null);
@@ -173,5 +174,16 @@ final class EntityDataExtractorTest extends AbstractAuditTestCase
         $data = $this->extractor->extract($entity);
 
         self::assertEmpty($data);
+    }
+
+    /**
+     * @return ClassMetadata<object>&Stub
+     */
+    private function createMetadataStub(): ClassMetadata&Stub
+    {
+        /** @var ClassMetadata<object>&Stub $metadata */
+        $metadata = self::createStub(ClassMetadata::class);
+
+        return $metadata;
     }
 }

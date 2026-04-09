@@ -11,9 +11,15 @@ interface EntityProcessorInterface
 {
     public function processInsertions(EntityManagerInterface $em, UnitOfWork $uow): void;
 
-    public function processUpdates(EntityManagerInterface $em, UnitOfWork $uow): void;
+    /**
+     * @param list<array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}>|null $deletedAssociationImpacts
+     */
+    public function processUpdates(EntityManagerInterface $em, UnitOfWork $uow, ?array $deletedAssociationImpacts = null): void;
 
-    public function processDeletions(EntityManagerInterface $em, UnitOfWork $uow): void;
+    /**
+     * @param list<array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}>|null $deletedAssociationImpacts
+     */
+    public function processDeletions(EntityManagerInterface $em, UnitOfWork $uow, ?array $deletedAssociationImpacts = null): void;
 
     /**
      * @param iterable<object> $collectionUpdates

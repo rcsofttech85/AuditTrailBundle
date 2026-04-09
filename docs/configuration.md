@@ -28,10 +28,14 @@ audit_trail:
     enable_soft_delete: true
     soft_delete_field: 'deletedAt'
 
-    # Fallback to the database transport if another transport fails
+    # Attempt database-backed fallback persistence if another transport fails.
+    # This uses the bundle's phase-aware fallback path and may persist immediately
+    # or defer safely depending on the current audit phase.
     fallback_to_database: true
 
-    # Cache pool used for access-audit cooldowns
+    # Optional cache pool used for cross-request access-audit cooldowns.
+    # If null, request-level deduplication still works, but cooldowns are not
+    # persisted across requests.
     cache_pool: null
 
     # Required role/permission for EasyAdmin audit actions
@@ -80,9 +84,11 @@ audit_trail:
     #   - Cons: Small risk of "data without audit" if the process fails after the main flush and before delivery completes.
     #   - Recommended for: External transports (HTTP, Queue), or database transport in default deferred mode.
     #
-    # false: Audits are sent DURING the transaction (onFlush).
+    # false: Eligible transports may be attempted during onFlush.
     #   - Pros: Strict atomicity. Data and audit are committed together.
-    #   - Cons: Slower. If audit transport fails, the entire transaction rolls back.
+    #   - Cons: Slower. If an in-transaction transport fails, the entire transaction rolls back.
+    #   - Note: Transport support is phase-specific. HTTP and queue transports still
+    #     run in deferred phases such as postFlush/postLoad even when this is false.
     #   - Recommended for: Doctrine transport (when strict compliance is required).
     defer_transport_until_commit: true
 
@@ -98,6 +104,7 @@ audit_trail:
 - `integrity.secret` is required only when `integrity.enabled` is `true`
 - `http.endpoint` must start with `http://` or `https://` when HTTP transport is enabled
 - `max_collection_items` must be at least `1`
+- If `cache_pool` is `null`, access-audit cooldowns are request-local only; cross-request cooldown persistence is disabled
 
 ## Transaction Safety Guide
 
@@ -107,24 +114,25 @@ These three options control the bundle's failure boundary:
 | :--- | :--- | :--- |
 | `defer_transport_until_commit` | `true` | Delivers audits after the Doctrine `postFlush` boundary instead of during `onFlush`. |
 | `fail_on_transport_error` | `false` | Escalates transport exceptions instead of logging and continuing. |
-| `fallback_to_database` | `true` | Falls back to the database transport when another transport fails and database transport support is available. |
+| `fallback_to_database` | `true` | Attempts phase-aware database-backed fallback persistence when another transport fails. |
 
 ### Recommended combinations
 
 | Goal | Recommended Settings | Result |
 | :--- | :--- | :--- |
 | Best default safety/performance | `defer_transport_until_commit: true`, `fail_on_transport_error: false` | Main writes succeed even if HTTP/queue delivery fails after the main flush. |
-| Strict in-transaction auditing | `defer_transport_until_commit: false`, `fail_on_transport_error: true`, `database.enabled: true`, `database.async: false` | Data and audit fail together when the audit cannot be recorded safely. |
+| Strict in-transaction auditing | `defer_transport_until_commit: false`, `fail_on_transport_error: true`, `database.enabled: true`, `database.async: false` | For the synchronous database transport path, data and audit fail together when the audit cannot be recorded safely. |
 | External transport with local safety net | `defer_transport_until_commit: false`, `fail_on_transport_error: false`, `fallback_to_database: true`, `database.enabled: true` | External transport failures can still be captured locally without requiring a nested `flush()` during `onFlush`. |
 
 ### Important behavior notes
 
 - When `defer_transport_until_commit` is `false`, the bundle still avoids calling `flush()` from inside Doctrine `onFlush`.
+- Transport support remains phase-specific even when `defer_transport_until_commit` is `false`. For example, HTTP and queue delivery still occur in deferred phases rather than inside the Doctrine transaction, so this setting does not make every enabled transport part of the same transactional boundary.
 - If fallback is needed during `onFlush`, the database audit entity is attached through Doctrine `UnitOfWork` change-set computation and joins the application's existing flush.
 - If `defer_transport_until_commit` is `true`, there is a small but real window where the main transaction can commit and the audit delivery can fail afterward. This is the default performance trade-off for HTTP and queue transports.
 - In deferred database mode, the bundle no longer performs a follow-up ORM `flush()` from `postFlush`. Deferred `AuditLog` rows are written through a dedicated database writer instead.
 - Because deferred database writes use a dedicated writer, Doctrine ORM lifecycle callbacks/listeners on `AuditLog` are not involved in that deferred path.
-- `fallback_to_database` only helps when database transport support is enabled and usable in the current phase.
+- When `fallback_to_database` is enabled, the dispatcher uses the bundle's own phase-aware fallback persistence path. On `onFlush` it joins the current `UnitOfWork`; on deferred and manual phases it writes through the dedicated database writer; and on failure it logs the fallback failure explicitly.
 
 ## Collection Serialization Guide
 

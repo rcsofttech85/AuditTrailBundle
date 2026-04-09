@@ -2,7 +2,7 @@
 
 AuditTrailBundle supports multiple transports to dispatch audit logs. This allows you to store logs locally, publish them to external services, or fan them out to several destinations at once.
 
-In `v3`, the transport pipeline is strongly typed. Custom transports receive an immutable [AuditTransportContext](/home/rahul/AuditTrailBundle/src/Transport/AuditTransportContext.php) instead of the older stringly `array $context` payload.
+In `v3`, the transport pipeline is strongly typed. Custom transports receive a read-only [AuditTransportContext](/home/rahul/AuditTrailBundle/src/Transport/AuditTransportContext.php) instead of the older stringly `array $context` payload.
 
 > [!NOTE]
 > **Messenger Confusion Warning:** The bundle utilizes Symfony Messenger for **two different features**.
@@ -55,10 +55,10 @@ final class AppAuditTransport implements AuditTransportInterface
 - `unitOfWork`: the active `UnitOfWork` when the phase has one
 - `entity`: the source entity when it is available
 
-The context is immutable. Internally the dispatcher may replace the `AuditLog`
-instance with `withAudit()` after listeners mutate or swap the log, but
-transport implementations should treat the context they receive as read-only
-input.
+The `AuditTransportContext` instance passed to a transport is read-only and is
+not mutated in place. Internally the dispatcher may create a new context with
+`withAudit()` after listeners mutate or swap the `AuditLog`, but transport
+implementations should treat the context they receive as read-only input.
 
 ## 1. Database Transport (Async)
 
@@ -178,6 +178,11 @@ $signature = $envelope->last(SignatureStamp::class)?->signature;
 ## 3. HTTP Transport
 
 The HTTP transport streams audit logs to an external API endpoint (e.g., a logging service, ELK, or Splunk).
+
+HTTP delivery is synchronous when it runs, but it is phase-limited: the built-in
+HTTP transport only supports deferred phases such as `postFlush` and `postLoad`.
+Setting `defer_transport_until_commit: false` does not move HTTP delivery into
+Doctrine's `onFlush` transaction window.
 
 ### Configuration for http transport
 
@@ -339,6 +344,29 @@ later transports in the chain are not executed and the exception is allowed to
 bubble back to the dispatcher. This keeps transport failure semantics explicit
 and lets the bundle apply `fail_on_transport_error` and fallback rules in one
 place instead of partially succeeding silently.
+
+Fail-fast does **not** mean transactional rollback across transports. If an
+earlier transport has already produced a side effect, the chain does not undo
+that side effect when a later transport fails.
+
+Audit deliveries now carry an internal `deliveryId` so the bundle's
+database-backed writes are idempotent across fallback and retry paths. This
+prevents duplicate local audit rows when an earlier database-capable transport
+succeeds and a later transport fails in the same chain. It does not roll back
+or deduplicate side effects performed by external systems.
+
+Transport order is fixed by the bundle, not by YAML key order. When multiple
+transports are enabled, they are registered in this order:
+
+1. database
+2. http
+3. queue
+
+That means:
+
+- a database transport runs before HTTP or queue when it supports the current phase
+- an HTTP transport failure prevents later queue delivery in the same chain execution
+- swapping YAML key order does not change execution order
 
 ---
 

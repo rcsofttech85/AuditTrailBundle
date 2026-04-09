@@ -98,7 +98,7 @@ class SensitiveDocument
 
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `cooldown` | `int` | `0` | Prevent duplicate logs for the same user/entity within X seconds (requires PSR-6 cache). |
+| `cooldown` | `int` | `0` | Prevent duplicate logs for the same user/entity within X seconds. Cross-request cooldown persistence requires a PSR-6 cache; request-level deduplication still works without one. |
 | `level` | `string` | `'info'` | The log level for the access audit. |
 | `message` | `string?` | `null` | A custom message to include in the audit log. |
 
@@ -159,7 +159,7 @@ final class AdminPostController
 
 ### Cache Configuration
 
-To use the `cooldown` feature, you must specify a PSR-6 cache pool in your configuration:
+To persist cooldowns across requests, specify a PSR-6 cache pool in your configuration:
 
 ```yaml
 # config/packages/audit_trail.yaml

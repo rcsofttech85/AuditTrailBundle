@@ -4,15 +4,21 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Symfony\Component\Uid\Uuid;
 
+use function array_map;
 use function array_merge;
+use function explode;
+use function implode;
 use function in_array;
 use function is_string;
+use function sprintf;
 use function str_contains;
 
 final class AuditLogWriter implements AuditLogWriterInterface
@@ -39,7 +45,15 @@ final class AuditLogWriter implements AuditLogWriterInterface
                 : $value;
         }
 
-        $connection->insert($metadata->getTableName(), $data);
+        try {
+            $connection->insert($metadata->getTableName(), $data);
+        } catch (UniqueConstraintViolationException $exception) {
+            if ($audit->deliveryId !== null && $this->deliveryAlreadyExists($audit, $metadata, $em)) {
+                return;
+            }
+
+            throw $exception;
+        }
     }
 
     private function convertValue(mixed $value, string $type, EntityManagerInterface $em): mixed
@@ -48,7 +62,7 @@ final class AuditLogWriter implements AuditLogWriterInterface
             return $value;
         }
 
-        return $em->getConnection()->convertToDatabaseValue($value, $type);
+        return Type::getType($type)->convertToDatabaseValue($value, $em->getConnection()->getDatabasePlatform());
     }
 
     /**
@@ -61,5 +75,22 @@ final class AuditLogWriter implements AuditLogWriterInterface
         }
 
         $metadata->setFieldValue($audit, 'id', Uuid::v7());
+    }
+
+    /**
+     * @param ClassMetadata<AuditLog> $metadata
+     */
+    private function deliveryAlreadyExists(AuditLog $audit, ClassMetadata $metadata, EntityManagerInterface $em): bool
+    {
+        $connection = $em->getConnection();
+        $platform = $connection->getDatabasePlatform();
+        $table = implode('.', array_map($platform->quoteSingleIdentifier(...), explode('.', $metadata->getTableName())));
+        $column = $platform->quoteSingleIdentifier($metadata->getColumnName('deliveryId'));
+        $result = $connection->fetchOne(
+            sprintf('SELECT 1 FROM %s WHERE %s = ?', $table, $column),
+            [$audit->deliveryId],
+        );
+
+        return $result !== false;
     }
 }

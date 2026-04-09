@@ -38,6 +38,29 @@ final class DataMaskerTest extends TestCase
         self::assertSame('value', $redacted['nested']['normal'] ?? null);
     }
 
+    public function testRedactDoesNotMaskPartialSensitiveSubstrings(): void
+    {
+        $data = [
+            'primaryKeyValue' => 'keep',
+            'monkeyBusiness' => 'keep',
+            'apitoken' => 'keep',
+            'api_token' => 'mask',
+            'apiKey' => 'mask',
+            'accessToken' => 'mask',
+            'sessionId' => 'mask',
+        ];
+
+        $redacted = $this->dataMasker->redact($data);
+
+        self::assertSame('keep', $redacted['primaryKeyValue']);
+        self::assertSame('keep', $redacted['monkeyBusiness']);
+        self::assertSame('keep', $redacted['apitoken']);
+        self::assertSame('********', $redacted['api_token']);
+        self::assertSame('********', $redacted['apiKey']);
+        self::assertSame('********', $redacted['accessToken']);
+        self::assertSame('********', $redacted['sessionId']);
+    }
+
     public function testMaskExplicitFields(): void
     {
         $data = [
@@ -50,5 +73,23 @@ final class DataMaskerTest extends TestCase
         self::assertSame('HIDDEN', $masked['email']);
         self::assertSame('1234567890', $masked['phone']);
         self::assertArrayNotHasKey('missing', $masked);
+    }
+
+    public function testCustomSensitiveKeysRemainSupported(): void
+    {
+        $masker = new DataMasker(['jwt', 'signingKey', 'merchant_token']);
+        $data = [
+            'jwt' => 'mask',
+            'signingKey' => 'mask',
+            'merchant_token' => 'mask',
+            'primaryKeyValue' => 'keep',
+        ];
+
+        $redacted = $masker->redact($data);
+
+        self::assertSame('********', $redacted['jwt']);
+        self::assertSame('********', $redacted['signingKey']);
+        self::assertSame('********', $redacted['merchant_token']);
+        self::assertSame('keep', $redacted['primaryKeyValue']);
     }
 }

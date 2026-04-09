@@ -104,6 +104,7 @@ class AuditLog implements AuditLogInterface
             set {
                 $this->checkSealed();
                 $this->context = $value;
+                $this->isContextNormalized = false;
             }
         },
         #[ORM\Column(length: 128, nullable: true)]
@@ -127,9 +128,21 @@ class AuditLog implements AuditLogInterface
 
     private bool $isSealed = false;
 
+    private bool $isContextNormalized = false;
+
     public function seal(): void
     {
         $this->isSealed = true;
+    }
+
+    public function markContextNormalized(): void
+    {
+        $this->isContextNormalized = true;
+    }
+
+    public function isContextNormalized(): bool
+    {
+        return $this->isContextNormalized;
     }
 
     private function checkSealed(): void

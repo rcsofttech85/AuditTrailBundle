@@ -14,7 +14,10 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
+use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
+use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
+use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
@@ -84,6 +87,7 @@ final class SensitiveDataUpdateTest extends AbstractAuditTestCase
             $dispatcher,
             $auditManager,
             $entityProcessor,
+            new AssociationImpactAnalyzer(new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)), new CollectionTransitionMerger()),
             $this->transactionIdGenerator,
             self::createStub(AuditAccessHandlerInterface::class),
             self::createStub(EntityIdResolverInterface::class)

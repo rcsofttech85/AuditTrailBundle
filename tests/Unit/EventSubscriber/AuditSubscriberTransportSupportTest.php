@@ -18,7 +18,10 @@ use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
+use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
+use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
+use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
@@ -43,6 +46,29 @@ final class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
             ->with(
                 self::callback(static fn (AuditTransportContext $context): bool => $context->phase === AuditPhase::PostFlush)
             );
+
+        $subscriber->onFlush(new OnFlushEventArgs($em));
+        $subscriber->postFlush(new PostFlushEventArgs($em));
+    }
+
+    public function testOnFlushDispatchesImmediatelyWhenTransportSupportsIt(): void
+    {
+        /** @var AuditTransportInterface&MockObject $transport */
+        $transport = $this->createMock(AuditTransportInterface::class);
+        $auditService = $this->createAuditServiceStub();
+        $subscriber = $this->createSubscriber($transport, $auditService);
+        $em = $this->createMockEntityManagerWithUow();
+
+        $transport->method('supports')->willReturnCallback(
+            static fn (AuditTransportContext $context): bool => match ($context->phase) {
+                AuditPhase::OnFlush => true,
+                AuditPhase::PostFlush => false,
+                default => false,
+            }
+        );
+        $transport->expects($this->once())
+            ->method('send')
+            ->with(self::callback(static fn (AuditTransportContext $context): bool => $context->phase === AuditPhase::OnFlush));
 
         $subscriber->onFlush(new OnFlushEventArgs($em));
         $subscriber->postFlush(new PostFlushEventArgs($em));
@@ -75,6 +101,7 @@ final class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
             $dispatcher,
             $auditManager,
             $entityProcessor,
+            new AssociationImpactAnalyzer(new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)), new CollectionTransitionMerger()),
             new TransactionIdGenerator(),
             self::createStub(AuditAccessHandlerInterface::class),
             self::createStub(EntityIdResolverInterface::class)

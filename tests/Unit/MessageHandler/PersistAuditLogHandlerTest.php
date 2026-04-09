@@ -6,7 +6,6 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\MessageHandler;
 
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\EntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 use LogicException;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -29,7 +28,7 @@ final class PersistAuditLogHandlerTest extends TestCase
 
     public function testInvokePersistsAuditLog(): void
     {
-        $message = new PersistAuditLogMessage(
+        $message = $this->createMessage(
             entityClass: 'App\Entity\Product',
             entityId: '42',
             action: 'create',
@@ -41,48 +40,45 @@ final class PersistAuditLogHandlerTest extends TestCase
             ipAddress: '127.0.0.1',
             userAgent: 'Mozilla/5.0',
             transactionHash: 'abc123',
-            createdAt: '2025-01-01T12:00:00+00:00',
             signature: 'sig-hash',
             deliveryId: '0195f4d8-b087-7d44-9c4f-a5c6d4aa1111',
             context: ['source' => 'test'],
         );
-
-        $repository = $this->createMock(EntityRepository::class);
-        $repository->expects($this->once())
-            ->method('findOneBy')
-            ->with(['deliveryId' => '0195f4d8-b087-7d44-9c4f-a5c6d4aa1111'])
-            ->willReturn(null);
-        $em = $this->createMock(EntityManagerInterface::class);
-        $em->method('getRepository')->with(AuditLog::class)->willReturn($repository);
-        $this->registry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn($em);
+        $em = $this->expectEntityManager();
+        $persistedLog = null;
 
         $em->expects($this->once())
             ->method('persist')
-            ->with(self::callback(static function (AuditLog $log) {
-                return $log->entityClass === 'App\Entity\Product'
-                    && $log->entityId === '42'
-                    && $log->action === 'create'
-                    && $log->oldValues === null
-                    && $log->newValues === ['name' => 'Widget']
-                    && $log->changedFields === ['name']
-                    && $log->userId === 'user-1'
-                    && $log->username === 'admin'
-                    && $log->ipAddress === '127.0.0.1'
-                    && $log->userAgent === 'Mozilla/5.0'
-                    && $log->transactionHash === 'abc123'
-                    && $log->signature === 'sig-hash'
-                    && $log->deliveryId === '0195f4d8-b087-7d44-9c4f-a5c6d4aa1111'
-                    && $log->context === ['source' => 'test'];
+            ->with(self::callback(static function (AuditLog $log) use (&$persistedLog): bool {
+                $persistedLog = $log;
+
+                return true;
             }));
 
         $em->expects($this->once())->method('flush');
 
         ($this->handler)($message);
+
+        $persistedLog = $this->assertPersistedAuditLog($persistedLog);
+        self::assertSame('App\Entity\Product', $persistedLog->entityClass);
+        self::assertSame('42', $persistedLog->entityId);
+        self::assertSame('create', $persistedLog->action);
+        self::assertNull($persistedLog->oldValues);
+        self::assertSame(['name' => 'Widget'], $persistedLog->newValues);
+        self::assertSame(['name'], $persistedLog->changedFields);
+        self::assertSame('user-1', $persistedLog->userId);
+        self::assertSame('admin', $persistedLog->username);
+        self::assertSame('127.0.0.1', $persistedLog->ipAddress);
+        self::assertSame('Mozilla/5.0', $persistedLog->userAgent);
+        self::assertSame('abc123', $persistedLog->transactionHash);
+        self::assertSame('sig-hash', $persistedLog->signature);
+        self::assertSame('0195f4d8-b087-7d44-9c4f-a5c6d4aa1111', $persistedLog->deliveryId);
+        self::assertSame(['source' => 'test'], $persistedLog->context);
     }
 
     public function testInvokeWithMinimalMessage(): void
     {
-        $message = new PersistAuditLogMessage(
+        $message = $this->createMessage(
             entityClass: 'App\Entity\Order',
             entityId: '99',
             action: 'delete',
@@ -94,67 +90,41 @@ final class PersistAuditLogHandlerTest extends TestCase
             ipAddress: null,
             userAgent: null,
             transactionHash: null,
+            signature: null,
+            deliveryId: null,
+            context: [],
             createdAt: '2025-06-15T08:00:00+00:00',
         );
-
-        $repository = $this->createMock(EntityRepository::class);
-        $repository->expects($this->never())->method('findOneBy');
-        $em = $this->createMock(EntityManagerInterface::class);
-        $em->method('getRepository')->with(AuditLog::class)->willReturn($repository);
-        $this->registry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn($em);
+        $em = $this->expectEntityManager();
+        $persistedLog = null;
 
         $em->expects($this->once())
             ->method('persist')
-            ->with(self::callback(static function (AuditLog $log) {
-                return $log->entityClass === 'App\Entity\Order'
-                    && $log->entityId === '99'
-                    && $log->action === 'delete'
-                    && $log->userId === null
-                    && $log->signature === null
-                    && $log->context === [];
+            ->with(self::callback(static function (AuditLog $log) use (&$persistedLog): bool {
+                $persistedLog = $log;
+
+                return true;
             }));
 
         $em->expects($this->once())->method('flush');
 
         ($this->handler)($message);
-    }
 
-    public function testInvokeSkipsDuplicateDeliveryId(): void
-    {
-        $message = new PersistAuditLogMessage(
-            entityClass: 'App\Entity\Order',
-            entityId: '99',
-            action: 'delete',
-            oldValues: ['status' => 'active'],
-            newValues: null,
-            changedFields: null,
-            userId: null,
-            username: null,
-            ipAddress: null,
-            userAgent: null,
-            transactionHash: null,
-            createdAt: '2025-06-15T08:00:00+00:00',
-            deliveryId: '0195f4d8-b087-7d44-9c4f-a5c6d4aa2222',
-        );
-
-        $repository = $this->createMock(EntityRepository::class);
-        $repository->expects($this->once())
-            ->method('findOneBy')
-            ->with(['deliveryId' => '0195f4d8-b087-7d44-9c4f-a5c6d4aa2222'])
-            ->willReturn(new AuditLog('App\Entity\Order', '99', 'delete'));
-        $em = $this->createMock(EntityManagerInterface::class);
-        $em->method('getRepository')->with(AuditLog::class)->willReturn($repository);
-        $this->registry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn($em);
-
-        $em->expects($this->never())->method('persist');
-        $em->expects($this->never())->method('flush');
-
-        ($this->handler)($message);
+        $persistedLog = $this->assertPersistedAuditLog($persistedLog);
+        self::assertSame('App\Entity\Order', $persistedLog->entityClass);
+        self::assertSame('99', $persistedLog->entityId);
+        self::assertSame('delete', $persistedLog->action);
+        self::assertSame(['status' => 'active'], $persistedLog->oldValues);
+        self::assertNull($persistedLog->newValues);
+        self::assertNull($persistedLog->changedFields);
+        self::assertNull($persistedLog->userId);
+        self::assertNull($persistedLog->signature);
+        self::assertSame([], $persistedLog->context);
     }
 
     public function testInvokeTreatsUniqueConstraintViolationAsIdempotentSuccess(): void
     {
-        $message = new PersistAuditLogMessage(
+        $message = $this->createMessage(
             entityClass: 'App\Entity\Order',
             entityId: '99',
             action: 'delete',
@@ -166,18 +136,10 @@ final class PersistAuditLogHandlerTest extends TestCase
             ipAddress: null,
             userAgent: null,
             transactionHash: null,
-            createdAt: '2025-06-15T08:00:00+00:00',
             deliveryId: '0195f4d8-b087-7d44-9c4f-a5c6d4aa3333',
+            createdAt: '2025-06-15T08:00:00+00:00',
         );
-
-        $repository = $this->createMock(EntityRepository::class);
-        $repository->expects($this->once())
-            ->method('findOneBy')
-            ->with(['deliveryId' => '0195f4d8-b087-7d44-9c4f-a5c6d4aa3333'])
-            ->willReturn(null);
-        $em = $this->createMock(EntityManagerInterface::class);
-        $em->method('getRepository')->with(AuditLog::class)->willReturn($repository);
-        $this->registry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn($em);
+        $em = $this->expectEntityManager();
 
         $em->expects($this->once())->method('persist');
         $duplicateException = self::createStub(UniqueConstraintViolationException::class);
@@ -193,7 +155,7 @@ final class PersistAuditLogHandlerTest extends TestCase
 
     public function testInvokeResetsManagerWhenDuplicateClosesEntityManager(): void
     {
-        $message = new PersistAuditLogMessage(
+        $message = $this->createMessage(
             entityClass: 'App\Entity\Order',
             entityId: '99',
             action: 'delete',
@@ -205,18 +167,10 @@ final class PersistAuditLogHandlerTest extends TestCase
             ipAddress: null,
             userAgent: null,
             transactionHash: null,
-            createdAt: '2025-06-15T08:00:00+00:00',
             deliveryId: '0195f4d8-b087-7d44-9c4f-a5c6d4aa4444',
+            createdAt: '2025-06-15T08:00:00+00:00',
         );
-
-        $repository = $this->createMock(EntityRepository::class);
-        $repository->expects($this->once())
-            ->method('findOneBy')
-            ->with(['deliveryId' => '0195f4d8-b087-7d44-9c4f-a5c6d4aa4444'])
-            ->willReturn(null);
-        $em = $this->createMock(EntityManagerInterface::class);
-        $em->method('getRepository')->with(AuditLog::class)->willReturn($repository);
-        $this->registry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn($em);
+        $em = $this->expectEntityManager();
 
         $duplicateException = self::createStub(UniqueConstraintViolationException::class);
 
@@ -233,9 +187,69 @@ final class PersistAuditLogHandlerTest extends TestCase
     {
         $this->registry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn(null);
 
-        $this->expectException(LogicException::class);
-        $this->expectExceptionMessage('No EntityManager is configured');
+        self::expectException(LogicException::class);
+        self::expectExceptionMessage('No EntityManager is configured');
 
-        ($this->handler)(new PersistAuditLogMessage('App\Entity\Order', '1', 'create', null, null, null, null, null, null, null, null, '2025-01-01T00:00:00+00:00'));
+        ($this->handler)($this->createMessage(entityId: '1'));
+    }
+
+    private function expectEntityManager(): EntityManagerInterface&MockObject
+    {
+        $em = $this->createMock(EntityManagerInterface::class);
+        $this->registry->expects($this->once())
+            ->method('getManagerForClass')
+            ->with(AuditLog::class)
+            ->willReturn($em);
+
+        return $em;
+    }
+
+    private function assertPersistedAuditLog(?AuditLog $persistedLog): AuditLog
+    {
+        self::assertNotNull($persistedLog);
+
+        return $persistedLog;
+    }
+
+    /**
+     * @param array<string, mixed>|null $oldValues
+     * @param array<string, mixed>|null $newValues
+     * @param array<int, string>|null   $changedFields
+     * @param array<string, mixed>      $context
+     */
+    private function createMessage(
+        string $entityClass = 'App\Entity\Order',
+        string $entityId = '99',
+        string $action = 'delete',
+        ?array $oldValues = ['status' => 'active'],
+        ?array $newValues = null,
+        ?array $changedFields = null,
+        ?string $userId = null,
+        ?string $username = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $transactionHash = null,
+        string $createdAt = '2025-01-01T12:00:00+00:00',
+        ?string $signature = null,
+        ?string $deliveryId = null,
+        array $context = [],
+    ): PersistAuditLogMessage {
+        return new PersistAuditLogMessage(
+            entityClass: $entityClass,
+            entityId: $entityId,
+            action: $action,
+            oldValues: $oldValues,
+            newValues: $newValues,
+            changedFields: $changedFields,
+            userId: $userId,
+            username: $username,
+            ipAddress: $ipAddress,
+            userAgent: $userAgent,
+            transactionHash: $transactionHash,
+            createdAt: $createdAt,
+            signature: $signature,
+            deliveryId: $deliveryId,
+            context: $context,
+        );
     }
 }
