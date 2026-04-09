@@ -20,6 +20,7 @@ use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
+use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Symfony\Contracts\Service\ResetInterface;
 use Throwable;
@@ -43,6 +44,7 @@ final class AuditSubscriber implements ResetInterface
         private readonly AuditDispatcherInterface $dispatcher,
         private readonly ScheduledAuditManagerInterface $auditManager,
         private readonly EntityProcessorInterface $entityProcessor,
+        private readonly AssociationImpactAnalyzer $associationImpactAnalyzer,
         private readonly TransactionIdGenerator $transactionIdGenerator,
         private readonly AuditAccessHandlerInterface $accessHandler,
         private readonly EntityIdResolverInterface $idResolver,
@@ -67,14 +69,15 @@ final class AuditSubscriber implements ResetInterface
         try {
             $em = $args->getObjectManager();
             $uow = $em->getUnitOfWork();
+            $deletedAssociationImpacts = $this->associationImpactAnalyzer->buildAggregatedDeletedAssociationImpacts($em, $uow);
 
             // rely on the parent flush and computeChangeSet() in the
             // transport to persist audits, avoiding nested flushes in onFlush.
             $this->entityProcessor->processInsertions($em, $uow);
-            $this->entityProcessor->processUpdates($em, $uow);
+            $this->entityProcessor->processUpdates($em, $uow, $deletedAssociationImpacts);
             $this->entityProcessor->processCollectionUpdates($em, $uow, $uow->getScheduledCollectionUpdates());
             $this->entityProcessor->processCollectionUpdates($em, $uow, $uow->getScheduledCollectionDeletions());
-            $this->entityProcessor->processDeletions($em, $uow);
+            $this->entityProcessor->processDeletions($em, $uow, $deletedAssociationImpacts);
         } finally {
             $this->onFlushProcessing = false;
         }

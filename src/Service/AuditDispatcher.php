@@ -17,6 +17,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
+use Symfony\Component\Uid\Uuid;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 use Throwable;
 
@@ -58,6 +59,7 @@ final class AuditDispatcher implements AuditDispatcherInterface
 
         $this->contextProcessor->prepare($audit, $entity, $phase);
         $context = $context->withAudit($audit);
+        $this->ensureDeliveryId($audit);
 
         if ($this->integrityService?->isEnabled() === true) {
             $audit->signature = $this->integrityService->generateSignature($audit);
@@ -95,8 +97,7 @@ final class AuditDispatcher implements AuditDispatcherInterface
         try {
             return match (true) {
                 $phase->isOnFlush() => $this->persistOnFlushFallback($audit, $em, $uow),
-                $phase->isDeferredPersistencePhase() => $this->persistDeferredFallback($audit, $em),
-                default => $this->deferFallbackWithoutImplicitFlush($audit, $em, $phase),
+                default => $this->persistDeferredFallback($audit, $em, $phase),
             };
         } catch (Throwable $fallbackError) {
             $this->logger?->critical(
@@ -126,44 +127,39 @@ final class AuditDispatcher implements AuditDispatcherInterface
         return $this->finalizeDeferredFallback($audit);
     }
 
-    private function persistDeferredFallback(AuditLog $audit, EntityManagerInterface $em): bool
-    {
-        $this->auditLogWriter->insert($audit, $em);
-
-        return $this->finalizeDeferredFallback($audit);
-    }
-
-    private function deferFallbackWithoutImplicitFlush(
+    private function persistDeferredFallback(
         AuditLog $audit,
         EntityManagerInterface $em,
-        AuditPhase $phase,
+        ?AuditPhase $phase = null,
     ): bool {
-        if (!$em->contains($audit)) {
-            $em->persist($audit);
-        }
+        $this->auditLogWriter->insert($audit, $em);
 
+        return $this->finalizeDeferredFallback($audit, $phase);
+    }
+
+    private function finalizeDeferredFallback(AuditLog $audit, ?AuditPhase $phase = null): bool
+    {
         $audit->seal();
 
-        $this->logger?->warning(
-            sprintf(
-                'Audit log for %s#%s queued via database fallback during phase "%s" without an implicit flush. Persist it with the next application flush.',
+        $message = $phase === null
+            ? sprintf('Audit log for %s#%s saved via database fallback.', $audit->entityClass, $audit->entityId)
+            : sprintf(
+                'Audit log for %s#%s saved via database fallback during phase "%s".',
                 $audit->entityClass,
                 $audit->entityId,
                 $phase->value,
-            ),
+            );
+        $this->logger?->warning(
+            $message,
         );
 
         return true;
     }
 
-    private function finalizeDeferredFallback(AuditLog $audit): bool
+    private function ensureDeliveryId(AuditLog $audit): void
     {
-        $audit->seal();
-
-        $this->logger?->warning(
-            sprintf('Audit log for %s#%s saved via database fallback.', $audit->entityClass, $audit->entityId),
-        );
-
-        return true;
+        if ($audit->deliveryId === null) {
+            $audit->deliveryId = Uuid::v7()->toRfc4122();
+        }
     }
 }

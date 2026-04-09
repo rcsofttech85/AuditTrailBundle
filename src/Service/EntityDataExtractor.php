@@ -53,7 +53,7 @@ final readonly class EntityDataExtractor implements EntityDataExtractorInterface
 
             return [
                 '_extraction_failed' => true,
-                '_error' => $e->getMessage(),
+                '_error' => 'entity_data_extraction_failed',
                 '_entity_class' => $class,
             ];
         }

@@ -60,7 +60,7 @@ Most audit bundles capture changes synchronously, which can significantly slow d
 - **Deep Collection Tracking**: Tracks Many-to-Many and One-to-Many changes with precision.
 - **Sensitive Data Masking**: Native support for `#[SensitiveParameter]` and custom `#[Sensitive]` attributes.
 - **Safe Revert Support**: Easily roll back entities to any point in history.
-- **Access Auditing**: Track sensitive entity read operations (GET requests) with configurable cooldowns.
+- **Access Auditing**: Track sensitive entity read operations (GET requests) with built-in request-level deduplication and optional cross-request cooldowns.
 - **Conditional Auditing**: Skip logs based on runtime conditions or Expressions.
 - **Rich Context**: Automatically tracks IP, User Agent, impersonation context, and custom metadata.
 - **AI-Ready Extension Hooks**: Optional AI processors can add namespaced summaries, anomaly flags, or structured insights before audit signing and transport dispatch.
@@ -162,6 +162,7 @@ The default transport stores audit logs in the database. If you enable integrity
 If you are choosing settings for a production rollout:
 
 - Use `defer_transport_until_commit: true` for HTTP or queue-first setups where application write latency matters most.
+- HTTP and queue transports remain deferred-phase transports; setting `defer_transport_until_commit: false` does not move them into Doctrine's `onFlush` transaction window.
 - Use synchronous database transport with `fail_on_transport_error: true` when compliance requires the write and audit to succeed or fail together.
 - Keep `fallback_to_database: true` when you want external transport failures to still leave a local audit trail.
 - Configure a PSR-6 `cache_pool` if you rely on cross-request access-audit cooldowns.

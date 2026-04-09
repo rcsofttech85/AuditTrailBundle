@@ -607,17 +607,13 @@ final class AuditDispatcherTest extends TestCase
     {
         $transport = $this->useTransportMock();
         $em = $this->useEntityManagerMock();
-        $logger = $this->useLoggerMock();
-        $dispatcher = $this->createDispatcher($transport, null, null, null, $logger);
+        $auditLogWriter = self::createMock(AuditLogWriterInterface::class);
+        $dispatcher = $this->createDispatcher($transport, null, null, null, null, false, true, [], $auditLogWriter);
 
         $transport->method('supports')->willReturn(true);
         $transport->expects($this->once())->method('send')->willThrowException(new Exception('Transport error'));
-        $em->method('contains')->with($this->audit)->willReturn(false);
-        $em->expects($this->once())->method('persist')->with($this->audit);
         $em->expects($this->never())->method('flush');
-        $logger->expects($this->once())
-            ->method('warning')
-            ->with(self::stringContains('without an implicit flush'));
+        $auditLogWriter->expects($this->once())->method('insert')->with($this->audit, $em);
 
         self::assertTrue($dispatcher->dispatch($this->audit, $em, AuditPhase::ManualFlush));
     }

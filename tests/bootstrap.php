@@ -51,7 +51,5 @@ try {
     // Shutdown kernel. The underlying static connection remains active in DAMA's registry.
     $kernel->shutdown();
 } catch (Throwable $e) {
-    fwrite(\STDERR, sprintf("\n[FATAL] Test Bootstrap Failed: %s\n", $e->getMessage()));
-    fwrite(\STDERR, $e->getTraceAsString()."\n");
-    exit(1);
+    throw new RuntimeException(sprintf("[FATAL] Test Bootstrap Failed: %s\n%s", $e->getMessage(), $e->getTraceAsString()), previous: $e);
 }

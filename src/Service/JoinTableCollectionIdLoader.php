@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
@@ -251,7 +252,7 @@ final readonly class JoinTableCollectionIdLoader
         }
 
         try {
-            return $em->getConnection()->convertToDatabaseValue($value, $type);
+            return Type::getType($type)->convertToDatabaseValue($value, $em->getConnection()->getDatabasePlatform());
         } catch (Throwable) {
             return $value;
         }
@@ -264,7 +265,7 @@ final readonly class JoinTableCollectionIdLoader
     ): int|string|null {
         if ($type !== null) {
             try {
-                $value = $em->getConnection()->convertToPHPValue($value, $type);
+                $value = Type::getType($type)->convertToPHPValue($value, $em->getConnection()->getDatabasePlatform());
             } catch (Throwable) {
             }
         }

@@ -17,14 +17,12 @@ final class ScheduledAuditManagerTest extends TestCase
     {
         $manager = new ScheduledAuditManager();
         $entity = new stdClass();
-        $log = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
+        $log = $this->createAuditLog();
 
         $manager->schedule($entity, $log, true);
 
-        self::assertNotEmpty($manager->getScheduledAudits());
-        self::assertCount(1, $manager->getScheduledAudits());
-
         $audits = $manager->getScheduledAudits();
+
         self::assertCount(1, $audits);
         self::assertSame($entity, $audits[0]['entity']);
         self::assertSame($log, $audits[0]['audit']);
@@ -33,25 +31,38 @@ final class ScheduledAuditManagerTest extends TestCase
 
     public function testScheduleOverflow(): void
     {
-        $manager = new ScheduledAuditManager();
+        $manager = new ScheduledAuditManager(maxScheduledAudits: 1000);
         $entity = new stdClass();
-        $log = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
+        $log = $this->createAuditLog();
 
-        // Fill up to max (1000)
         for ($i = 0; $i < 1000; ++$i) {
             $manager->schedule($entity, $log, true);
         }
 
-        $this->expectException(OverflowException::class);
+        self::expectException(OverflowException::class);
         $manager->schedule($entity, $log, true);
+    }
+
+    public function testScheduleIsUnlimitedByDefault(): void
+    {
+        $manager = new ScheduledAuditManager();
+        $entity = new stdClass();
+        $log = $this->createAuditLog();
+
+        for ($i = 0; $i < 1001; ++$i) {
+            $manager->schedule($entity, $log, true);
+        }
+
+        self::assertCount(1001, $manager->getScheduledAudits());
     }
 
     public function testScheduleDoesNotDispatchEvent(): void
     {
         $manager = new ScheduledAuditManager();
-        $manager->schedule(new stdClass(), new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE), false);
+        $manager->schedule(new stdClass(), $this->createAuditLog(), false);
 
         self::assertCount(1, $manager->getScheduledAudits());
+        self::assertFalse($manager->getScheduledAudits()[0]['is_insert']);
     }
 
     public function testPendingDeletions(): void
@@ -72,12 +83,17 @@ final class ScheduledAuditManagerTest extends TestCase
     public function testClear(): void
     {
         $manager = new ScheduledAuditManager();
-        $manager->schedule(new stdClass(), new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE), true);
+        $manager->schedule(new stdClass(), $this->createAuditLog(), true);
         $manager->addPendingDeletion(new stdClass(), [], true);
 
         $manager->clear();
 
         self::assertEmpty($manager->getScheduledAudits());
         self::assertEmpty($manager->getPendingDeletions());
+    }
+
+    private function createAuditLog(): AuditLog
+    {
+        return new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
     }
 }

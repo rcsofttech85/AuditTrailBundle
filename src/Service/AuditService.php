@@ -152,7 +152,7 @@ final readonly class AuditService implements AuditServiceInterface
             $ipAddress = null;
         }
 
-        return new AuditLog(
+        $auditLog = new AuditLog(
             entityClass: $entity::class,
             entityId: (string) $entityId,
             action: $action,
@@ -167,6 +167,10 @@ final readonly class AuditService implements AuditServiceInterface
             userAgent: $userAgent,
             context: $contextData
         );
+
+        $auditLog->markContextNormalized();
+
+        return $auditLog;
     }
 
     #[Override]

@@ -34,13 +34,6 @@ final readonly class PersistAuditLogHandler
     {
         $em = $this->getEntityManager();
 
-        if ($message->deliveryId !== null) {
-            $existing = $em->getRepository(AuditLog::class)->findOneBy(['deliveryId' => $message->deliveryId]);
-            if ($existing instanceof AuditLog) {
-                return;
-            }
-        }
-
         $log = new AuditLog(
             entityClass: $message->entityClass,
             entityId: $message->entityId,

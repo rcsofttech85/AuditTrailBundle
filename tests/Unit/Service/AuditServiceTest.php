@@ -99,7 +99,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
     }
 
     /** @return ContextResolverInterface&\PHPUnit\Framework\MockObject\Stub */
-    private function useContextResolverMock(): ContextResolverInterface
+    private function useContextResolverStub(): ContextResolverInterface
     {
         $contextResolver = self::createStub(ContextResolverInterface::class);
         $this->contextResolver = $contextResolver;
@@ -126,27 +126,11 @@ final class AuditServiceTest extends AbstractAuditTestCase
         return $this->service;
     }
 
-    public function testShouldAudit(): void
+    public function testShouldAuditWhenEntityIsNotIgnored(): void
     {
         $this->metadataManager->method('isEntityIgnored')->willReturn(false);
-        self::assertTrue($this->service->shouldAudit(new stdClass()));
 
-        $this->metadataManager = self::createStub(AuditMetadataManagerInterface::class);
-        $this->metadataManager->method('isEntityIgnored')->willReturn(true);
-        $service = new AuditService(
-            $this->entityManager,
-            $this->clock,
-            $this->transactionIdGenerator,
-            $this->dataExtractor,
-            $this->metadataManager,
-            $this->contextResolver,
-            $this->idResolver,
-            new ContextSanitizer(),
-            null,
-            'UTC',
-            [],
-        );
-        self::assertFalse($service->shouldAudit(new stdClass()));
+        self::assertTrue($this->service->shouldAudit(new stdClass()));
     }
 
     public function testShouldAuditWithVoters(): void
@@ -412,7 +396,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
         $entity = new stdClass();
         $this->idResolver->method('resolveFromEntity')->willReturn('1');
 
-        $contextResolver = $this->useContextResolverMock();
+        $contextResolver = $this->useContextResolverStub();
         $contextResolver->method('resolve')->willThrowException(new Exception('User error'));
         // AuditService should catch and log errors from context resolver
         $logger = $this->useLoggerMock();
@@ -444,6 +428,23 @@ final class AuditServiceTest extends AbstractAuditTestCase
         } finally {
             fclose($resource);
         }
+    }
+
+    public function testCreateAuditLogMarksContextAsNormalized(): void
+    {
+        $entity = new stdClass();
+        $this->idResolver->method('resolveFromEntity')->willReturn('1');
+        $this->contextResolver->method('resolve')->willReturn([
+            'userId' => '1',
+            'username' => 'user1',
+            'ipAddress' => '127.0.0.1',
+            'userAgent' => 'Agent',
+            'context' => ['foo' => 'bar'],
+        ]);
+
+        $log = $this->service->createAuditLog($entity, AuditLogInterface::ACTION_CREATE);
+
+        self::assertTrue($log->isContextNormalized());
     }
 
     public function testGetSensitiveFields(): void

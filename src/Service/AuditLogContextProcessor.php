@@ -69,6 +69,7 @@ final class AuditLogContextProcessor
                 $result = $processor->process($audit->context, $entity);
 
                 if ($result !== []) {
+                    $result = $this->contextSanitizer->sanitizeArray($result);
                     $aiContext = $this->mergeAiProcessorResult($aiContext, $result, $processor, $namespace);
                 }
             } catch (Throwable $e) {
@@ -136,8 +137,10 @@ final class AuditLogContextProcessor
                 $context = $this->dataMasker->redact($context);
             }
 
-            $context = $this->contextSanitizer->sanitizeArray($context);
-            $context = $this->truncateOversizedContext($audit, $context);
+            if (!$audit->isContextNormalized()) {
+                $context = $this->contextSanitizer->sanitizeArray($context);
+                $context = $this->truncateOversizedContext($audit, $context);
+            }
         } catch (Throwable $e) {
             $this->logger?->warning(
                 sprintf(
@@ -156,6 +159,7 @@ final class AuditLogContextProcessor
         }
 
         $audit->context = $context;
+        $audit->markContextNormalized();
     }
 
     /**

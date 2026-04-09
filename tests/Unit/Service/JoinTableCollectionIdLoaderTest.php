@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Query\QueryBuilder;
 use Doctrine\DBAL\Result;
 use Doctrine\ORM\EntityManagerInterface;
@@ -55,14 +56,13 @@ final class JoinTableCollectionIdLoaderTest extends TestCase
         $queryBuilder->method('where')->with('post_id = :ownerId')->willReturnSelf();
         $queryBuilder->expects($this->once())
             ->method('setParameter')
-            ->with('ownerId', 'db-10', 'integer')
+            ->with('ownerId', '10', 'integer')
             ->willReturnSelf();
         $queryBuilder->method('executeQuery')->willReturn($result);
 
         $connection = self::createStub(Connection::class);
         $connection->method('createQueryBuilder')->willReturn($queryBuilder);
-        $connection->method('convertToDatabaseValue')->willReturnCallback(static fn (mixed $value): mixed => 'db-'.$value);
-        $connection->method('convertToPHPValue')->willReturnCallback(static fn (mixed $value): int => (int) $value);
+        $connection->method('getDatabasePlatform')->willReturn(new SQLitePlatform());
 
         $em = self::createStub(EntityManagerInterface::class);
         $em->method('getConnection')->willReturn($connection);

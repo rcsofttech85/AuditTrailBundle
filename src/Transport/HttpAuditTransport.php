@@ -58,6 +58,7 @@ final class HttpAuditTransport implements AuditTransportInterface
 
         $jsonPayload = json_encode($payload, JSON_THROW_ON_ERROR);
         $headers = $this->headers;
+        $headers['Content-Type'] ??= 'application/json';
 
         if ($this->integrityService->isEnabled()) {
             $headers['X-Signature'] = $this->integrityService->signPayload($jsonPayload);

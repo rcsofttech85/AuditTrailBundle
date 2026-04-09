@@ -56,9 +56,9 @@ final readonly class EntityProcessor implements EntityProcessorInterface
     }
 
     #[Override]
-    public function processUpdates(EntityManagerInterface $em, UnitOfWork $uow): void
+    public function processUpdates(EntityManagerInterface $em, UnitOfWork $uow, ?array $deletedAssociationImpacts = null): void
     {
-        $deletedAssociationImpacts = $this->associationImpactAnalyzer->buildAggregatedDeletedAssociationImpacts($em, $uow);
+        $deletedAssociationImpacts ??= $this->associationImpactAnalyzer->buildAggregatedDeletedAssociationImpacts($em, $uow);
 
         foreach ($uow->getScheduledEntityUpdates() as $entity) {
             $changeSet = $uow->getEntityChangeSet($entity);
@@ -133,10 +133,10 @@ final readonly class EntityProcessor implements EntityProcessorInterface
     }
 
     #[Override]
-    public function processDeletions(EntityManagerInterface $em, UnitOfWork $uow): void
+    public function processDeletions(EntityManagerInterface $em, UnitOfWork $uow, ?array $deletedAssociationImpacts = null): void
     {
         $this->processRelatedEntityCollectionImpacts(
-            $this->associationImpactAnalyzer->buildAggregatedDeletedAssociationImpacts($em, $uow),
+            $deletedAssociationImpacts ?? $this->associationImpactAnalyzer->buildAggregatedDeletedAssociationImpacts($em, $uow),
             $em,
             $uow,
         );

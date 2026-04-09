@@ -14,8 +14,6 @@ use function sprintf;
 
 final class ScheduledAuditManager implements ScheduledAuditManagerInterface
 {
-    private const int MAX_SCHEDULED_AUDITS = 1000;
-
     /**
      * @var array<int, array{
      *     entity: object,
@@ -28,30 +26,32 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
     /** @var list<array{entity: object, data: array<string, mixed>, is_managed: bool}> */
     private array $pendingDeletions = [];
 
-    private bool $enabled;
+    private int $disableDepth = 0;
 
     public function __construct(
-        bool $enabled = true,
+        private readonly bool $enabled = true,
+        private readonly ?int $maxScheduledAudits = null,
     ) {
-        $this->enabled = $enabled;
     }
 
     #[Override]
     public function disable(): void
     {
-        $this->enabled = false;
+        ++$this->disableDepth;
     }
 
     #[Override]
     public function enable(): void
     {
-        $this->enabled = true;
+        if ($this->disableDepth > 0) {
+            --$this->disableDepth;
+        }
     }
 
     #[Override]
     public function isEnabled(): bool
     {
-        return $this->enabled;
+        return $this->enabled && $this->disableDepth === 0;
     }
 
     #[Override]
@@ -60,8 +60,8 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
         AuditLog $audit,
         bool $isInsert,
     ): void {
-        if (count($this->scheduledAudits) >= self::MAX_SCHEDULED_AUDITS) {
-            throw new OverflowException(sprintf('Maximum audit queue size exceeded (%d). Consider batch processing.', self::MAX_SCHEDULED_AUDITS));
+        if ($this->maxScheduledAudits !== null && $this->maxScheduledAudits <= count($this->scheduledAudits)) {
+            throw new OverflowException(sprintf('Maximum audit queue size exceeded (%d). Consider batch processing.', $this->maxScheduledAudits));
         }
 
         $this->scheduledAudits[] = [
