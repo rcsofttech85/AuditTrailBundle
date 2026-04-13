@@ -16,6 +16,7 @@ This release focuses on hardening the bundle for production use, simplifying a f
 - **Database async migration required**: If you use the database transport with `async: true`, the `audit_log` table now requires a nullable `delivery_id` column with a unique constraint. Run Doctrine migrations before enabling upgraded Messenger workers in production. This column is not used by queue-only or HTTP-only transport setups.
 - **Scheduled audit manager contract tightened**: Custom implementations of `ScheduledAuditManagerInterface` must now implement the full contract, including scheduled-audit accessors and failed-dispatch retention methods.
 - **Event usage aligned with Symfony conventions**: `AuditLogCreatedEvent` now uses class-based event dispatching consistently.
+- **EasyAdmin access should be verified**: Audit UI actions are protected by the configured `admin_permission` role or permission. If audit pages, export, revert, or transaction drill-down suddenly return access denied after upgrade, review `audit_trail.admin_permission` and confirm the intended admin users still have that grant.
 
 ### 3.0.0 Fixed
 

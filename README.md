@@ -94,6 +94,7 @@ Track not just what changed, but who did it and where they were.
 | :--- | :--- |
 | **[Installation & Setup](README.md#quick-start)** | Getting started guide. |
 | **[Configuration](docs/configuration.md)** | Full configuration reference (`enabled`, `transports`, `integrity`, access auditing, collection serialization). |
+| **[Upgrade v3](docs/upgrade-v3.md)** | Migration checklist for upgrading custom and standard integrations to `3.0`. |
 | **[Advanced Usage](docs/advanced-usage.md)** | Attributes, Conditional Auditing, Impersonation, Custom Context. |
 | **[Transports](docs/symfony-audit-transports.md)** | Doctrine, HTTP, and Queue (Messenger) transport details. |
 | **[Audit Reader](docs/symfony-audit-reader.md)** | Querying audit logs programmatically. |
