@@ -13,6 +13,13 @@ audit_trail:
     # Defaults to common timestamp fields only
     ignored_properties: ['updatedAt', 'updated_at']
 
+    # Optional prefix/suffix for the audit table name.
+    # Empty values are allowed.
+    # Non-empty values may contain only letters, numbers, and underscores
+    # and must not start with a digit.
+    table_prefix: ''
+    table_suffix: ''
+
     # Global list of entities to ignore
     ignored_entities: []
 
@@ -103,6 +110,7 @@ audit_trail:
 - The database transport is enabled by default
 - `integrity.secret` is required only when `integrity.enabled` is `true`
 - `http.endpoint` must start with `http://` or `https://` when HTTP transport is enabled
+- `table_prefix` and `table_suffix` must be strings; non-empty values may contain only letters, numbers, and underscores and must not start with a digit
 - `max_collection_items` must be at least `1`
 - If `cache_pool` is `null`, access-audit cooldowns are request-local only; cross-request cooldown persistence is disabled
 

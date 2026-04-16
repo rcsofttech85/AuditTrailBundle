@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\DependencyInjection\AuditTrailExtension;
 use Rcsofttech\AuditTrailBundle\Transport\NullAuditTransport;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -42,6 +43,62 @@ final class AuditTrailExtensionTest extends TestCase
         ]], $container);
 
         self::assertSame('ROLE_AUDIT_ADMIN', $container->getParameter('audit_trail.admin_permission'));
+    }
+
+    public function testValidTablePrefixAndSuffixAreStored(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([[
+            'table_prefix' => 'audit_2026',
+            'table_suffix' => '_trail',
+        ]], $container);
+
+        self::assertSame('audit_2026', $container->getParameter('audit_trail.table_prefix'));
+        self::assertSame('_trail', $container->getParameter('audit_trail.table_suffix'));
+    }
+
+    public function testInvalidTablePrefixIsRejected(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage(
+            'The table_prefix may contain only letters, numbers, and underscores, and must not start with a digit.'
+        );
+
+        $extension->load([[
+            'table_prefix' => '123 bad-',
+        ]], $container);
+    }
+
+    public function testNonStringTablePrefixIsRejectedByTypedNode(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $this->expectException(InvalidConfigurationException::class);
+
+        $extension->load([[
+            'table_prefix' => true,
+        ]], $container);
+    }
+
+    public function testInvalidTableSuffixIsRejected(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage(
+            'The table_suffix may contain only letters, numbers, and underscores, and must not start with a digit.'
+        );
+
+        $extension->load([[
+            'table_suffix' => 'bad-suffix',
+        ]], $container);
     }
 
     public function testHttpTransportConfiguration(): void
