@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.1.0]
+
+### Fixed
+
+- **Configuration safety**: Invalid `table_prefix` and `table_suffix` values are now rejected early during configuration processing instead of surfacing later as broken audit table names during schema generation.
+
 ## [3.0.0]
 
 This release focuses on hardening the bundle for production use, simplifying a few extension points, and making audit delivery and verification more reliable.

@@ -10,11 +10,14 @@ use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
 
 use function is_string;
+use function preg_match;
 use function str_starts_with;
 
 final class Configuration implements ConfigurationInterface
 {
     private const array VALID_HTTP_SCHEMES = ['http://', 'https://'];
+
+    private const string TABLE_NAME_FRAGMENT_PATTERN = '/^[A-Za-z_][A-Za-z0-9_]*$/';
 
     #[Override]
     public function getConfigTreeBuilder(): TreeBuilder
@@ -40,8 +43,24 @@ final class Configuration implements ConfigurationInterface
             ->scalarPrototype()->end()
             ->defaultValue(['updatedAt', 'updated_at'])
             ->end()
-            ->scalarNode('table_prefix')->defaultValue('')->end()
-            ->scalarNode('table_suffix')->defaultValue('')->end()
+            ->stringNode('table_prefix')
+            ->defaultValue('')
+            ->validate()
+            ->ifTrue(fn (string $value): bool => !$this->isValidTableNameFragment($value))
+            ->thenInvalid(
+                'The table_prefix may contain only letters, numbers, and underscores, and must not start with a digit.'
+            )
+            ->end()
+            ->end()
+            ->stringNode('table_suffix')
+            ->defaultValue('')
+            ->validate()
+            ->ifTrue(fn (string $value): bool => !$this->isValidTableNameFragment($value))
+            ->thenInvalid(
+                'The table_suffix may contain only letters, numbers, and underscores, and must not start with a digit.'
+            )
+            ->end()
+            ->end()
             ->scalarNode('timezone')->defaultValue('UTC')->end()
             ->arrayNode('ignored_entities')
             ->scalarPrototype()->end()
@@ -173,5 +192,14 @@ final class Configuration implements ConfigurationInterface
         }
 
         return true;
+    }
+
+    private function isValidTableNameFragment(string $value): bool
+    {
+        if ($value === '') {
+            return true;
+        }
+
+        return preg_match(self::TABLE_NAME_FRAGMENT_PATTERN, $value) === 1;
     }
 }
