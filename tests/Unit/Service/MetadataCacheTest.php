@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 use ArrayObject;
 use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\ChildAuditable;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\NotAuditable;
@@ -87,5 +88,24 @@ final class MetadataCacheTest extends TestCase
             self::assertSame($result1, $result2, "Cache should return identical result for {$class}");
             self::assertNull($result1, "{$class} should not be auditable");
         }
+    }
+
+    public function testInvalidClassLogsReflectionFailureWhenLoggerIsAvailable(): void
+    {
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with(
+                'Failed to resolve audit metadata via reflection.',
+                self::callback(static function (array $context): bool {
+                    return ($context['class'] ?? null) === 'InvalidClass'
+                        && isset($context['attribute'])
+                        && isset($context['exception']);
+                }),
+            );
+
+        $cache = new MetadataCache($logger);
+
+        self::assertNull($cache->getAuditableAttribute('InvalidClass'));
     }
 }

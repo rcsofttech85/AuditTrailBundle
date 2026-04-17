@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
@@ -125,6 +126,9 @@ final class EntityIdResolver implements EntityIdResolverInterface
      */
     private function extractEntityIds(object $entity, EntityManagerInterface $em): array
     {
+        /** @var ClassMetadata<object>|null $meta */
+        $meta = null;
+
         try {
             $meta = $em->getClassMetadata($entity::class);
             $ids = $meta->getIdentifierValues($entity);
@@ -145,8 +149,15 @@ final class EntityIdResolver implements EntityIdResolverInterface
         }
 
         // Final fallback: Reflection
+        if ($meta === null) {
+            try {
+                $meta = $em->getClassMetadata($entity::class);
+            } catch (Throwable) {
+                return [];
+            }
+        }
+
         try {
-            $meta = $em->getClassMetadata($entity::class);
             $idFields = $meta->getIdentifierFieldNames();
             $idValues = [];
             foreach ($idFields as $field) {

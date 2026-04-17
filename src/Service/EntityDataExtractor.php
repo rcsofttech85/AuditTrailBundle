@@ -13,8 +13,8 @@ use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Throwable;
 
+use function array_fill_keys;
 use function array_key_exists;
-use function in_array;
 
 final readonly class EntityDataExtractor implements EntityDataExtractorInterface
 {
@@ -39,9 +39,11 @@ final readonly class EntityDataExtractor implements EntityDataExtractorInterface
             $entityManager ??= $this->entityManager;
             $meta = $entityManager->getClassMetadata($class);
             $data = [];
+            /** @var array<string, true> $ignoredFields */
+            $ignoredFields = array_fill_keys($ignored, true);
 
-            $this->processFields($meta, $entity, $ignored, $data);
-            $this->processAssociations($meta, $entity, $ignored, $data, $entityManager);
+            $this->processFields($meta, $entity, $ignoredFields, $data);
+            $this->processAssociations($meta, $entity, $ignoredFields, $data, $entityManager);
             $this->applySensitiveMasking($class, $data);
 
             return $data;
@@ -61,13 +63,13 @@ final readonly class EntityDataExtractor implements EntityDataExtractorInterface
 
     /**
      * @param ClassMetadata<object> $meta
-     * @param array<string>         $ignored
+     * @param array<string, true>   $ignoredFields
      * @param array<string, mixed>  $data
      */
-    private function processFields(ClassMetadata $meta, object $entity, array $ignored, array &$data): void
+    private function processFields(ClassMetadata $meta, object $entity, array $ignoredFields, array &$data): void
     {
         foreach ($meta->getFieldNames() as $field) {
-            if (in_array($field, $ignored, true)) {
+            if (isset($ignoredFields[$field])) {
                 continue;
             }
 
@@ -80,20 +82,20 @@ final readonly class EntityDataExtractor implements EntityDataExtractorInterface
 
     /**
      * @param ClassMetadata<object> $meta
-     * @param array<string>         $ignored
+     * @param array<string, true>   $ignoredFields
      * @param array<string, mixed>  $data
      */
     private function processAssociations(
         ClassMetadata $meta,
         object $entity,
-        array $ignored,
+        array $ignoredFields,
         array &$data,
         EntityManagerInterface $entityManager,
     ): void {
         $uow = $entityManager->getUnitOfWork();
 
         foreach ($meta->getAssociationNames() as $assoc) {
-            if (in_array($assoc, $ignored, true)) {
+            if (isset($ignoredFields[$assoc])) {
                 continue;
             }
 

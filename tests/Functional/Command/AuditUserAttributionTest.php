@@ -12,11 +12,12 @@ use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\HttpKernel\KernelInterface;
 
 use function assert;
+use function explode;
 use function filter_var;
 use function getenv;
-use function gethostbyname;
 use function gethostname;
 use function is_string;
+use function trim;
 
 use const FILTER_VALIDATE_IP;
 
@@ -96,19 +97,35 @@ final class AuditUserAttributionTest extends AbstractFunctionalTestCase
 
     private function resolveExpectedCliIpAddress(): ?string
     {
-        $hostname = gethostname();
-        if ($hostname !== false) {
-            $resolved = gethostbyname($hostname);
-            if (filter_var($resolved, FILTER_VALIDATE_IP) !== false) {
-                return $resolved;
+        foreach ([
+            $this->readCliIpAddressValue('AUDIT_TRAIL_CLI_IP'),
+            $this->readCliIpAddressValue('SSH_CLIENT', 0),
+            $this->readCliIpAddressValue('SSH_CONNECTION', 0),
+            $this->readCliIpAddressValue('REMOTE_ADDR'),
+            $this->readCliIpAddressValue('SERVER_ADDR'),
+            $this->readCliIpAddressValue('LOCAL_ADDR'),
+            $this->readCliIpAddressValue('HOSTNAME'),
+        ] as $candidateIpAddress) {
+            if ($candidateIpAddress !== null) {
+                return $candidateIpAddress;
             }
         }
 
-        $environmentHost = getenv('HOSTNAME');
-        if (is_string($environmentHost) && filter_var($environmentHost, FILTER_VALIDATE_IP) !== false) {
-            return $environmentHost;
+        return null;
+    }
+
+    private function readCliIpAddressValue(string $key, ?int $segment = null): ?string
+    {
+        $value = getenv($key);
+        if (!is_string($value) || $value === '') {
+            return null;
         }
 
-        return null;
+        if ($segment !== null) {
+            $segments = explode(' ', trim($value));
+            $value = $segments[$segment] ?? null;
+        }
+
+        return is_string($value) && filter_var($value, FILTER_VALIDATE_IP) !== false ? $value : null;
     }
 }

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.0]
+
+This release focuses on flush-time performance, tighter Doctrine 3 integration, and a few operational fixes around audit context and CLI behavior.
+
+### 3.2.0 Improved
+
+- **Flush-time collection processing**: Collection diffing, deleted-association impact aggregation, and related update merging were tightened to reduce repeated metadata work during large flushes.
+- **Doctrine 3 mapping alignment**: Internal collection and join-table handling now rely on typed Doctrine mapping objects instead of looser array-style probing.
+- **Changed-field filtering efficiency**: `AuditQuery` now uses cheaper per-log lookup checks when filtering by changed fields across larger result sets.
+- **Ignored-field and metadata lookups**: Audit metadata, ignored properties, and field masking paths now use cached lookup structures more consistently.
+- **Collection revert diffing**: Revert and collection transition handling now avoid repeated linear scans when comparing object and identifier sets.
+- **Integrity normalization stability**: Integrity verification now normalizes datetime-like strings more predictably without relying on regex-heavy detection.
+
+### 3.2.0 Fixed
+
+- **Always-sensitive key masking**: Built-in sensitive keys such as `password` and `session` remain masked even when custom sensitive-key lists are configured.
+- **Context resolution resilience**: Failures while resolving a single user-context field no longer blank the whole audit context payload.
+- **CLI IP attribution**: CLI audit attribution now prefers explicit environment-derived IP sources and avoids unreliable hostname resolution.
+- **Purge integrity verification memory use**: `audit:purge` now verifies older logs through the iterable filter path instead of loading the full candidate set eagerly before purge.
+- **Collection change correctness**: Collection transition merging now preserves stable ordering and keeps integer and string identifiers distinct.
+
 ## [3.1.0]
 
 ### Fixed

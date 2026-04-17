@@ -254,6 +254,23 @@ final class AuditQueryTest extends TestCase
         self::assertSame('2', $results->first()?->entityId);
     }
 
+    public function testChangedFieldMatchesUsingLookupPerLog(): void
+    {
+        $repository = $this->useRepositoryMock();
+
+        $repository->expects($this->once())
+            ->method('findWithFilters')
+            ->willReturn([
+                new AuditLog('Class', '1', 'update', changedFields: ['name', 'status']),
+                new AuditLog('Class', '2', 'update', changedFields: ['email']),
+            ]);
+
+        $results = $this->query->changedField('status')->getResults();
+
+        self::assertCount(1, $results);
+        self::assertSame('1', $results->first()?->entityId);
+    }
+
     public function testChangedFieldExistsChecksBeyondDefaultPage(): void
     {
         $repository = $this->useRepositoryMock();

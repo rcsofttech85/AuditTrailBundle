@@ -18,6 +18,7 @@ use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 
 use function array_key_exists;
 use function is_array;
+use function spl_object_id;
 
 final readonly class EntityProcessor implements EntityProcessorInterface
 {
@@ -59,13 +60,21 @@ final readonly class EntityProcessor implements EntityProcessorInterface
     public function processUpdates(EntityManagerInterface $em, UnitOfWork $uow, ?array $deletedAssociationImpacts = null): void
     {
         $deletedAssociationImpacts ??= $this->associationImpactAnalyzer->buildAggregatedDeletedAssociationImpacts($em, $uow);
+        $deletedAssociationImpactsByOwner = $this->indexDeletedAssociationImpactsByOwner($deletedAssociationImpacts);
+        $collectionChangesByOwner = $this->collectionChangeResolver->extractCollectionChangesIndexedByOwner($em, $uow);
 
         foreach ($uow->getScheduledEntityUpdates() as $entity) {
             $changeSet = $uow->getEntityChangeSet($entity);
             /* @var array<string, array{mixed, mixed}> $changeSet */
             [$old, $new] = $this->changeProcessor->extractChanges($entity, $changeSet);
-            [$collectionOld, $collectionNew] = $this->collectionChangeResolver->extractCollectionChangesForOwner($entity, $em, $uow);
-            [$deletedAssocOld, $deletedAssocNew] = $this->associationImpactAnalyzer->extractDeletedEntityAssociationChangesForOwner($entity, $deletedAssociationImpacts);
+            [$collectionOld, $collectionNew] = $this->collectionChangeResolver->extractIndexedCollectionChangesForOwner(
+                $entity,
+                $collectionChangesByOwner,
+            );
+            [$deletedAssocOld, $deletedAssocNew] = $this->extractDeletedAssociationChangesForOwner(
+                $entity,
+                $deletedAssociationImpactsByOwner,
+            );
             $this->mergeFieldTransitions($old, $new, $collectionOld, $collectionNew);
             $this->mergeFieldTransitions($old, $new, $deletedAssocOld, $deletedAssocNew);
 
@@ -191,24 +200,54 @@ final readonly class EntityProcessor implements EntityProcessorInterface
 
     private function isScheduledForInsertion(object $entity, UnitOfWork $uow): bool
     {
-        foreach ($uow->getScheduledEntityInsertions() as $scheduledEntity) {
-            if ($scheduledEntity === $entity) {
-                return true;
-            }
-        }
-
-        return false;
+        return $uow->isScheduledForInsert($entity);
     }
 
     private function isScheduledForUpdate(object $entity, UnitOfWork $uow): bool
     {
-        foreach ($uow->getScheduledEntityUpdates() as $scheduledEntity) {
-            if ($scheduledEntity === $entity) {
-                return true;
-            }
+        return $uow->isScheduledForUpdate($entity);
+    }
+
+    /**
+     * @param list<array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}> $impacts
+     *
+     * @return array<int, array<string, array{old: array<int, int|string>, new: array<int, int|string>}>>
+     */
+    private function indexDeletedAssociationImpactsByOwner(array $impacts): array
+    {
+        $indexed = [];
+
+        foreach ($impacts as $impact) {
+            $indexed[spl_object_id($impact['entity'])][$impact['field']] = [
+                'old' => $impact['old'],
+                'new' => $impact['new'],
+            ];
         }
 
-        return false;
+        return $indexed;
+    }
+
+    /**
+     * @param array<int, array<string, array{old: array<int, int|string>, new: array<int, int|string>}>> $indexedImpacts
+     *
+     * @return array{0: array<string, mixed>, 1: array<string, mixed>}
+     */
+    private function extractDeletedAssociationChangesForOwner(object $owner, array $indexedImpacts): array
+    {
+        $ownerImpacts = $indexedImpacts[spl_object_id($owner)] ?? null;
+        if ($ownerImpacts === null) {
+            return [[], []];
+        }
+
+        $oldValues = [];
+        $newValues = [];
+
+        foreach ($ownerImpacts as $field => $impact) {
+            $oldValues[$field] = $impact['old'];
+            $newValues[$field] = $impact['new'];
+        }
+
+        return [$oldValues, $newValues];
     }
 
     /**

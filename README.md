@@ -173,6 +173,7 @@ Operational notes:
 - Audit query limits must be positive integers. The fluent `AuditReader`/`AuditQuery` API and repository layer now reject `0` or negative limits instead of silently accepting them.
 - Cursor pagination uses audit-log UUIDs. Invalid cursors are rejected.
 - EasyAdmin transaction drill-down accepts only one cursor at a time: `afterId` or `beforeId`, never both.
+- CLI audit IP attribution is intentionally conservative. In console contexts the bundle now prefers explicit environment-derived values such as `AUDIT_TRAIL_CLI_IP`, `SSH_CLIENT`, or `SSH_CONNECTION`; if no valid IP is available, it records `null` instead of guessing from hostname resolution.
 - When an entity changes scalar fields and Doctrine collections in the same flush, the bundle now records one merged `update` audit instead of splitting that flush into redundant update entries.
 - EasyAdmin revert previews now handle UUID-backed relations and to-many collections safely, and restored collection values are shown in a readable format instead of raw Doctrine object dumps.
 - Delete-driven collection audits are most reliable with bidirectional Doctrine associations. Unidirectional mappings can leave the bundle without enough reverse-relation context to infer an owner-side collection update when a related entity is deleted.

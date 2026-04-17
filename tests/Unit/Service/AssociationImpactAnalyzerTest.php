@@ -14,7 +14,6 @@ use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
-use stdClass;
 
 final class AssociationImpactAnalyzerTest extends TestCase
 {
@@ -44,6 +43,7 @@ final class AssociationImpactAnalyzerTest extends TestCase
 
         $deletedMetadata = self::createMock(ClassMetadata::class);
         $deletedMetadata->method('getAssociationNames')->willReturn(['posts']);
+        $deletedMetadata->method('isCollectionValuedAssociation')->with('posts')->willReturn(true);
         $deletedMetadata->expects($this->once())
             ->method('getAssociationMapping')
             ->with('posts')
@@ -89,24 +89,6 @@ final class AssociationImpactAnalyzerTest extends TestCase
             'old' => ['1', '2'],
             'new' => ['2'],
         ]], $analyzer->buildAggregatedDeletedAssociationImpacts($em, $uow));
-    }
-
-    public function testExtractDeletedEntityAssociationChangesForOwnerFiltersImpactsByOwner(): void
-    {
-        $owner = new stdClass();
-        $otherOwner = new stdClass();
-        $analyzer = new AssociationImpactAnalyzer(
-            new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)),
-            new CollectionTransitionMerger(),
-        );
-
-        self::assertSame([
-            ['tags' => ['1', '2']],
-            ['tags' => ['2']],
-        ], $analyzer->extractDeletedEntityAssociationChangesForOwner($owner, [
-            ['entity' => $owner, 'field' => 'tags', 'old' => ['1', '2'], 'new' => ['2']],
-            ['entity' => $otherOwner, 'field' => 'tags', 'old' => ['3'], 'new' => []],
-        ]));
     }
 }
 

@@ -187,10 +187,9 @@ final class AuditPurgeCommand extends Command
     private function verifyIntegrityBeforePurge(SymfonyStyle $io, DateTimeImmutable $before): int
     {
         $io->section('Verifying integrity of logs before purge...');
-        $logs = $this->repository->findOlderThan($before);
 
         $tamperedCount = 0;
-        foreach ($logs as $log) {
+        foreach ($this->repository->findAllWithFilters(['to' => $before->modify('-1 microsecond')]) as $log) {
             if (!$this->integrityService->verifySignature($log)) {
                 ++$tamperedCount;
                 $io->warning(sprintf('Tampered log: %s', (string) $log->id));

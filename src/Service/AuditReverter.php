@@ -20,12 +20,12 @@ use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use ReflectionClass;
-use ReflectionMethod;
 use RuntimeException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Throwable;
 
 use function count;
+use function is_callable;
 use function is_string;
 use function method_exists;
 use function preg_replace;
@@ -362,17 +362,25 @@ final readonly class AuditReverter implements AuditReverterInterface
         }
 
         $mapping = $metadata->getAssociationMapping($field);
+        $currentItems = $this->snapshotCollectionItems($currentValue);
+        $currentLookup = $this->buildCollectionObjectLookup($currentItems);
+        $incomingItems = $this->snapshotCollectionItems($value);
+        $incomingLookup = $this->buildCollectionObjectLookup($incomingItems);
 
-        foreach ($currentValue->toArray() as $currentItem) {
-            if (!$value->contains($currentItem)) {
-                $this->removeAssociationItem($metadata, $mapping, $entity, $field, $currentValue, $currentItem);
+        foreach ($currentItems as $currentItem) {
+            if (isset($incomingLookup[spl_object_id($currentItem)])) {
+                continue;
             }
+
+            $this->removeAssociationItem($metadata, $mapping, $entity, $field, $currentValue, $currentItem);
         }
 
-        foreach ($value as $item) {
-            if (!$currentValue->contains($item)) {
-                $this->addAssociationItem($metadata, $mapping, $entity, $field, $currentValue, $item);
+        foreach ($incomingItems as $item) {
+            if (isset($currentLookup[spl_object_id($item)])) {
+                continue;
             }
+
+            $this->addAssociationItem($metadata, $mapping, $entity, $field, $currentValue, $item);
         }
     }
 
@@ -382,20 +390,25 @@ final readonly class AuditReverter implements AuditReverterInterface
             return false;
         }
 
-        return $this->normalizeCollectionIdentifiers($currentValue) === $this->normalizeCollectionIdentifiers($newValue);
+        /** @var array<class-string, ClassMetadata<object>> $metadataByClass */
+        $metadataByClass = [];
+
+        return $this->normalizeCollectionIdentifiers($currentValue, $metadataByClass)
+            === $this->normalizeCollectionIdentifiers($newValue, $metadataByClass);
     }
 
     /**
-     * @param Collection<int|string, object> $collection
+     * @param Collection<int|string, object>             $collection
+     * @param array<class-string, ClassMetadata<object>> $metadataByClass
      *
      * @return list<string>
      */
-    private function normalizeCollectionIdentifiers(Collection $collection): array
+    private function normalizeCollectionIdentifiers(Collection $collection, array &$metadataByClass): array
     {
         $identifiers = [];
 
         foreach ($collection as $item) {
-            $identifiers[] = $this->normalizeEntityIdentifier($item);
+            $identifiers[] = $this->normalizeEntityIdentifier($item, $metadataByClass);
         }
 
         sort($identifiers);
@@ -403,9 +416,12 @@ final readonly class AuditReverter implements AuditReverterInterface
         return $identifiers;
     }
 
-    private function normalizeEntityIdentifier(object $entity): string
+    /**
+     * @param array<class-string, ClassMetadata<object>> $metadataByClass
+     */
+    private function normalizeEntityIdentifier(object $entity, array &$metadataByClass): string
     {
-        $metadata = $this->em->getClassMetadata($entity::class);
+        $metadata = $metadataByClass[$entity::class] ??= $this->em->getClassMetadata($entity::class);
         $identifierValues = $metadata->getIdentifierValues($entity);
 
         if ($identifierValues === []) {
@@ -468,16 +484,12 @@ final readonly class AuditReverter implements AuditReverterInterface
         $shortName = $this->normalizeShortClassName($shortName);
         $method = $prefix.$shortName;
 
-        if (!method_exists($entity, $method)) {
+        if (!method_exists($entity, $method) || !is_callable([$entity, $method])) {
             return false;
         }
-
-        $reflectionMethod = new ReflectionMethod($entity, $method);
-        if (!$reflectionMethod->isPublic()) {
-            return false;
-        }
-
-        $reflectionMethod->invoke($entity, $item);
+        /** @var callable(object): void $callable */
+        $callable = [$entity, $method];
+        $callable($item);
 
         return true;
     }
@@ -574,18 +586,46 @@ final readonly class AuditReverter implements AuditReverterInterface
         $shortName = $this->normalizeShortClassName($shortName);
         $method = ($adding ? 'add' : 'remove').$shortName;
 
-        if (!method_exists($item, $method)) {
+        if (!method_exists($item, $method) || !is_callable([$item, $method])) {
             return false;
         }
-
-        $reflectionMethod = new ReflectionMethod($item, $method);
-        if (!$reflectionMethod->isPublic()) {
-            return false;
-        }
-
-        $reflectionMethod->invoke($item, $entity);
+        /** @var callable(object): void $callable */
+        $callable = [$item, $method];
+        $callable($entity);
 
         return true;
+    }
+
+    /**
+     * @param Collection<int|string, object> $collection
+     *
+     * @return list<object>
+     */
+    private function snapshotCollectionItems(Collection $collection): array
+    {
+        $items = [];
+
+        foreach ($collection as $item) {
+            $items[] = $item;
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param list<object> $items
+     *
+     * @return array<int, true>
+     */
+    private function buildCollectionObjectLookup(array $items): array
+    {
+        $lookup = [];
+
+        foreach ($items as $item) {
+            $lookup[spl_object_id($item)] = true;
+        }
+
+        return $lookup;
     }
 
     private function normalizeShortClassName(string $shortName): string

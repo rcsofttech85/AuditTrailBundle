@@ -67,13 +67,10 @@ final readonly class AuditAccessIntentResolver
 
     private function containsBlockedReadIntentSignal(Request $request): bool
     {
-        foreach ($this->collectReadIntentSignals($request) as $signal) {
-            if ($this->containsBlockedReadIntentKeyword($signal)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any(
+            $this->collectReadIntentSignals($request),
+            fn (string $signal): bool => $this->containsBlockedReadIntentKeyword($signal),
+        );
     }
 
     /**

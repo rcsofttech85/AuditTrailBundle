@@ -11,8 +11,8 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 
+use function array_fill_keys;
 use function array_key_exists;
-use function in_array;
 use function is_array;
 
 final class ChangeProcessor implements ChangeProcessorInterface
@@ -36,10 +36,10 @@ final class ChangeProcessor implements ChangeProcessorInterface
         $old = [];
         $new = [];
         $sensitiveFields = $this->metadataManager->getSensitiveFields($entity::class);
-        $ignored = $this->metadataManager->getIgnoredProperties($entity);
+        $ignoredFieldLookup = array_fill_keys($this->metadataManager->getIgnoredProperties($entity), true);
 
         foreach ($changeSet as $field => $change) {
-            if (in_array($field, $ignored, true)) {
+            if (isset($ignoredFieldLookup[$field])) {
                 continue;
             }
 

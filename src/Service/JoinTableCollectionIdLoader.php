@@ -7,15 +7,14 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\Mapping\JoinColumnMapping;
+use Doctrine\ORM\Mapping\ManyToManyOwningSideMapping;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Stringable;
 use Throwable;
 
-use function get_object_vars;
-use function is_array;
 use function is_int;
-use function is_object;
 use function is_string;
 
 final readonly class JoinTableCollectionIdLoader
@@ -65,118 +64,49 @@ final readonly class JoinTableCollectionIdLoader
 
         $metadata = $em->getClassMetadata($owner::class);
         $mapping = $metadata->getAssociationMapping($associationName);
-        if (!$this->isValidOwningCollectionMapping($mapping)) {
+        if (!$mapping instanceof ManyToManyOwningSideMapping) {
             return null;
         }
 
-        $joinTable = $this->readMappingValue($mapping, 'joinTable');
-        $joinColumn = $this->extractJoinColumnDefinition($joinTable, 'joinColumns');
-        $inverseJoinColumn = $this->extractJoinColumnDefinition($joinTable, 'inverseJoinColumns');
-        $joinTableName = $this->extractJoinTableName($joinTable);
-        if ($joinColumn === null || $inverseJoinColumn === null || $joinTableName === null) {
+        $joinTable = $mapping->joinTable;
+        $joinTableName = $joinTable->name;
+        $joinColumn = $this->getFirstJoinColumn($joinTable->joinColumns);
+        $inverseJoinColumn = $this->getFirstJoinColumn($joinTable->inverseJoinColumns);
+        if ($joinTableName === '' || $joinColumn === null || $inverseJoinColumn === null) {
             return null;
         }
-
-        /** @var class-string<object> $targetEntity */
-        $targetEntity = $mapping['targetEntity'];
-        $targetMetadata = $em->getClassMetadata($targetEntity);
+        $targetMetadata = $em->getClassMetadata($mapping->targetEntity);
 
         return [
             'ownerId' => $ownerId,
             'joinTable' => $joinTableName,
-            'joinColumn' => $joinColumn['name'],
-            'inverseJoinColumn' => $inverseJoinColumn['name'],
-            'ownerIdType' => $this->resolveColumnType($metadata, $joinColumn['referencedColumnName']),
-            'inverseIdType' => $this->resolveColumnType($targetMetadata, $inverseJoinColumn['referencedColumnName']),
+            'joinColumn' => $joinColumn->name,
+            'inverseJoinColumn' => $inverseJoinColumn->name,
+            'ownerIdType' => $this->resolveColumnType($metadata, $joinColumn->referencedColumnName),
+            'inverseIdType' => $this->resolveColumnType($targetMetadata, $inverseJoinColumn->referencedColumnName),
         ];
     }
 
-    private function isValidOwningCollectionMapping(mixed $mapping): bool
-    {
-        if (($mapping['isOwningSide'] ?? false) !== true) {
-            return false;
-        }
-
-        return $this->hasValidJoinTableStructure($mapping['joinTable'] ?? null);
-    }
-
-    private function hasValidJoinTableStructure(mixed $joinTable): bool
-    {
-        return $this->containsRequiredJoinTableName($joinTable)
-            && $this->hasValidJoinColumnDefinition($this->readFirstJoinColumnDefinition($joinTable, 'joinColumns'))
-            && $this->hasValidJoinColumnDefinition($this->readFirstJoinColumnDefinition($joinTable, 'inverseJoinColumns'));
-    }
-
-    private function containsRequiredJoinTableName(mixed $joinTable): bool
-    {
-        return $this->isNonEmptyString($this->extractJoinTableName($joinTable));
-    }
-
-    private function hasValidJoinColumnDefinition(mixed $definition): bool
-    {
-        return $this->extractJoinColumnDefinitionValues($definition) !== null;
-    }
-
-    private function isNonEmptyString(mixed $value): bool
-    {
-        return is_string($value) && $value !== '';
-    }
-
-    private function extractJoinTableName(mixed $joinTable): ?string
-    {
-        $joinTableName = $this->readMappingValue($joinTable, 'name');
-
-        return $this->isNonEmptyString($joinTableName) ? $joinTableName : null;
-    }
-
-    private function readFirstJoinColumnDefinition(mixed $joinTable, string $columnGroup): mixed
-    {
-        $definitions = $this->readMappingValue($joinTable, $columnGroup);
-        if (!is_array($definitions)) {
-            return null;
-        }
-
-        return $definitions[0] ?? null;
-    }
-
     /**
-     * @return array{name: string, referencedColumnName: string}|null
+     * @param list<JoinColumnMapping> $joinColumns
      */
-    private function extractJoinColumnDefinition(mixed $joinTable, string $columnGroup): ?array
+    private function getFirstJoinColumn(array $joinColumns): ?JoinColumnMapping
     {
-        return $this->extractJoinColumnDefinitionValues($this->readFirstJoinColumnDefinition($joinTable, $columnGroup));
-    }
-
-    /**
-     * @return array{name: string, referencedColumnName: string}|null
-     */
-    private function extractJoinColumnDefinitionValues(mixed $definition): ?array
-    {
-        $name = $this->readMappingValue($definition, 'name');
-        $referencedColumnName = $this->readMappingValue($definition, 'referencedColumnName');
-        if (!$this->isNonEmptyString($name) || !$this->isNonEmptyString($referencedColumnName)) {
+        $joinColumn = $joinColumns[0] ?? null;
+        if (!$joinColumn instanceof JoinColumnMapping) {
             return null;
         }
 
-        return [
-            'name' => $name,
-            'referencedColumnName' => $referencedColumnName,
-        ];
-    }
-
-    private function readMappingValue(mixed $mapping, string $key): mixed
-    {
-        if (is_array($mapping)) {
-            return $mapping[$key] ?? null;
-        }
-
-        if (!is_object($mapping)) {
+        if (!$this->isValidJoinTableName($joinColumn->name) || !$this->isValidJoinTableName($joinColumn->referencedColumnName)) {
             return null;
         }
 
-        $properties = get_object_vars($mapping);
+        return $joinColumn;
+    }
 
-        return $properties[$key] ?? null;
+    private function isValidJoinTableName(string $value): bool
+    {
+        return $value !== '';
     }
 
     /**

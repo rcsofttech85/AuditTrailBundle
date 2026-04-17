@@ -12,10 +12,10 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Symfony\Component\Uid\Uuid;
 
+use function array_fill_keys;
 use function array_key_exists;
 use function array_slice;
 use function count;
-use function in_array;
 use function sprintf;
 
 /**
@@ -352,7 +352,9 @@ readonly class AuditQuery
 
         do {
             $batch = $this->fetchFilterBatch($filters, $cursor);
-            $results = [...$results, ...$this->filterByChangedFields($batch)];
+            foreach ($this->filterByChangedFields($batch) as $log) {
+                $results[] = $log;
+            }
             $cursor = $this->resolveBatchCursor($batch);
         } while ($limit > count($results) && $this->shouldContinueFilteredBatchLoop($batch, $cursor));
 
@@ -407,9 +409,19 @@ readonly class AuditQuery
      */
     private function filterByChangedFields(array $logs): array
     {
-        return array_values(array_filter($logs, fn (AuditLog $log) => array_any(
+        return array_values(array_filter(
+            $logs,
+            $this->logMatchesChangedFields(...),
+        ));
+    }
+
+    private function logMatchesChangedFields(AuditLog $log): bool
+    {
+        $changedFieldLookup = array_fill_keys($log->changedFields ?? [], true);
+
+        return array_any(
             $this->changedFields,
-            static fn ($field) => in_array($field, $log->changedFields ?? [], true)
-        )));
+            static fn (string $field): bool => isset($changedFieldLookup[$field]),
+        );
     }
 }

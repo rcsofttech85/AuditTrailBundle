@@ -4,17 +4,16 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
-use ArrayIterator;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Query\QueryBuilder;
 use Doctrine\DBAL\Result;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\DefaultNamingStrategy;
+use Doctrine\ORM\Mapping\ManyToManyInverseSideMapping;
 use Doctrine\ORM\Mapping\ManyToManyOwningSideMapping;
 use Doctrine\ORM\Mapping\OneToManyAssociationMapping;
 use Doctrine\ORM\UnitOfWork;
-use IteratorAggregate;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
@@ -35,7 +34,6 @@ use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use Rcsofttech\AuditTrailBundle\Service\JoinTableCollectionIdLoader;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubCollection;
 use stdClass;
-use Traversable;
 
 #[AllowMockObjectsWithoutExpectations]
 final class EntityProcessorTest extends TestCase
@@ -82,6 +80,20 @@ final class EntityProcessorTest extends TestCase
             $deferTransportUntilCommit,
             $failOnTransportError,
         );
+    }
+
+    /**
+     * @param class-string $sourceEntity
+     */
+    private function createStubCollectionMapping(string $fieldName, string $sourceEntity): ManyToManyInverseSideMapping
+    {
+        return ManyToManyInverseSideMapping::fromMappingArray([
+            'fieldName' => $fieldName,
+            'sourceEntity' => $sourceEntity,
+            'targetEntity' => stdClass::class,
+            'mappedBy' => 'owners',
+            'isOwningSide' => false,
+        ]);
     }
 
     public function testProcessInsertionsWithResolvedId(): void
@@ -209,7 +221,7 @@ final class EntityProcessorTest extends TestCase
         $uow->method('getScheduledCollectionDeletions')->willReturn([]);
         $uow->method('getEntityChangeSet')->willReturn(['title' => ['old', 'new']]);
         $uow->method('getScheduledCollectionUpdates')->willReturn([
-            new StubCollection($entity, [$item2], [], ['fieldName' => 'tags'], [$item1]),
+            new StubCollection($entity, [$item2], [], $this->createStubCollectionMapping('tags', $entity::class), [$item1]),
         ]);
 
         $this->idResolver->method('resolveFromEntity')->willReturnMap([
@@ -279,7 +291,7 @@ final class EntityProcessorTest extends TestCase
             $owner,
             [$item2],
             [],
-            ['fieldName' => 'items'],
+            $this->createStubCollectionMapping('items', $owner::class),
             [$item1]
         );
 
@@ -294,7 +306,7 @@ final class EntityProcessorTest extends TestCase
     public function testProcessCollectionUpdatesSkipsOwnersBeingInserted(): void
     {
         $em = self::createStub(EntityManagerInterface::class);
-        $uow = self::createStub(UnitOfWork::class);
+        $uow = self::createMock(UnitOfWork::class);
 
         $owner = new stdClass();
         $item = new class {
@@ -304,14 +316,13 @@ final class EntityProcessorTest extends TestCase
             }
         };
 
-        $uow->method('getScheduledEntityInsertions')->willReturn([$owner]);
-        $uow->method('getScheduledEntityUpdates')->willReturn([]);
+        $uow->expects($this->once())->method('isScheduledForInsert')->with($owner)->willReturn(true);
 
         $collection = new StubCollection(
             $owner,
             [$item],
             [],
-            ['fieldName' => 'items'],
+            $this->createStubCollectionMapping('items', $owner::class),
             []
         );
 
@@ -348,7 +359,7 @@ final class EntityProcessorTest extends TestCase
             $owner,
             [],
             [$item1],
-            ['fieldName' => 'items'],
+            $this->createStubCollectionMapping('items', $owner::class),
             [$item1, $item2]
         );
 
@@ -375,7 +386,7 @@ final class EntityProcessorTest extends TestCase
     public function testProcessCollectionUpdatesSkipsOwnersBeingUpdated(): void
     {
         $em = self::createStub(EntityManagerInterface::class);
-        $uow = self::createStub(UnitOfWork::class);
+        $uow = self::createMock(UnitOfWork::class);
 
         $owner = new stdClass();
         $item = new class {
@@ -385,16 +396,51 @@ final class EntityProcessorTest extends TestCase
             }
         };
 
-        $uow->method('getScheduledEntityInsertions')->willReturn([]);
-        $uow->method('getScheduledEntityUpdates')->willReturn([$owner]);
+        $uow->expects($this->once())->method('isScheduledForInsert')->with($owner)->willReturn(false);
+        $uow->expects($this->once())->method('isScheduledForUpdate')->with($owner)->willReturn(true);
 
         $collection = new StubCollection(
             $owner,
             [$item],
             [],
-            ['fieldName' => 'items'],
+            $this->createStubCollectionMapping('items', $owner::class),
             []
         );
+
+        $this->auditService->expects($this->never())->method('shouldAudit');
+        $this->auditService->expects($this->never())->method('createAuditLog');
+        $this->auditManager->expects($this->never())->method('schedule');
+
+        $this->processor->processCollectionUpdates($em, $uow, [$collection]);
+    }
+
+    public function testProcessCollectionUpdatesUsesDirectUnitOfWorkMembershipChecks(): void
+    {
+        $em = self::createStub(EntityManagerInterface::class);
+        $uow = self::createMock(UnitOfWork::class);
+
+        $owner = new stdClass();
+        $item = new class {
+            public function getId(): int
+            {
+                return 1;
+            }
+        };
+
+        $collection = new StubCollection(
+            $owner,
+            [$item],
+            [],
+            $this->createStubCollectionMapping('items', $owner::class),
+            []
+        );
+
+        $uow->expects($this->once())
+            ->method('isScheduledForInsert')
+            ->with($owner)
+            ->willReturn(true);
+        $uow->expects($this->never())->method('getScheduledEntityInsertions');
+        $uow->expects($this->never())->method('getScheduledEntityUpdates');
 
         $this->auditService->expects($this->never())->method('shouldAudit');
         $this->auditService->expects($this->never())->method('createAuditLog');
@@ -423,7 +469,7 @@ final class EntityProcessorTest extends TestCase
             $owner,
             [],
             [],
-            ['fieldName' => 'items'],
+            $this->createStubCollectionMapping('items', $owner::class),
             [$item]
         );
 
@@ -566,20 +612,13 @@ final class EntityProcessorTest extends TestCase
         $uow = $this->createMock(UnitOfWork::class);
         $owner = new stdClass();
         $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
-        $currentCollection = new class implements IteratorAggregate {
-            /**
-             * @return list<object>
-             */
-            public function getSnapshot(): array
-            {
-                return [];
-            }
-
-            public function getIterator(): Traversable
-            {
-                return new ArrayIterator([]);
-            }
-        };
+        $currentCollection = new StubCollection(
+            $owner,
+            [],
+            [],
+            $this->createStubCollectionMapping('tags', $owner::class),
+            [],
+        );
 
         $connection = $this->createMock(Connection::class);
         $queryBuilder = $this->createMock(QueryBuilder::class);
@@ -693,6 +732,7 @@ final class EntityProcessorTest extends TestCase
         $em->method('contains')->willReturn(true);
 
         $deletedMetadata->method('getAssociationNames')->willReturn(['related']);
+        $deletedMetadata->method('isCollectionValuedAssociation')->with('related')->willReturn(true);
         $deletedMetadata->method('getAssociationMapping')->with('related')->willReturn($mapping);
         $deletedMetadata->method('getFieldValue')->willReturnMap([
             [$deletedA, 'related', [$relatedEntity]],

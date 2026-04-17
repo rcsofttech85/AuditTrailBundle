@@ -14,6 +14,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
+use function array_any;
 use function in_array;
 use function is_array;
 use function is_string;
@@ -315,13 +316,10 @@ final class AuditLogRepository extends ServiceEntityRepository implements AuditL
             ->getQuery()
             ->getResult();
 
-        foreach ($revertLogs as $revertLog) {
-            if (($revertLog->context['reverted_log_id'] ?? null) === $revertedLogId) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any(
+            $revertLogs,
+            static fn (AuditLog $revertLog): bool => ($revertLog->context['reverted_log_id'] ?? null) === $revertedLogId,
+        );
     }
 
     #[Override]

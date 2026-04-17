@@ -148,7 +148,7 @@ final readonly class AuditRenderer implements AuditRendererInterface
             return $changedFields;
         }
 
-        return array_unique([...array_keys($oldValues), ...array_keys($newValues)]);
+        return array_keys($oldValues + $newValues);
     }
 
     #[Override]

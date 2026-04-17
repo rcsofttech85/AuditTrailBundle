@@ -14,6 +14,7 @@ use RuntimeException;
 use Stringable;
 use Throwable;
 
+use function ctype_digit;
 use function gettype;
 use function hash_equals;
 use function hash_hmac;
@@ -27,7 +28,6 @@ use function is_string;
 use function json_encode;
 use function ksort;
 use function method_exists;
-use function preg_match;
 use function sprintf;
 use function strlen;
 
@@ -38,6 +38,8 @@ use const SORT_STRING;
 
 final class AuditIntegrityService implements AuditIntegrityServiceInterface
 {
+    private const int MIN_DATETIME_STRING_LENGTH = 16;
+
     private readonly DateTimeZone $utc;
 
     /**
@@ -231,7 +233,7 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
 
     private function normalizeString(string $value): string
     {
-        if (strlen($value) >= 10 && preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/', $value) === 1) {
+        if ($this->looksLikeDateTimeString($value)) {
             try {
                 $dt = new DateTimeImmutable($value);
 
@@ -242,6 +244,43 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
         }
 
         return 's:'.$value;
+    }
+
+    private function looksLikeDateTimeString(string $value): bool
+    {
+        // Shortest supported shape: YYYY-MM-DDThh:mm
+        if (strlen($value) < self::MIN_DATETIME_STRING_LENGTH) {
+            return false;
+        }
+
+        return $this->matchesDateTimeDigitOffsets($value)
+            && $this->matchesDateTimeSeparators($value);
+    }
+
+    private function isDigitAt(string $value, int $offset): bool
+    {
+        $character = $value[$offset] ?? null;
+
+        return $character !== null && ctype_digit($character);
+    }
+
+    private function matchesDateTimeDigitOffsets(string $value): bool
+    {
+        foreach ([0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15] as $offset) {
+            if (!$this->isDigitAt($value, $offset)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function matchesDateTimeSeparators(string $value): bool
+    {
+        return $value[4] === '-'
+            && $value[7] === '-'
+            && ($value[10] === 'T' || $value[10] === ' ')
+            && $value[13] === ':';
     }
 
     /**
