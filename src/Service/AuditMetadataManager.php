@@ -10,10 +10,21 @@ use Rcsofttech\AuditTrailBundle\Attribute\AuditAccess;
 use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
 
-use function in_array;
+use function array_fill_keys;
+use function array_unique;
+use function implode;
+use function sort;
+
+use const SORT_STRING;
 
 final class AuditMetadataManager implements AuditMetadataManagerInterface
 {
+    /** @var array<string, true> */
+    private readonly array $ignoredEntityLookup;
+
+    /** @var array<string, array<string>> */
+    private array $ignoredPropertiesCache = [];
+
     /**
      * @param array<string> $ignoredEntities
      * @param array<string> $ignoredProperties
@@ -23,6 +34,7 @@ final class AuditMetadataManager implements AuditMetadataManagerInterface
         private readonly array $ignoredEntities = [],
         private readonly array $ignoredProperties = [],
     ) {
+        $this->ignoredEntityLookup = array_fill_keys($this->ignoredEntities, true);
     }
 
     #[Override]
@@ -54,25 +66,52 @@ final class AuditMetadataManager implements AuditMetadataManagerInterface
     #[Override]
     public function getIgnoredProperties(object $entity, array $additionalIgnored = []): array
     {
-        $ignored = [...$this->ignoredProperties, ...$additionalIgnored];
+        $cacheKey = $this->buildIgnoredPropertiesCacheKey($entity::class, $additionalIgnored);
 
-        $auditable = $this->getAuditableAttribute($entity::class);
-        if ($auditable !== null) {
-            $ignored = [...$ignored, ...$auditable->ignoredProperties];
-        }
-
-        return array_unique($ignored);
+        return $this->ignoredPropertiesCache[$cacheKey] ??= $this->buildIgnoredProperties($entity::class, $additionalIgnored);
     }
 
     #[Override]
     public function isEntityIgnored(string $class): bool
     {
-        if (in_array($class, $this->ignoredEntities, true)) {
+        if (isset($this->ignoredEntityLookup[$class])) {
             return true;
         }
 
         $auditable = $this->getAuditableAttribute($class);
 
         return $auditable === null || !$auditable->enabled;
+    }
+
+    /**
+     * @param array<string> $additionalIgnored
+     *
+     * @return array<string>
+     */
+    private function buildIgnoredProperties(string $class, array $additionalIgnored): array
+    {
+        sort($additionalIgnored, SORT_STRING);
+
+        $ignored = [...$this->ignoredProperties, ...$additionalIgnored];
+        $auditable = $this->getAuditableAttribute($class);
+        if ($auditable !== null) {
+            $ignored = [...$ignored, ...$auditable->ignoredProperties];
+        }
+
+        return array_values(array_unique($ignored));
+    }
+
+    /**
+     * @param array<string> $additionalIgnored
+     */
+    private function buildIgnoredPropertiesCacheKey(string $class, array $additionalIgnored): string
+    {
+        if ($additionalIgnored === []) {
+            return $class;
+        }
+
+        sort($additionalIgnored, SORT_STRING);
+
+        return $class.':'.implode(',', $additionalIgnored);
     }
 }

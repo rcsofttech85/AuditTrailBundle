@@ -172,6 +172,23 @@ final class ChangeProcessorTest extends TestCase
         self::assertSame(AuditLogInterface::ACTION_DELETE, $action);
     }
 
+    public function testExtractChangesSkipsIgnoredFieldsUsingLookup(): void
+    {
+        $metadataManager = self::createStub(AuditMetadataManagerInterface::class);
+        $metadataManager->method('getSensitiveFields')->willReturn([]);
+        $metadataManager->method('getIgnoredProperties')->willReturn(['ignored']);
+
+        $processor = $this->createProcessor($metadataManager);
+
+        $changes = $processor->extractChanges(new stdClass(), [
+            'ignored' => ['old', 'new'],
+            'kept' => ['before', 'after'],
+        ]);
+
+        self::assertSame(['kept' => 'before'], $changes[0]);
+        self::assertSame(['kept' => 'after'], $changes[1]);
+    }
+
     private function createProcessor(?AuditMetadataManagerInterface $metadataManager = null, bool $enabledSoftDelete = true): ChangeProcessor
     {
         return new ChangeProcessor(

@@ -105,18 +105,32 @@ final class ContextResolverTest extends TestCase
         self::assertSame([], $result['context']);
     }
 
-    public function testResolveCatchesExceptionAndLogs(): void
+    public function testResolveLogsUserResolutionFailureWithoutBlankingWholePayload(): void
     {
         $userResolver = self::createStub(UserResolverInterface::class);
         $userResolver->method('getUserId')->willThrowException(new RuntimeException('fail'));
+        $userResolver->method('getUsername')->willReturn('admin');
+        $userResolver->method('getIpAddress')->willReturn('127.0.0.1');
+        $userResolver->method('getUserAgent')->willReturn('TestAgent');
+        $userResolver->method('getImpersonatorId')->willReturn(null);
+        $userResolver->method('getImpersonatorUsername')->willReturn(null);
 
         $dataMasker = self::createStub(DataMaskerInterface::class);
         $dataMasker->method('redact')->willReturnArgument(0);
 
         $serializer = self::createStub(ValueSerializerInterface::class);
+        $serializer->method('serialize')->willReturnArgument(0);
 
         $logger = $this->createMock(LoggerInterface::class);
-        $logger->expects($this->once())->method('error');
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with(
+                'Failed to resolve audit user context field.',
+                self::callback(static function (array $context): bool {
+                    return ($context['field'] ?? null) === 'user_id'
+                        && isset($context['exception']);
+                }),
+            );
 
         $resolver = new ContextResolver(
             $userResolver,
@@ -130,9 +144,53 @@ final class ContextResolverTest extends TestCase
         $result = $resolver->resolve($entity, 'INSERT', [], []);
 
         self::assertNull($result['userId']);
-        self::assertNull($result['username']);
-        self::assertNull($result['ipAddress']);
-        self::assertNull($result['userAgent']);
+        self::assertSame('admin', $result['username']);
+        self::assertSame('127.0.0.1', $result['ipAddress']);
+        self::assertSame('TestAgent', $result['userAgent']);
         self::assertEmpty($result['context']);
+    }
+
+    public function testResolveLogsContextBuildFailureAndReturnsEmptyContext(): void
+    {
+        $userResolver = self::createStub(UserResolverInterface::class);
+        $userResolver->method('getUserId')->willReturn('u1');
+        $userResolver->method('getUsername')->willReturn('admin');
+        $userResolver->method('getIpAddress')->willReturn('127.0.0.1');
+        $userResolver->method('getUserAgent')->willReturn('TestAgent');
+        $userResolver->method('getImpersonatorId')->willReturn(null);
+        $userResolver->method('getImpersonatorUsername')->willReturn(null);
+
+        $dataMasker = self::createStub(DataMaskerInterface::class);
+        $dataMasker->method('redact')->willReturnArgument(0);
+
+        $contributor = self::createStub(AuditContextContributorInterface::class);
+        $contributor->method('contribute')->willThrowException(new RuntimeException('boom'));
+
+        $serializer = self::createStub(ValueSerializerInterface::class);
+        $serializer->method('serialize')->willReturnArgument(0);
+
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with(
+                'Failed to build audit context payload.',
+                self::callback(static fn (array $context): bool => isset($context['exception'])),
+            );
+
+        $resolver = new ContextResolver(
+            $userResolver,
+            $dataMasker,
+            $serializer,
+            new ArrayIterator([$contributor]),
+            $logger,
+        );
+
+        $result = $resolver->resolve(new stdClass(), 'INSERT', [], []);
+
+        self::assertSame('u1', $result['userId']);
+        self::assertSame('admin', $result['username']);
+        self::assertSame('127.0.0.1', $result['ipAddress']);
+        self::assertSame('TestAgent', $result['userAgent']);
+        self::assertSame([], $result['context']);
     }
 }

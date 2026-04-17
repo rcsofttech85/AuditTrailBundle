@@ -14,6 +14,10 @@ use Symfony\Component\ExpressionLanguage\ParsedExpression;
 use Symfony\Component\ExpressionLanguage\SyntaxError;
 use Throwable;
 
+use function array_any;
+use function str_contains;
+use function strtolower;
+
 /**
  * Evaluates `#[AuditCondition]` expressions to determine audit eligibility.
  *
@@ -117,12 +121,9 @@ final class ExpressionLanguageVoter implements AuditVoterInterface
     {
         $normalized = strtolower($expression);
 
-        foreach (self::FORBIDDEN_PATTERNS as $pattern) {
-            if (str_contains($normalized, $pattern)) {
-                return false;
-            }
-        }
-
-        return true;
+        return !array_any(
+            self::FORBIDDEN_PATTERNS,
+            static fn (string $pattern): bool => str_contains($normalized, $pattern),
+        );
     }
 }

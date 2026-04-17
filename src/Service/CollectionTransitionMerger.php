@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
-use function array_filter;
-use function array_values;
-use function in_array;
+use function is_int;
 
 final readonly class CollectionTransitionMerger
 {
@@ -46,11 +44,16 @@ final readonly class CollectionTransitionMerger
     private function mergeUniqueIds(array $left, array $right): array
     {
         $merged = $left;
+        $lookup = $this->buildIdLookup($left);
 
         foreach ($right as $id) {
-            if (!in_array($id, $merged, true)) {
-                $merged[] = $id;
+            $lookupKey = $this->buildIdLookupKey($id);
+            if (isset($lookup[$lookupKey])) {
+                continue;
             }
+
+            $merged[] = $id;
+            $lookup[$lookupKey] = true;
         }
 
         return $merged;
@@ -64,6 +67,38 @@ final readonly class CollectionTransitionMerger
      */
     private function diffIds(array $source, array $toRemove): array
     {
-        return array_values(array_filter($source, static fn ($id) => !in_array($id, $toRemove, true)));
+        $toRemoveLookup = $this->buildIdLookup($toRemove);
+        $filtered = [];
+
+        foreach ($source as $id) {
+            if (isset($toRemoveLookup[$this->buildIdLookupKey($id)])) {
+                continue;
+            }
+
+            $filtered[] = $id;
+        }
+
+        return $filtered;
+    }
+
+    /**
+     * @param array<int, int|string> $ids
+     *
+     * @return array<string, true>
+     */
+    private function buildIdLookup(array $ids): array
+    {
+        $lookup = [];
+
+        foreach ($ids as $id) {
+            $lookup[$this->buildIdLookupKey($id)] = true;
+        }
+
+        return $lookup;
+    }
+
+    private function buildIdLookupKey(int|string $id): string
+    {
+        return is_int($id) ? 'i:'.$id : 's:'.$id;
     }
 }

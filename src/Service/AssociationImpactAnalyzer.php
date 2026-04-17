@@ -5,14 +5,16 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Mapping\AssociationMapping;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\Mapping\InverseSideMapping;
+use Doctrine\ORM\Mapping\OwningSideMapping;
 use Doctrine\ORM\UnitOfWork;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 
 use function array_filter;
 use function array_values;
 use function is_iterable;
-use function is_string;
 use function spl_object_id;
 
 final readonly class AssociationImpactAnalyzer
@@ -30,9 +32,46 @@ final readonly class AssociationImpactAnalyzer
     {
         /** @var array<string, array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}> $aggregated */
         $aggregated = [];
+        /** @var array<class-string, ClassMetadata<object>> $metadataByClass */
+        $metadataByClass = [];
 
         foreach ($uow->getScheduledEntityDeletions() as $deletedEntity) {
-            foreach ($this->buildRelatedEntityCollectionImpacts($deletedEntity, $em) as $impact) {
+            $this->mergeDeletedEntityAssociationImpacts($aggregated, $metadataByClass, $deletedEntity, $em);
+        }
+
+        return array_values($aggregated);
+    }
+
+    /**
+     * @param array<string, array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}> $aggregated
+     * @param array<class-string, ClassMetadata<object>>                                                                    $metadataByClass
+     */
+    private function mergeDeletedEntityAssociationImpacts(
+        array &$aggregated,
+        array &$metadataByClass,
+        object $deletedEntity,
+        EntityManagerInterface $em,
+    ): void {
+        $deletedId = $this->resolveEntityId($deletedEntity, $em);
+        if ($deletedId === AuditLogInterface::PENDING_ID) {
+            return;
+        }
+
+        $metadata = $this->getClassMetadata($deletedEntity, $metadataByClass, $em);
+
+        foreach ($metadata->getAssociationNames() as $associationName) {
+            if (!$metadata->isCollectionValuedAssociation($associationName)) {
+                continue;
+            }
+
+            foreach ($this->buildAssociationCollectionImpacts(
+                $deletedEntity,
+                $metadata,
+                $metadataByClass,
+                $associationName,
+                $deletedId,
+                $em,
+            ) as $impact) {
                 $key = spl_object_id($impact['entity']).':'.$impact['field'];
                 if (!isset($aggregated[$key])) {
                     $aggregated[$key] = $impact;
@@ -47,66 +86,18 @@ final readonly class AssociationImpactAnalyzer
                 );
             }
         }
-
-        return array_values($aggregated);
     }
 
     /**
-     * @param list<array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}> $impacts
-     *
-     * @return array{0: array<string, mixed>, 1: array<string, mixed>}
-     */
-    public function extractDeletedEntityAssociationChangesForOwner(object $owner, array $impacts): array
-    {
-        $oldValues = [];
-        $newValues = [];
-
-        foreach ($impacts as $impact) {
-            if ($impact['entity'] !== $owner) {
-                continue;
-            }
-
-            $oldValues[$impact['field']] = $impact['old'];
-            $newValues[$impact['field']] = $impact['new'];
-        }
-
-        return [$oldValues, $newValues];
-    }
-
-    /**
-     * @return list<array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}>
-     */
-    private function buildRelatedEntityCollectionImpacts(object $deletedEntity, EntityManagerInterface $em): array
-    {
-        $deletedId = $this->collectionIdExtractor->extractFromIterable([$deletedEntity], $em)[0] ?? AuditLogInterface::PENDING_ID;
-        if ($deletedId === AuditLogInterface::PENDING_ID) {
-            return [];
-        }
-
-        $metadata = $em->getClassMetadata($deletedEntity::class);
-        $impacts = [];
-
-        foreach ($metadata->getAssociationNames() as $associationName) {
-            $impacts = [...$impacts, ...$this->buildAssociationCollectionImpacts(
-                $deletedEntity,
-                $metadata,
-                $associationName,
-                $deletedId,
-                $em,
-            )];
-        }
-
-        return $impacts;
-    }
-
-    /**
-     * @param ClassMetadata<object> $metadata
+     * @param ClassMetadata<object>                      $metadata
+     * @param array<class-string, ClassMetadata<object>> $metadataByClass
      *
      * @return list<array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}>
      */
     private function buildAssociationCollectionImpacts(
         object $deletedEntity,
         ClassMetadata $metadata,
+        array &$metadataByClass,
         string $associationName,
         int|string $deletedId,
         EntityManagerInterface $em,
@@ -123,7 +114,13 @@ final readonly class AssociationImpactAnalyzer
 
         $impacts = [];
         foreach ($relatedEntities as $relatedEntity) {
-            $impact = $this->buildSingleRelatedEntityImpact($relatedEntity, $counterpartField, $deletedId, $em);
+            $impact = $this->buildSingleRelatedEntityImpact(
+                $relatedEntity,
+                $counterpartField,
+                $metadataByClass,
+                $deletedId,
+                $em,
+            );
             if ($impact !== null) {
                 $impacts[] = $impact;
             }
@@ -132,23 +129,32 @@ final readonly class AssociationImpactAnalyzer
         return $impacts;
     }
 
-    private function resolveCounterpartFieldFromMapping(mixed $mapping): ?string
+    private function resolveCounterpartFieldFromMapping(AssociationMapping $mapping): ?string
     {
-        $counterpartField = $mapping['mappedBy'] ?? $mapping['inversedBy'] ?? null;
+        if ($mapping instanceof InverseSideMapping) {
+            return $mapping->mappedBy;
+        }
 
-        return is_string($counterpartField) ? $counterpartField : null;
+        if ($mapping instanceof OwningSideMapping) {
+            return $mapping->inversedBy;
+        }
+
+        return null;
     }
 
     /**
+     * @param array<class-string, ClassMetadata<object>> $metadataByClass
+     *
      * @return array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}|null
      */
     private function buildSingleRelatedEntityImpact(
         object $relatedEntity,
         string $counterpartField,
+        array &$metadataByClass,
         int|string $deletedId,
         EntityManagerInterface $em,
     ): ?array {
-        $relatedMetadata = $em->getClassMetadata($relatedEntity::class);
+        $relatedMetadata = $this->getClassMetadata($relatedEntity, $metadataByClass, $em);
         $relatedCollection = $relatedMetadata->getFieldValue($relatedEntity, $counterpartField);
         if (!is_iterable($relatedCollection)) {
             return null;
@@ -166,5 +172,23 @@ final readonly class AssociationImpactAnalyzer
             'old' => $oldIds,
             'new' => $newIds,
         ];
+    }
+
+    /**
+     * @param array<class-string, ClassMetadata<object>> $metadataByClass
+     *
+     * @return ClassMetadata<object>
+     */
+    private function getClassMetadata(
+        object $entity,
+        array &$metadataByClass,
+        EntityManagerInterface $em,
+    ): ClassMetadata {
+        return $metadataByClass[$entity::class] ??= $em->getClassMetadata($entity::class);
+    }
+
+    private function resolveEntityId(object $entity, EntityManagerInterface $em): int|string
+    {
+        return $this->collectionIdExtractor->extractFromIterable([$entity], $em)[0] ?? AuditLogInterface::PENDING_ID;
     }
 }

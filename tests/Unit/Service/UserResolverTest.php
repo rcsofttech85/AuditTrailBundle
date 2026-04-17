@@ -17,14 +17,7 @@ use Symfony\Component\Security\Core\Authentication\Token\SwitchUserToken;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 
-use function filter_var;
-use function getenv;
-use function gethostbyname;
-use function gethostname;
-use function is_string;
 use function strlen;
-
-use const FILTER_VALIDATE_IP;
 
 final class UserResolverTest extends TestCase
 {
@@ -153,11 +146,11 @@ final class UserResolverTest extends TestCase
         self::assertNull($resolver->getIpAddress());
     }
 
-    public function testGetIpAddressFallsBackToHostnameInCli(): void
+    public function testGetIpAddressReturnsNullInCliWithoutExplicitIpSource(): void
     {
         $resolver = $this->createResolver(trackIp: true, trackUserAgent: true);
 
-        self::assertSame($this->resolveExpectedCliIpAddress(), $resolver->getIpAddress());
+        self::assertNull($resolver->getIpAddress());
     }
 
     public function testGetUserAgentReturnsHeaderWhenTrackingEnabled(): void
@@ -370,11 +363,11 @@ final class UserResolverTest extends TestCase
         self::assertSame('user_identifier', $resolver->getUserId());
     }
 
-    public function testGetIpAddressInCliWithoutRequestUsesHostname(): void
+    public function testGetIpAddressInCliWithoutRequestReturnsNullWithoutExplicitIpSource(): void
     {
         $resolver = $this->createResolver(trackIp: true, trackUserAgent: true);
 
-        self::assertSame($this->resolveExpectedCliIpAddress(), $resolver->getIpAddress());
+        self::assertNull($resolver->getIpAddress());
     }
 
     public function testGetUserAgentInCliWithoutRequestUsesHostname(): void
@@ -521,23 +514,5 @@ final class UserResolverTest extends TestCase
         $security->method('getToken')->willReturn($token);
 
         return new UserResolver($security, new RequestStack());
-    }
-
-    private function resolveExpectedCliIpAddress(): ?string
-    {
-        $hostname = gethostname();
-        if ($hostname !== false) {
-            $resolved = gethostbyname($hostname);
-            if (filter_var($resolved, FILTER_VALIDATE_IP) !== false) {
-                return $resolved;
-            }
-        }
-
-        $environmentHost = getenv('HOSTNAME');
-        if (is_string($environmentHost) && filter_var($environmentHost, FILTER_VALIDATE_IP) !== false) {
-            return $environmentHost;
-        }
-
-        return null;
     }
 }

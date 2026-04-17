@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
+use DateTimeImmutable;
 use DateTimeInterface;
 use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditPurgeCommand;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Symfony\Component\Console\Tester\CommandTester;
 
 final class AuditPurgeCommandTest extends TestCase
@@ -18,6 +21,7 @@ final class AuditPurgeCommandTest extends TestCase
 
     private AuditLogRepositoryInterface $repository;
 
+    /** @var (AuditIntegrityServiceInterface&Stub)|(AuditIntegrityServiceInterface&MockObject) */
     private AuditIntegrityServiceInterface $integrityService;
 
     private CommandTester $commandTester;
@@ -272,6 +276,39 @@ final class AuditPurgeCommandTest extends TestCase
         $this->commandTester->setInputs(['yes']);
         $this->commandTester->execute(['--before' => '30 days ago']);
         self::assertStringContainsString('large operation', $this->normalizeOutput($this->commandTester));
+    }
+
+    public function testPurgeIntegrityCheckStreamsOlderLogsThroughIterableQuery(): void
+    {
+        $repository = $this->useRepositoryMock();
+        $this->integrityService = self::createMock(AuditIntegrityServiceInterface::class);
+        $this->integrityService->method('isEnabled')->willReturn(true);
+        $this->integrityService->expects($this->once())
+            ->method('verifySignature')
+            ->with(self::isInstanceOf(AuditLog::class))
+            ->willReturn(true);
+        $this->resetCommandTester();
+
+        $repository->expects($this->once())
+            ->method('countOlderThan')
+            ->willReturn(1);
+        $repository->expects($this->once())
+            ->method('findAllWithFilters')
+            ->with(self::callback(static function (array $filters): bool {
+                return isset($filters['to']) && $filters['to'] instanceof DateTimeImmutable;
+            }))
+            ->willReturn([new AuditLog('Class', '1', 'update')]);
+        $repository->expects($this->once())
+            ->method('deleteOldLogs')
+            ->willReturn(1);
+
+        $this->commandTester->execute([
+            '--before' => '30 days ago',
+            '--force' => true,
+        ]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('All logs passed integrity verification', $this->normalizeOutput($this->commandTester));
     }
 
     private function useRepositoryMock(): AuditLogRepositoryInterface&MockObject

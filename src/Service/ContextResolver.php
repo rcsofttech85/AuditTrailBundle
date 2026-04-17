@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use Closure;
 use Override;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface;
@@ -48,22 +49,15 @@ final class ContextResolver implements ContextResolverInterface
     #[Override]
     public function resolve(object $entity, string $action, array $newValues, array $extraContext): array
     {
-        $userId = null;
-        $username = null;
-        $ipAddress = null;
-        $userAgent = null;
-        $context = [];
-
-        try {
-            $userId = $extraContext[AuditLogInterface::CONTEXT_USER_ID] ?? $this->userResolver->getUserId();
-            $username = $extraContext[AuditLogInterface::CONTEXT_USERNAME] ?? $this->userResolver->getUsername();
-            $ipAddress = $extraContext[AuditLogInterface::CONTEXT_IP_ADDRESS] ?? $this->userResolver->getIpAddress();
-            $userAgent = $extraContext[AuditLogInterface::CONTEXT_USER_AGENT] ?? $this->userResolver->getUserAgent();
-
-            $context = $this->buildContext($extraContext, $entity, $action, $newValues);
-        } catch (Throwable $e) {
-            $this->logger?->error('Failed to resolve audit context', ['exception' => $e->getMessage()]);
-        }
+        $userId = $extraContext[AuditLogInterface::CONTEXT_USER_ID]
+            ?? $this->resolveUserContextValue('user_id', $this->userResolver->getUserId(...));
+        $username = $extraContext[AuditLogInterface::CONTEXT_USERNAME]
+            ?? $this->resolveUserContextValue('username', $this->userResolver->getUsername(...));
+        $ipAddress = $extraContext[AuditLogInterface::CONTEXT_IP_ADDRESS]
+            ?? $this->resolveUserContextValue('ip_address', $this->userResolver->getIpAddress(...));
+        $userAgent = $extraContext[AuditLogInterface::CONTEXT_USER_AGENT]
+            ?? $this->resolveUserContextValue('user_agent', $this->userResolver->getUserAgent(...));
+        $context = $this->resolveContextPayload($extraContext, $entity, $action, $newValues);
 
         return [
             'userId' => $this->stringify($userId),
@@ -81,6 +75,39 @@ final class ContextResolver implements ContextResolverInterface
         }
 
         return null;
+    }
+
+    private function resolveUserContextValue(string $field, Closure $resolver): mixed
+    {
+        try {
+            return $resolver();
+        } catch (Throwable $exception) {
+            $this->logger?->warning('Failed to resolve audit user context field.', [
+                'field' => $field,
+                'exception' => $exception,
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $extraContext
+     * @param array<string, mixed> $newValues
+     *
+     * @return array<string, mixed>
+     */
+    private function resolveContextPayload(array $extraContext, object $entity, string $action, array $newValues): array
+    {
+        try {
+            return $this->buildContext($extraContext, $entity, $action, $newValues);
+        } catch (Throwable $exception) {
+            $this->logger?->warning('Failed to build audit context payload.', [
+                'exception' => $exception,
+            ]);
+
+            return [];
+        }
     }
 
     /**

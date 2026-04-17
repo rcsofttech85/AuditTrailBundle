@@ -7,7 +7,11 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\DataMaskerInterface;
 
+use function array_diff;
+use function array_fill_keys;
+use function array_intersect;
 use function array_key_exists;
+use function array_map;
 use function in_array;
 use function is_array;
 use function preg_replace;
@@ -63,16 +67,13 @@ final class DataMasker implements DataMaskerInterface
     public function __construct(array $sensitiveKeys = [...self::ALWAYS_SENSITIVE_KEYS, ...self::CONTEXTUAL_SENSITIVE_KEYS])
     {
         $normalizedKeys = array_map($this->normalizeKey(...), $sensitiveKeys);
-        $this->alwaysSensitiveKeyLookup = array_fill_keys(
-            array_values(array_intersect($normalizedKeys, self::ALWAYS_SENSITIVE_KEYS)),
-            true,
-        );
+        $this->alwaysSensitiveKeyLookup = array_fill_keys(self::ALWAYS_SENSITIVE_KEYS, true);
         $this->contextualSensitiveKeyLookup = array_fill_keys(
             array_values(array_intersect($normalizedKeys, self::CONTEXTUAL_SENSITIVE_KEYS)),
             true,
         );
         $this->explicitSensitiveKeyLookup = array_fill_keys(
-            array_values(array_diff($normalizedKeys, self::CONTEXTUAL_SENSITIVE_KEYS)),
+            array_values(array_diff($normalizedKeys, self::ALWAYS_SENSITIVE_KEYS, self::CONTEXTUAL_SENSITIVE_KEYS)),
             true,
         );
     }
@@ -103,6 +104,10 @@ final class DataMasker implements DataMaskerInterface
     private function isSensitiveKey(string $key): bool
     {
         $normalizedKey = $this->normalizeKey($key);
+
+        if (isset($this->alwaysSensitiveKeyLookup[$normalizedKey])) {
+            return true;
+        }
 
         if (isset($this->explicitSensitiveKeyLookup[$normalizedKey])) {
             return true;

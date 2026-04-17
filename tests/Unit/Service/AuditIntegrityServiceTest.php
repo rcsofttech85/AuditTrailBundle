@@ -282,6 +282,22 @@ final class AuditIntegrityServiceTest extends TestCase
         self::assertTrue($this->service->verifySignature($logArrayUtc));
     }
 
+    public function testVerifySignatureWithSpaceSeparatedDateStringStability(): void
+    {
+        $log = new AuditLog(
+            'App\\Entity\\Post',
+            '92',
+            'update',
+            new DateTimeImmutable('2026-01-22 08:05:06'),
+            ['createdAt' => '2026-01-22 08:04:32+00:00']
+        );
+
+        $signature = $this->service->generateSignature($log);
+        $log->signature = $signature;
+
+        self::assertTrue($this->service->verifySignature($log));
+    }
+
     public function testSignPayload(): void
     {
         $signature = $this->service->signPayload('test');

@@ -92,4 +92,19 @@ final class DataMaskerTest extends TestCase
         self::assertSame('********', $redacted['merchant_token']);
         self::assertSame('keep', $redacted['primaryKeyValue']);
     }
+
+    public function testAlwaysSensitiveKeysRemainMaskedWhenCustomKeysAreConfigured(): void
+    {
+        $masker = new DataMasker(['jwt']);
+
+        $redacted = $masker->redact([
+            'password' => 'secret123',
+            'session_id' => 'session',
+            'jwt' => 'token',
+        ]);
+
+        self::assertSame('********', $redacted['password']);
+        self::assertSame('********', $redacted['session_id']);
+        self::assertSame('********', $redacted['jwt']);
+    }
 }

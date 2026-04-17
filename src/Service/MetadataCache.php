@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Generator;
 use Override;
+use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 use Rcsofttech\AuditTrailBundle\Attribute\AuditAccess;
 use Rcsofttech\AuditTrailBundle\Attribute\AuditCondition;
@@ -30,6 +31,11 @@ final class MetadataCache implements MetadataCacheInterface
 
     /** @var array<string, AuditAccess|null> */
     private array $accessCache = [];
+
+    public function __construct(
+        private readonly ?LoggerInterface $logger = null,
+    ) {
+    }
 
     #[Override]
     public function getAuditableAttribute(string|object $class): ?Auditable
@@ -87,7 +93,8 @@ final class MetadataCache implements MetadataCacheInterface
                     return $attributes[0]->newInstance();
                 }
             }
-        } catch (ReflectionException) {
+        } catch (ReflectionException $exception) {
+            $this->reportReflectionFailure($exception, $class, $attributeClass);
         }
 
         return null;
@@ -122,7 +129,9 @@ final class MetadataCache implements MetadataCacheInterface
                 ...$this->resolveConstructorSensitiveFields($reflection),
                 ...$this->resolvePropertySensitiveFields($reflection),
             ];
-        } catch (ReflectionException) {
+        } catch (ReflectionException $exception) {
+            $this->reportReflectionFailure($exception, $class, Sensitive::class);
+
             return [];
         }
     }
@@ -168,5 +177,20 @@ final class MetadataCache implements MetadataCacheInterface
         }
 
         return $fields;
+    }
+
+    /**
+     * @param class-string $attributeClass
+     */
+    private function reportReflectionFailure(
+        ReflectionException $exception,
+        string $class,
+        string $attributeClass,
+    ): void {
+        $this->logger?->warning('Failed to resolve audit metadata via reflection.', [
+            'class' => $class,
+            'attribute' => $attributeClass,
+            'exception' => $exception,
+        ]);
     }
 }

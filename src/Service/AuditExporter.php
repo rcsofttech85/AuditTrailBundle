@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use Closure;
 use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use InvalidArgumentException;
@@ -14,11 +15,11 @@ use RuntimeException;
 use Stringable;
 
 use function count;
-use function in_array;
 use function is_array;
 use function is_resource;
 use function is_scalar;
 use function sprintf;
+use function str_contains;
 
 use const JSON_PRETTY_PRINT;
 use const JSON_THROW_ON_ERROR;
@@ -173,9 +174,9 @@ final readonly class AuditExporter implements AuditExporterInterface
     /**
      * Helper: run a stream-writing callback against php://temp and return the result as a string.
      *
-     * @param callable(resource): void $writer
+     * @param Closure(resource): void $writer
      */
-    private function formatViaStream(callable $writer): string
+    private function formatViaStream(Closure $writer): string
     {
         $stream = fopen('php://temp', 'r+');
         if ($stream === false) {
@@ -195,7 +196,7 @@ final readonly class AuditExporter implements AuditExporterInterface
 
     private function sanitizeCsvValue(string $value): string
     {
-        if ($value !== '' && in_array(mb_substr($value, 0, 1), ['=', '+', '-', '@'], true)) {
+        if ($value !== '' && str_contains('=+-@', $value[0])) {
             return "'".$value;
         }
 
