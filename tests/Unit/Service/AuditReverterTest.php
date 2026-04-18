@@ -260,7 +260,7 @@ final class AuditReverterTest extends AbstractAuditTestCase
 
         $revertLog = new AuditLog(RevertTestUser::class, '1', AuditLogInterface::ACTION_REVERT);
         $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($revertLog);
-        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity);
+        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity)->willReturn(true);
         $this->validator->method('validate')->willReturn(new ConstraintViolationList());
 
         $changes = $this->reverter->revert($log);
@@ -309,7 +309,7 @@ final class AuditReverterTest extends AbstractAuditTestCase
             ->with($entity, AuditLogInterface::ACTION_REVERT, ['changed' => 'new'], ['changed' => 'old'])
             ->willReturn($revertLog);
 
-        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity);
+        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity)->willReturn(true);
 
         $this->em->expects($this->never())->method('persist');
         $this->em->expects($this->once())->method('flush');
@@ -345,7 +345,7 @@ final class AuditReverterTest extends AbstractAuditTestCase
 
         $revertLog = new AuditLog(RevertTestUser::class, '1', AuditLogInterface::ACTION_REVERT, oldValues: ['name' => 'Old']);
         $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($revertLog);
-        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity);
+        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity)->willReturn(true);
 
         $this->auditManager->expects($this->never())->method('disable');
         $this->auditManager->expects($this->never())->method('enable');
@@ -419,7 +419,7 @@ final class AuditReverterTest extends AbstractAuditTestCase
 
         $revertLog = new AuditLog($entity::class, '1', AuditLogInterface::ACTION_REVERT, oldValues: ['friends' => []]);
         $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($revertLog);
-        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity);
+        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity)->willReturn(true);
 
         $this->reverter->revert($log);
 
@@ -445,7 +445,7 @@ final class AuditReverterTest extends AbstractAuditTestCase
 
         $this->dispatcher->expects($this->once())->method('dispatch')->with(self::callback(static function (AuditLog $arg) {
             return $arg->action === AuditLogInterface::ACTION_REVERT && $arg->entityId === '1';
-        }), $this->em, AuditPhase::PostFlush, null, $entity);
+        }), $this->em, AuditPhase::PostFlush, null, $entity)->willReturn(true);
 
         $changes = $this->reverter->revert($log, false, true);
         self::assertSame(['action' => 'delete'], $changes);
@@ -471,7 +471,7 @@ final class AuditReverterTest extends AbstractAuditTestCase
         $this->validator->method('validate')->willReturn(new ConstraintViolationList());
         $revertLog = new AuditLog(RevertTestUser::class, '1', AuditLogInterface::ACTION_REVERT);
         $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($revertLog);
-        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity);
+        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity)->willReturn(true);
 
         $changes = $this->reverter->revert($log);
         self::assertSame(['action' => 'restore'], $changes);
@@ -514,7 +514,7 @@ final class AuditReverterTest extends AbstractAuditTestCase
             )
             ->willReturn($revertLog);
 
-        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity);
+        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity)->willReturn(true);
 
         $this->reverter->revert($log, false, false, ['custom_key' => 'custom_val']);
     }
@@ -533,10 +533,64 @@ final class AuditReverterTest extends AbstractAuditTestCase
         $this->em->expects($this->once())->method('flush');
         $revertLog = new AuditLog(RevertTestUser::class, '1', AuditLogInterface::ACTION_REVERT);
         $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($revertLog);
-        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity);
+        $this->dispatcher->expects($this->once())->method('dispatch')->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity)->willReturn(true);
 
         $changes = $this->reverter->revert($log);
         self::assertSame([], $changes);
+    }
+
+    public function testRevertThrowsWhenRevertAuditDispatchFails(): void
+    {
+        $log = new AuditLog(
+            entityClass: RevertTestUser::class,
+            entityId: '1',
+            action: AuditLogInterface::ACTION_UPDATE,
+            oldValues: ['name' => 'Old'],
+        );
+
+        $this->expectSoftDeleteFilterLifecycle();
+        $this->expectAuditManagerLifecycle();
+
+        $entity = new RevertTestUser();
+        $entity->name = 'New';
+        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
+        $this->em->method('find')->willReturn($entity);
+
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('isIdentifier')->willReturn(false);
+        $metadata->method('hasField')->willReturn(true);
+        $metadata->method('getFieldValue')->willReturnCallback(static fn (RevertTestUser $entity, string $field): mixed => $field === 'name' ? $entity->name : null);
+        $metadata->expects($this->once())
+            ->method('setFieldValue')
+            ->with($entity, 'name', 'Old')
+            ->willReturnCallback(static function (RevertTestUser $entity, string $field, mixed $value): void {
+                if ($field === 'name') {
+                    $entity->name = (string) $value;
+                }
+            });
+        $this->em->method('getClassMetadata')->willReturn($metadata);
+        $this->em->method('isOpen')->willReturn(true);
+        $this->em->expects($this->once())->method('refresh')->with($entity)->willReturnCallback(static function (RevertTestUser $entity): void {
+            $entity->name = 'New';
+        });
+        $this->em->method('wrapInTransaction')->willReturnCallback(static fn (callable $c) => $c());
+        $this->em->expects($this->once())->method('flush');
+        $this->validator->method('validate')->willReturn(new ConstraintViolationList());
+
+        $revertLog = new AuditLog(RevertTestUser::class, '1', AuditLogInterface::ACTION_REVERT);
+        $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($revertLog);
+        $this->dispatcher->expects($this->once())
+            ->method('dispatch')
+            ->with($revertLog, $this->em, AuditPhase::PostFlush, null, $entity)
+            ->willReturn(false);
+
+        try {
+            $this->reverter->revert($log);
+            self::fail('Expected RuntimeException to be thrown');
+        } catch (RuntimeException $exception) {
+            self::assertSame('New', $entity->name);
+            self::assertStringContainsString('Failed to dispatch revert audit log', $exception->getMessage());
+        }
     }
 
     public function testRevertAlreadyReverted(): void

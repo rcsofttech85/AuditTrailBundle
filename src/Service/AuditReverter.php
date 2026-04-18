@@ -6,7 +6,10 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Mapping\AssociationMapping;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\Mapping\InverseSideMapping;
+use Doctrine\ORM\Mapping\OwningSideMapping;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
@@ -19,7 +22,6 @@ use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
-use ReflectionClass;
 use RuntimeException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Throwable;
@@ -31,6 +33,8 @@ use function method_exists;
 use function preg_replace;
 use function spl_object_id;
 use function sprintf;
+use function strrpos;
+use function substr;
 
 final readonly class AuditReverter implements AuditReverterInterface
 {
@@ -201,7 +205,9 @@ final readonly class AuditReverter implements AuditReverterInterface
             $revertLog->entityId = $log->entityId;
         }
 
-        $this->dispatcher->dispatch($revertLog, $this->em, AuditPhase::PostFlush, null, $entity);
+        if (!$this->dispatcher->dispatch($revertLog, $this->em, AuditPhase::PostFlush, null, $entity)) {
+            throw new RuntimeException(sprintf('Failed to dispatch revert audit log for %s:%s.', $log->entityClass, $log->entityId));
+        }
     }
 
     /**
@@ -444,7 +450,7 @@ final readonly class AuditReverter implements AuditReverterInterface
      */
     private function addAssociationItem(
         ClassMetadata $metadata,
-        mixed $mapping,
+        AssociationMapping $mapping,
         object $entity,
         string $field,
         Collection $currentValue,
@@ -464,7 +470,7 @@ final readonly class AuditReverter implements AuditReverterInterface
      */
     private function removeAssociationItem(
         ClassMetadata $metadata,
-        mixed $mapping,
+        AssociationMapping $mapping,
         object $entity,
         string $field,
         Collection $currentValue,
@@ -480,9 +486,7 @@ final readonly class AuditReverter implements AuditReverterInterface
 
     private function invokeCollectionMutator(object $entity, string $prefix, object $item): bool
     {
-        $shortName = new ReflectionClass($item)->getShortName();
-        $shortName = $this->normalizeShortClassName($shortName);
-        $method = $prefix.$shortName;
+        $method = $prefix.$this->resolveShortClassName($item);
 
         if (!method_exists($entity, $method) || !is_callable([$entity, $method])) {
             return false;
@@ -499,7 +503,7 @@ final readonly class AuditReverter implements AuditReverterInterface
      */
     private function synchronizeCounterpartAssociation(
         ClassMetadata $metadata,
-        mixed $mapping,
+        AssociationMapping $mapping,
         object $entity,
         string $field,
         object $item,
@@ -528,9 +532,17 @@ final readonly class AuditReverter implements AuditReverterInterface
         $this->synchronizeSingleValuedCounterpart($targetMetadata, $item, $counterpartField, $entity, $adding);
     }
 
-    private function resolveCounterpartField(mixed $mapping): mixed
+    private function resolveCounterpartField(AssociationMapping $mapping): ?string
     {
-        return $mapping['mappedBy'] ?? $mapping['inversedBy'] ?? null;
+        if ($mapping instanceof OwningSideMapping) {
+            return $mapping->inversedBy;
+        }
+
+        if ($mapping instanceof InverseSideMapping) {
+            return $mapping->mappedBy;
+        }
+
+        return null;
     }
 
     /**
@@ -582,9 +594,7 @@ final readonly class AuditReverter implements AuditReverterInterface
 
     private function invokeCounterpartMutator(object $entity, object $item, bool $adding): bool
     {
-        $shortName = new ReflectionClass($entity)->getShortName();
-        $shortName = $this->normalizeShortClassName($shortName);
-        $method = ($adding ? 'add' : 'remove').$shortName;
+        $method = ($adding ? 'add' : 'remove').$this->resolveShortClassName($entity);
 
         if (!method_exists($item, $method) || !is_callable([$item, $method])) {
             return false;
@@ -626,6 +636,26 @@ final readonly class AuditReverter implements AuditReverterInterface
         }
 
         return $lookup;
+    }
+
+    private function resolveShortClassName(object $entity): string
+    {
+        /** @var array<class-string, string> $shortNameCache */
+        static $shortNameCache = [];
+
+        $class = $entity::class;
+
+        return $shortNameCache[$class] ??= $this->normalizeShortClassName($this->extractShortClassName($class));
+    }
+
+    /**
+     * @param class-string $class
+     */
+    private function extractShortClassName(string $class): string
+    {
+        $separatorPosition = strrpos($class, '\\');
+
+        return $separatorPosition === false ? $class : substr($class, $separatorPosition + 1);
     }
 
     private function normalizeShortClassName(string $shortName): string
