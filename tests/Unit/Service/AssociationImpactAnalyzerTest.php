@@ -43,7 +43,10 @@ final class AssociationImpactAnalyzerTest extends TestCase
 
         $deletedMetadata = self::createMock(ClassMetadata::class);
         $deletedMetadata->method('getAssociationNames')->willReturn(['posts']);
-        $deletedMetadata->method('isCollectionValuedAssociation')->with('posts')->willReturn(true);
+        $deletedMetadata->expects($this->once())
+            ->method('isCollectionValuedAssociation')
+            ->with('posts')
+            ->willReturn(true);
         $deletedMetadata->expects($this->once())
             ->method('getAssociationMapping')
             ->with('posts')

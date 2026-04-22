@@ -45,6 +45,16 @@ final class AuditTrailExtensionTest extends TestCase
         self::assertSame('ROLE_AUDIT_ADMIN', $container->getParameter('audit_trail.admin_permission'));
     }
 
+    public function testEasyAdminControllerIsNotRegisteredWhenBundleIsMissing(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([], $container);
+
+        self::assertFalse($container->hasDefinition('Rcsofttech\\AuditTrailBundle\\Controller\\Admin\\AuditLogCrudController'));
+    }
+
     public function testValidTablePrefixAndSuffixAreStored(): void
     {
         $container = new ContainerBuilder();

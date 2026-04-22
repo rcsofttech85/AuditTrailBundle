@@ -107,7 +107,10 @@ final class EntityProcessorTest extends TestCase
         $audit = new AuditLog(stdClass::class, '550e8400-e29b-41d4-a716-446655440000', AuditLogInterface::ACTION_CREATE);
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
-        $this->auditService->method('shouldAudit')->with($entity)->willReturn(true);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($entity, AuditLogInterface::ACTION_CREATE, [])
+            ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
         $this->auditService->method('createAuditLog')->willReturn($audit);
 
@@ -129,7 +132,10 @@ final class EntityProcessorTest extends TestCase
         $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditLogInterface::ACTION_CREATE);
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
-        $this->auditService->method('shouldAudit')->with($entity)->willReturn(true);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($entity, AuditLogInterface::ACTION_CREATE, [])
+            ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
         $this->auditService->method('createAuditLog')->willReturn($audit);
 
@@ -147,7 +153,10 @@ final class EntityProcessorTest extends TestCase
         $entity = new stdClass();
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
-        $this->auditService->method('shouldAudit')->with($entity)->willReturn(false);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($entity)
+            ->willReturn(false);
 
         $this->auditManager->expects($this->never())->method('schedule');
 
@@ -166,7 +175,10 @@ final class EntityProcessorTest extends TestCase
         $uow->method('getScheduledCollectionDeletions')->willReturn([]);
         $uow->method('getEntityChangeSet')->willReturn(['field' => ['old', 'new']]);
 
-        $this->auditService->method('shouldAudit')->with($entity, AuditLogInterface::ACTION_UPDATE, ['field' => 'new'])->willReturn(true);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($entity, AuditLogInterface::ACTION_UPDATE, ['field' => 'new'])
+            ->willReturn(true);
         $this->changeProcessor->method('extractChanges')->willReturn([['field' => 'old'], ['field' => 'new']]);
         $this->changeProcessor->method('determineUpdateAction')->willReturn(AuditLogInterface::ACTION_UPDATE);
         $this->auditService->expects($this->once())
@@ -190,7 +202,7 @@ final class EntityProcessorTest extends TestCase
         $uow->method('getScheduledCollectionDeletions')->willReturn([]);
         $uow->method('getEntityChangeSet')->willReturn([]);
 
-        $this->auditService->method('shouldAudit')->with($entity)->willReturn(true);
+        $this->auditService->expects($this->never())->method('shouldAudit');
         $this->changeProcessor->method('extractChanges')->willReturn([[], []]);
 
         $this->auditManager->expects($this->never())->method('schedule');
@@ -256,7 +268,10 @@ final class EntityProcessorTest extends TestCase
         $entity = new stdClass();
 
         $uow->method('getScheduledEntityDeletions')->willReturn([$entity]);
-        $this->auditService->method('shouldAudit')->with($entity)->willReturn(true);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($entity)
+            ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn(['data']);
         $em->method('contains')->willReturn(true);
 
@@ -295,7 +310,10 @@ final class EntityProcessorTest extends TestCase
             [$item1]
         );
 
-        $this->auditService->method('shouldAudit')->with($owner)->willReturn(true);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($owner)
+            ->willReturn(true);
         $this->auditService->method('createAuditLog')->willReturn($audit);
 
         $this->auditManager->expects($this->once())->method('schedule')->with($owner, $audit, false);
@@ -363,7 +381,10 @@ final class EntityProcessorTest extends TestCase
             [$item1, $item2]
         );
 
-        $this->auditService->method('shouldAudit')->with($owner)->willReturn(true);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($owner)
+            ->willReturn(true);
         $this->idResolver->method('resolveFromEntity')->willReturnMap([
             [$item1, $em, '1'],
             [$item2, $em, '2'],
@@ -504,7 +525,10 @@ final class EntityProcessorTest extends TestCase
         $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
-        $this->auditService->method('shouldAudit')->with($entity)->willReturn(true);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($entity)
+            ->willReturn(true);
         $this->auditService->method('createAuditLog')->willReturn($audit);
 
         $dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
@@ -523,7 +547,10 @@ final class EntityProcessorTest extends TestCase
         $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditLogInterface::ACTION_CREATE);
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
-        $this->auditService->method('shouldAudit')->with($entity)->willReturn(true);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($entity)
+            ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
         $this->auditService->method('createAuditLog')->willReturn($audit);
 
@@ -543,7 +570,10 @@ final class EntityProcessorTest extends TestCase
         $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditLogInterface::ACTION_CREATE);
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
-        $this->auditService->method('shouldAudit')->with($entity)->willReturn(true);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($entity)
+            ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
         $this->auditService->method('createAuditLog')->willReturn($audit);
 
@@ -568,7 +598,10 @@ final class EntityProcessorTest extends TestCase
         $uow->method('getEntityChangeSet')->willReturn([
             'deletedAt' => [null, '2026-04-02T00:00:00+00:00'],
         ]);
-        $this->auditService->method('shouldAudit')->with($entity)->willReturn(true);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($entity)
+            ->willReturn(true);
         $changeProcessor->expects($this->once())
             ->method('determineUpdateAction')
             ->with(['deletedAt' => [null, '2026-04-02T00:00:00+00:00']])
@@ -595,7 +628,10 @@ final class EntityProcessorTest extends TestCase
                 : []
         );
 
-        $this->auditService->method('shouldAudit')->with($entity)->willReturn(true);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($entity)
+            ->willReturn(true);
         $changeProcessor->expects($this->once())
             ->method('determineUpdateAction')
             ->with(['deletedAt' => [null, '2026-04-02T00:00:00+00:00']])
@@ -660,25 +696,45 @@ final class EntityProcessorTest extends TestCase
         $em->method('getConnection')->willReturn($connection);
 
         $ownerMetadata->method('getAssociationNames')->willReturn(['tags']);
-        $ownerMetadata->method('isCollectionValuedAssociation')->with('tags')->willReturn(true);
-        $ownerMetadata->method('getFieldValue')->with($owner, 'tags')->willReturn($currentCollection);
-        $ownerMetadata->method('getAssociationMapping')->with('tags')->willReturn($mapping);
-        $ownerMetadata->method('getFieldForColumn')->with('id')->willReturn('id');
-        $ownerMetadata->method('getTypeOfField')->with('id')->willReturn('integer');
+        $ownerMetadata->expects($this->once())
+            ->method('isCollectionValuedAssociation')
+            ->with('tags')
+            ->willReturn(true);
+        $ownerMetadata->expects($this->once())
+            ->method('getFieldValue')
+            ->with($owner, 'tags')
+            ->willReturn($currentCollection);
+        $ownerMetadata->expects($this->once())
+            ->method('getAssociationMapping')
+            ->with('tags')
+            ->willReturn($mapping);
+        $ownerMetadata->method('getFieldForColumn')->willReturn('id');
+        $ownerMetadata->expects($this->exactly(2))
+            ->method('getTypeOfField')
+            ->with('id')
+            ->willReturn('integer');
 
-        $targetMetadata->method('getFieldForColumn')->with('id')->willReturn('id');
-        $targetMetadata->method('getTypeOfField')->with('id')->willReturn('integer');
+        $targetMetadata->method('getFieldForColumn')->willReturn('id');
+        $targetMetadata->method('getTypeOfField')->willReturn('integer');
 
-        $connection->method('convertToDatabaseValue')->with('1', 'integer')->willReturn(1);
         $connection->method('convertToPHPValue')->willReturnMap([
             ['5', 'integer', 5],
             ['7', 'integer', 7],
         ]);
         $connection->expects($this->once())->method('createQueryBuilder')->willReturn($queryBuilder);
 
-        $queryBuilder->method('select')->with('tag_id')->willReturnSelf();
-        $queryBuilder->method('from')->with('owner_tags')->willReturnSelf();
-        $queryBuilder->method('where')->with('owner_id = :ownerId')->willReturnSelf();
+        $queryBuilder->expects($this->once())
+            ->method('select')
+            ->with('tag_id')
+            ->willReturnSelf();
+        $queryBuilder->expects($this->once())
+            ->method('from')
+            ->with('owner_tags')
+            ->willReturnSelf();
+        $queryBuilder->expects($this->once())
+            ->method('where')
+            ->with('owner_id = :ownerId')
+            ->willReturnSelf();
         $queryBuilder->expects($this->once())->method('setParameter')->with('ownerId', 1, 'integer')->willReturnSelf();
         $queryBuilder->method('executeQuery')->willReturn($result);
         $result->method('fetchFirstColumn')->willReturn(['5', '7']);
@@ -732,14 +788,23 @@ final class EntityProcessorTest extends TestCase
         $em->method('contains')->willReturn(true);
 
         $deletedMetadata->method('getAssociationNames')->willReturn(['related']);
-        $deletedMetadata->method('isCollectionValuedAssociation')->with('related')->willReturn(true);
-        $deletedMetadata->method('getAssociationMapping')->with('related')->willReturn($mapping);
+        $deletedMetadata->expects($this->exactly(2))
+            ->method('isCollectionValuedAssociation')
+            ->with('related')
+            ->willReturn(true);
+        $deletedMetadata->expects($this->exactly(2))
+            ->method('getAssociationMapping')
+            ->with('related')
+            ->willReturn($mapping);
         $deletedMetadata->method('getFieldValue')->willReturnMap([
             [$deletedA, 'related', [$relatedEntity]],
             [$deletedB, 'related', [$relatedEntity]],
         ]);
 
-        $relatedMetadata->method('getFieldValue')->with($relatedEntity, 'items')->willReturn([$deletedA, $deletedB]);
+        $relatedMetadata->expects($this->exactly(2))
+            ->method('getFieldValue')
+            ->with($relatedEntity, 'items')
+            ->willReturn([$deletedA, $deletedB]);
 
         $this->auditService->expects($this->exactly(3))
             ->method('shouldAudit')

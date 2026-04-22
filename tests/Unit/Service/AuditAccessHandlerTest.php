@@ -478,7 +478,10 @@ final class AuditAccessHandlerTest extends TestCase
         $om->method('getClassMetadata')->willReturn(new ClassMetadata(stdClass::class));
 
         $accessAttr = new AuditAccess(level: 'read', message: 'test', cooldown: 0);
-        $this->auditService->method('getAccessAttribute')->with(stdClass::class)->willReturn($accessAttr);
+        $this->auditService->expects($this->exactly(2))
+            ->method('getAccessAttribute')
+            ->with(stdClass::class)
+            ->willReturn($accessAttr);
         $this->auditService->method('passesVoters')->willReturn(true);
         $this->idResolver->method('resolveFromEntity')->willReturn('1');
 

@@ -7,7 +7,6 @@ namespace Rcsofttech\AuditTrailBundle\DependencyInjection;
 use LogicException;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
-use Rcsofttech\AuditTrailBundle\Controller\Admin\AuditLogCrudController;
 use Rcsofttech\AuditTrailBundle\DataCollector\AuditDataCollector;
 use Rcsofttech\AuditTrailBundle\DataCollector\TraceableAuditCollector;
 use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
@@ -28,10 +27,15 @@ use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
+use function class_exists;
 use function count;
 
 final class AuditTrailExtension extends Extension implements PrependExtensionInterface
 {
+    private const string EASYADMIN_CRUD_CONTROLLER = 'Rcsofttech\\AuditTrailBundle\\Controller\\Admin\\AuditLogCrudController';
+
+    private const string EASYADMIN_BASE_CRUD_CONTROLLER = 'EasyCorp\\Bundle\\EasyAdminBundle\\Controller\\AbstractCrudController';
+
     #[Override]
     public function load(array $configs, ContainerBuilder $container): void
     {
@@ -100,8 +104,8 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
 
         /** @var array<string, mixed> $bundles */
         $bundles = $container->hasParameter('kernel.bundles') ? $container->getParameter('kernel.bundles') : [];
-        if (isset($bundles['EasyAdminBundle'])) {
-            $container->register(AuditLogCrudController::class)
+        if (isset($bundles['EasyAdminBundle']) && class_exists(self::EASYADMIN_BASE_CRUD_CONTROLLER)) {
+            $container->register(self::EASYADMIN_CRUD_CONTROLLER, self::EASYADMIN_CRUD_CONTROLLER)
                 ->setAutowired(true)
                 ->setAutoconfigured(true)
                 ->setArgument('$adminPermission', '%audit_trail.admin_permission%')
