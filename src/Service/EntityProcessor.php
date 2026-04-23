@@ -7,14 +7,12 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
 use Override;
-use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 
 use function array_key_exists;
 use function is_array;
@@ -25,13 +23,11 @@ final readonly class EntityProcessor implements EntityProcessorInterface
     public function __construct(
         private AuditServiceInterface $auditService,
         private ChangeProcessorInterface $changeProcessor,
-        private AuditDispatcherInterface $dispatcher,
         private ScheduledAuditManagerInterface $auditManager,
         private AssociationImpactAnalyzer $associationImpactAnalyzer,
         private CollectionChangeResolver $collectionChangeResolver,
         private CollectionTransitionMerger $collectionTransitionMerger,
-        private bool $deferTransportUntilCommit = true,
-        private bool $failOnTransportError = false,
+        private EntityAuditDispatchManager $dispatchManager,
     ) {
     }
 
@@ -52,7 +48,7 @@ final readonly class EntityProcessor implements EntityProcessorInterface
                 [],
                 $em,
             );
-            $this->dispatchOrSchedule($audit, $entity, $em, $uow, true);
+            $this->dispatchManager->dispatchOrSchedule($audit, $entity, $em, $uow, true);
         }
     }
 
@@ -90,7 +86,7 @@ final readonly class EntityProcessor implements EntityProcessorInterface
             }
 
             $audit = $this->auditService->createAuditLog($entity, $action, $old, $new, [], $em);
-            $this->dispatchOrSchedule($audit, $entity, $em, $uow, false);
+            $this->dispatchManager->dispatchOrSchedule($audit, $entity, $em, $uow, false);
         }
     }
 
@@ -137,7 +133,7 @@ final readonly class EntityProcessor implements EntityProcessorInterface
                 [],
                 $em,
             );
-            $this->dispatchOrSchedule($audit, $owner, $em, $uow, false);
+            $this->dispatchManager->dispatchOrSchedule($audit, $owner, $em, $uow, false);
         }
     }
 
@@ -170,25 +166,6 @@ final readonly class EntityProcessor implements EntityProcessorInterface
     private function shouldProcessEntity(object $entity): bool
     {
         return !$entity instanceof AuditLog && $this->auditService->shouldAudit($entity);
-    }
-
-    private function dispatchOrSchedule(
-        AuditLog $audit,
-        object $entity,
-        EntityManagerInterface $em,
-        UnitOfWork $uow,
-        bool $isInsert,
-    ): void {
-        $hasResolvedEntityId = $audit->entityId !== AuditLogInterface::PENDING_ID;
-        $canDispatchNow = (!$isInsert && !$this->deferTransportUntilCommit)
-            || ($isInsert && !$hasResolvedEntityId && !$this->deferTransportUntilCommit && $this->failOnTransportError)
-            || ($isInsert && $hasResolvedEntityId);
-
-        if ($canDispatchNow && $this->dispatcher->dispatch($audit, $em, AuditPhase::OnFlush, $uow, $entity)) {
-            return;
-        }
-
-        $this->auditManager->schedule($entity, $audit, $isInsert);
     }
 
     private function isAlreadyTrackedAsSoftDelete(object $entity, UnitOfWork $uow): bool
@@ -278,7 +255,7 @@ final readonly class EntityProcessor implements EntityProcessorInterface
                 [],
                 $em,
             );
-            $this->dispatchOrSchedule($audit, $relatedEntity, $em, $uow, false);
+            $this->dispatchManager->dispatchOrSchedule($audit, $relatedEntity, $em, $uow, false);
         }
     }
 

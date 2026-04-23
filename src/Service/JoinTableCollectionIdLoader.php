@@ -197,6 +197,7 @@ final readonly class JoinTableCollectionIdLoader
             try {
                 $value = Type::getType($type)->convertToPHPValue($value, $em->getConnection()->getDatabasePlatform());
             } catch (Throwable) {
+                // Leave the raw database value in place and normalize it below when possible.
             }
         }
 

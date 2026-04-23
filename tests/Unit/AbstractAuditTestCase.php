@@ -29,10 +29,12 @@ use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogContextProcessor;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogWriter;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
+use Rcsofttech\AuditTrailBundle\Service\CollectionChangeIndexBuilder;
 use Rcsofttech\AuditTrailBundle\Service\CollectionChangeResolver;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
 use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
+use Rcsofttech\AuditTrailBundle\Service\EntityAuditDispatchManager;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use Rcsofttech\AuditTrailBundle\Service\JoinTableCollectionIdLoader;
@@ -109,17 +111,20 @@ abstract class AbstractAuditTestCase extends TestCase
         bool $deferTransportUntilCommit = false,
     ): EntityProcessorInterface {
         $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $collectionIdExtractor = new CollectionIdExtractor($idResolver);
+        $joinTableLoader = new JoinTableCollectionIdLoader($idResolver);
 
         return new EntityProcessor(
             $auditService,
             $changeProcessor,
-            $dispatcher,
             $auditManager,
             new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger()),
-            new CollectionChangeResolver(new CollectionIdExtractor($idResolver), new JoinTableCollectionIdLoader($idResolver)),
+            new CollectionChangeResolver(
+                $collectionIdExtractor,
+                new CollectionChangeIndexBuilder($collectionIdExtractor, $joinTableLoader),
+            ),
             new CollectionTransitionMerger(),
-            $deferTransportUntilCommit,
-            false,
+            new EntityAuditDispatchManager($dispatcher, $auditManager, $deferTransportUntilCommit, false),
         );
     }
 

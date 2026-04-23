@@ -27,9 +27,11 @@ use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
+use Rcsofttech\AuditTrailBundle\Service\CollectionChangeIndexBuilder;
 use Rcsofttech\AuditTrailBundle\Service\CollectionChangeResolver;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
+use Rcsofttech\AuditTrailBundle\Service\EntityAuditDispatchManager;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
 use Rcsofttech\AuditTrailBundle\Service\JoinTableCollectionIdLoader;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubCollection;
@@ -68,17 +70,25 @@ final class EntityProcessorTest extends TestCase
         bool $failOnTransportError = false,
     ): EntityProcessor {
         $idResolver = $this->idResolver;
+        $collectionIdExtractor = new CollectionIdExtractor($idResolver);
+        $joinTableLoader = new JoinTableCollectionIdLoader($idResolver);
 
         return new EntityProcessor(
             $this->auditService,
             $changeProcessor ?? $this->changeProcessor,
-            $dispatcher ?? $this->dispatcher,
             $this->auditManager,
             new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger()),
-            new CollectionChangeResolver(new CollectionIdExtractor($idResolver), new JoinTableCollectionIdLoader($idResolver)),
+            new CollectionChangeResolver(
+                $collectionIdExtractor,
+                new CollectionChangeIndexBuilder($collectionIdExtractor, $joinTableLoader),
+            ),
             new CollectionTransitionMerger(),
-            $deferTransportUntilCommit,
-            $failOnTransportError,
+            new EntityAuditDispatchManager(
+                $dispatcher ?? $this->dispatcher,
+                $this->auditManager,
+                $deferTransportUntilCommit,
+                $failOnTransportError,
+            ),
         );
     }
 

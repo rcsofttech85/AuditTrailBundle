@@ -301,6 +301,7 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
 
                     return $this->normalizeDateTime($dt);
                 } catch (Throwable) {
+                    // Keep the original array payload when datetime reconstruction fails.
                 }
             }
         }

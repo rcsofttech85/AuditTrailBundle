@@ -137,6 +137,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
                 return $ids;
             }
         } catch (Throwable) {
+            // Metadata extraction is best-effort here; UnitOfWork and reflection fallbacks follow.
         }
 
         $uow = $em->getUnitOfWork();
@@ -171,6 +172,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
                 return $idValues;
             }
         } catch (Throwable) {
+            // Reflection fallback failed; the caller will treat this entity as unresolved.
         }
 
         return [];

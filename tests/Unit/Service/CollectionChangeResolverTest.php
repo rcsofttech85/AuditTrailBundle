@@ -11,6 +11,7 @@ use Doctrine\ORM\UnitOfWork;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Service\CollectionChangeIndexBuilder;
 use Rcsofttech\AuditTrailBundle\Service\CollectionChangeResolver;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\JoinTableCollectionIdLoader;
@@ -206,7 +207,13 @@ final class CollectionChangeResolverTest extends TestCase
             throw new InvalidArgumentException('Unexpected entity type '.$entity::class);
         });
 
-        return new CollectionChangeResolver(new CollectionIdExtractor($idResolver), new JoinTableCollectionIdLoader($idResolver));
+        $collectionIdExtractor = new CollectionIdExtractor($idResolver);
+        $joinTableLoader = new JoinTableCollectionIdLoader($idResolver);
+
+        return new CollectionChangeResolver(
+            $collectionIdExtractor,
+            new CollectionChangeIndexBuilder($collectionIdExtractor, $joinTableLoader),
+        );
     }
 }
 

@@ -66,34 +66,35 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
          * } $config */
         $config = $this->processConfiguration($configuration, $configs);
 
-        $container->setParameter('audit_trail.enabled', $config['enabled']);
-        $container->setParameter('audit_trail.ignored_properties', $config['ignored_properties']);
-        $container->setParameter('audit_trail.table_prefix', $config['table_prefix']);
-        $container->setParameter('audit_trail.table_suffix', $config['table_suffix']);
-        $container->setParameter('audit_trail.timezone', $config['timezone']);
-        $container->setParameter('audit_trail.ignored_entities', $config['ignored_entities']);
-        $container->setParameter('audit_trail.retention_days', $config['retention_days']);
-        $container->setParameter('audit_trail.track_ip_address', $config['track_ip_address']);
-        $container->setParameter('audit_trail.track_user_agent', $config['track_user_agent']);
-        $container->setParameter('audit_trail.enable_soft_delete', $config['enable_soft_delete']);
-        $container->setParameter('audit_trail.soft_delete_field', $config['soft_delete_field']);
-        $container->setParameter('audit_trail.enable_hard_delete', $config['enable_hard_delete']);
-        $container->setParameter('audit_trail.defer_transport_until_commit', $config['defer_transport_until_commit']);
-        $container->setParameter('audit_trail.fail_on_transport_error', $config['fail_on_transport_error']);
-        $container->setParameter('audit_trail.fallback_to_database', $config['fallback_to_database']);
-        $container->setParameter('audit_trail.cache_pool', $config['cache_pool']);
-        $container->setParameter('audit_trail.admin_permission', $config['admin_permission']);
-        $container->setParameter('audit_trail.audited_methods', $config['audited_methods']);
-        $container->setParameter('audit_trail.collection_serialization_mode', $config['collection_serialization_mode']);
-        $container->setParameter('audit_trail.max_collection_items', $config['max_collection_items']);
+        $this->registerParameters($container, [
+            'audit_trail.enabled' => $config['enabled'],
+            'audit_trail.ignored_properties' => $config['ignored_properties'],
+            'audit_trail.table_prefix' => $config['table_prefix'],
+            'audit_trail.table_suffix' => $config['table_suffix'],
+            'audit_trail.timezone' => $config['timezone'],
+            'audit_trail.ignored_entities' => $config['ignored_entities'],
+            'audit_trail.retention_days' => $config['retention_days'],
+            'audit_trail.track_ip_address' => $config['track_ip_address'],
+            'audit_trail.track_user_agent' => $config['track_user_agent'],
+            'audit_trail.enable_soft_delete' => $config['enable_soft_delete'],
+            'audit_trail.soft_delete_field' => $config['soft_delete_field'],
+            'audit_trail.enable_hard_delete' => $config['enable_hard_delete'],
+            'audit_trail.defer_transport_until_commit' => $config['defer_transport_until_commit'],
+            'audit_trail.fail_on_transport_error' => $config['fail_on_transport_error'],
+            'audit_trail.fallback_to_database' => $config['fallback_to_database'],
+            'audit_trail.cache_pool' => $config['cache_pool'],
+            'audit_trail.admin_permission' => $config['admin_permission'],
+            'audit_trail.audited_methods' => $config['audited_methods'],
+            'audit_trail.collection_serialization_mode' => $config['collection_serialization_mode'],
+            'audit_trail.max_collection_items' => $config['max_collection_items'],
+            'audit_trail.integrity.enabled' => $config['integrity']['enabled'],
+            'audit_trail.integrity.secret' => $config['integrity']['secret'] ?? '',
+            'audit_trail.integrity.algorithm' => $config['integrity']['algorithm'],
+        ]);
 
         if ($config['cache_pool'] !== null) {
             $container->setAlias('rcsofttech_audit_trail.cache', $config['cache_pool']);
         }
-
-        $container->setParameter('audit_trail.integrity.enabled', $config['integrity']['enabled']);
-        $container->setParameter('audit_trail.integrity.secret', $config['integrity']['secret'] ?? '');
-        $container->setParameter('audit_trail.integrity.algorithm', $config['integrity']['algorithm']);
         new YamlFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'))->load('services.yaml');
 
         $this->configureTransports($config, $container);
@@ -264,9 +265,7 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
                 throw new LogicException('At least one audit transport must be enabled when the bundle is enabled.');
             }
 
-            $id = 'rcsofttech_audit_trail.transport.null';
-            $container->register($id, NullAuditTransport::class);
-            $container->setAlias(AuditTransportInterface::class, $id)->setPublic(true);
+            $this->registerNullTransport($container);
 
             return;
         }
@@ -283,6 +282,23 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         $container->register($id, ChainAuditTransport::class)
             ->setArgument('$transports', $references);
 
+        $container->setAlias(AuditTransportInterface::class, $id)->setPublic(true);
+    }
+
+    /**
+     * @param array<string, mixed> $parameters
+     */
+    private function registerParameters(ContainerBuilder $container, array $parameters): void
+    {
+        foreach ($parameters as $name => $value) {
+            $container->setParameter($name, $value);
+        }
+    }
+
+    private function registerNullTransport(ContainerBuilder $container): void
+    {
+        $id = 'rcsofttech_audit_trail.transport.null';
+        $container->register($id, NullAuditTransport::class);
         $container->setAlias(AuditTransportInterface::class, $id)->setPublic(true);
     }
 

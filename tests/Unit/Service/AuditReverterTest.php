@@ -24,6 +24,11 @@ use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Service\AuditReverter;
+use Rcsofttech\AuditTrailBundle\Service\EntityIdentifierNormalizer;
+use Rcsofttech\AuditTrailBundle\Service\RevertCollectionAssociationSynchronizer;
+use Rcsofttech\AuditTrailBundle\Service\RevertDateTimeValueDenormalizer;
+use Rcsofttech\AuditTrailBundle\Service\RevertEntityStateApplier;
+use Rcsofttech\AuditTrailBundle\Service\RevertPlanBuilder;
 use Rcsofttech\AuditTrailBundle\Service\RevertValueDenormalizer;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\RevertTestUser;
@@ -74,17 +79,36 @@ final class AuditReverterTest extends AbstractAuditTestCase
         $serializer = self::createStub(ValueSerializerInterface::class);
         $serializer->method('serialize')->willReturnArgument(0);
 
-        $this->reverter = new AuditReverter(
+        $this->reverter = $this->createReverter($serializer);
+    }
+
+    private function createReverter(?ValueSerializerInterface $serializer = null): AuditReverter
+    {
+        if ($serializer === null) {
+            $serializer = self::createStub(ValueSerializerInterface::class);
+            $serializer->method('serialize')->willReturnArgument(0);
+        }
+
+        $denormalizer = new RevertValueDenormalizer(
+            $this->em,
+            new RevertDateTimeValueDenormalizer(),
+            new EntityIdentifierNormalizer($this->em),
+        );
+        $collectionSynchronizer = new RevertCollectionAssociationSynchronizer($this->em);
+
+        return new AuditReverter(
             $this->em,
             $this->validator,
             $this->auditService,
-            new RevertValueDenormalizer($this->em),
+            $denormalizer,
             $this->softDeleteHandler,
             $this->integrityService,
             $this->dispatcher,
             $serializer,
             $this->auditManager,
-            $this->repository
+            $this->repository,
+            new RevertPlanBuilder($this->em, $denormalizer, $serializer, $collectionSynchronizer),
+            new RevertEntityStateApplier($this->em, $this->softDeleteHandler, $collectionSynchronizer),
         );
     }
 

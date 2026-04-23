@@ -136,10 +136,10 @@ final readonly class AuditReader implements AuditReaderInterface
     {
         try {
             $id = $this->idResolver->resolveFromEntity($entity);
-
-            return $id === AuditLogInterface::PENDING_ID ? null : $id;
         } catch (Throwable) {
             return null;
         }
+
+        return $id === AuditLogInterface::PENDING_ID ? null : $id;
     }
 }

@@ -12,6 +12,8 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Service\EntityIdentifierNormalizer;
+use Rcsofttech\AuditTrailBundle\Service\RevertDateTimeValueDenormalizer;
 use Rcsofttech\AuditTrailBundle\Service\RevertValueDenormalizer;
 use RuntimeException;
 use stdClass;
@@ -29,7 +31,16 @@ final class RevertValueDenormalizerTest extends TestCase
     protected function setUp(): void
     {
         $this->em = self::createStub(EntityManagerInterface::class);
-        $this->denormalizer = new RevertValueDenormalizer($this->em);
+        $this->denormalizer = $this->createDenormalizer($this->em);
+    }
+
+    private function createDenormalizer(EntityManagerInterface $em): RevertValueDenormalizer
+    {
+        return new RevertValueDenormalizer(
+            $em,
+            new RevertDateTimeValueDenormalizer(),
+            new EntityIdentifierNormalizer($em),
+        );
     }
 
     public function testDenormalizeNull(): void
@@ -103,7 +114,7 @@ final class RevertValueDenormalizerTest extends TestCase
 
         $entity = new stdClass();
         $this->em = self::createMock(EntityManagerInterface::class);
-        $this->denormalizer = new RevertValueDenormalizer($this->em);
+        $this->denormalizer = $this->createDenormalizer($this->em);
         $this->em->expects($this->once())->method('find')->with(stdClass::class, 1)->willReturn($entity);
 
         $result = $this->denormalizer->denormalize($metadata, 'field', 1);
@@ -126,7 +137,7 @@ final class RevertValueDenormalizerTest extends TestCase
         $second = new stdClass();
 
         $this->em = self::createMock(EntityManagerInterface::class);
-        $this->denormalizer = new RevertValueDenormalizer($this->em);
+        $this->denormalizer = $this->createDenormalizer($this->em);
         $this->em->method('getClassMetadata')->with(stdClass::class)->willReturn($targetMetadata);
         $this->em->expects($this->exactly(2))
             ->method('getReference')
@@ -156,7 +167,7 @@ final class RevertValueDenormalizerTest extends TestCase
         $uuid = Uuid::v7()->toString();
 
         $this->em = self::createMock(EntityManagerInterface::class);
-        $this->denormalizer = new RevertValueDenormalizer($this->em);
+        $this->denormalizer = $this->createDenormalizer($this->em);
         $this->em->method('getClassMetadata')->with(stdClass::class)->willReturn($targetMetadata);
         $this->em->expects($this->once())
             ->method('getReference')
@@ -177,7 +188,7 @@ final class RevertValueDenormalizerTest extends TestCase
         $ulid = (string) new Ulid();
 
         $this->em = self::createMock(EntityManagerInterface::class);
-        $this->denormalizer = new RevertValueDenormalizer($this->em);
+        $this->denormalizer = $this->createDenormalizer($this->em);
         $this->em->method('getClassMetadata')->with(stdClass::class)->willReturn($targetMetadata);
 
         $normalized = $this->denormalizer->normalizeEntityIdentifier(stdClass::class, $ulid);
@@ -195,7 +206,7 @@ final class RevertValueDenormalizerTest extends TestCase
         $identifier = ['tenant' => 'acme', 'code' => 'ABC123'];
 
         $this->em = self::createMock(EntityManagerInterface::class);
-        $this->denormalizer = new RevertValueDenormalizer($this->em);
+        $this->denormalizer = $this->createDenormalizer($this->em);
         $this->em->method('getClassMetadata')->with(stdClass::class)->willReturn($targetMetadata);
 
         self::assertSame($identifier, $this->denormalizer->normalizeEntityIdentifier(stdClass::class, $identifier));
@@ -211,7 +222,7 @@ final class RevertValueDenormalizerTest extends TestCase
         ]);
 
         $this->em = self::createMock(EntityManagerInterface::class);
-        $this->denormalizer = new RevertValueDenormalizer($this->em);
+        $this->denormalizer = $this->createDenormalizer($this->em);
         $this->em->method('getClassMetadata')->with(stdClass::class)->willReturn($targetMetadata);
 
         self::assertSame(
