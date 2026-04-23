@@ -150,8 +150,14 @@ final class CollectionChangeResolverTest extends TestCase
 
         $metadata = self::createMock(ClassMetadata::class);
         $metadata->method('getAssociationNames')->willReturn(['tags']);
-        $metadata->method('isCollectionValuedAssociation')->with('tags')->willReturn(true);
-        $metadata->method('getFieldValue')->with($owner, 'tags')->willReturn($collection);
+        $metadata->expects($this->once())
+            ->method('isCollectionValuedAssociation')
+            ->with('tags')
+            ->willReturn(true);
+        $metadata->expects($this->once())
+            ->method('getFieldValue')
+            ->with($owner, 'tags')
+            ->willReturn($collection);
 
         $em = self::createStub(EntityManagerInterface::class);
         $em->method('getClassMetadata')->willReturn($metadata);

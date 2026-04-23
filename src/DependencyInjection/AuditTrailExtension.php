@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\DependencyInjection;
 
+use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
 use LogicException;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
@@ -12,6 +13,7 @@ use Rcsofttech\AuditTrailBundle\DataCollector\AuditDataCollector;
 use Rcsofttech\AuditTrailBundle\DataCollector\TraceableAuditCollector;
 use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
 use Rcsofttech\AuditTrailBundle\MessageHandler\PersistAuditLogHandler;
+use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessageSerializer;
 use Rcsofttech\AuditTrailBundle\Transport\AsyncDatabaseAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\ChainAuditTransport;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
@@ -28,6 +30,7 @@ use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
+use function class_exists;
 use function count;
 
 final class AuditTrailExtension extends Extension implements PrependExtensionInterface
@@ -96,12 +99,16 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         $container->setParameter('audit_trail.integrity.algorithm', $config['integrity']['algorithm']);
         new YamlFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'))->load('services.yaml');
 
+        if (interface_exists(MessageBusInterface::class)) {
+            $this->registerMessengerSupport($container);
+        }
+
         $this->configureTransports($config, $container);
 
         /** @var array<string, mixed> $bundles */
         $bundles = $container->hasParameter('kernel.bundles') ? $container->getParameter('kernel.bundles') : [];
-        if (isset($bundles['EasyAdminBundle'])) {
-            $container->register(AuditLogCrudController::class)
+        if (isset($bundles['EasyAdminBundle']) && class_exists(AbstractCrudController::class)) {
+            $container->register(AuditLogCrudController::class, AuditLogCrudController::class)
                 ->setAutowired(true)
                 ->setAutoconfigured(true)
                 ->setArgument('$adminPermission', '%audit_trail.admin_permission%')
@@ -185,8 +192,6 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
             throw new LogicException('To use async database transport, you must install the symfony/messenger package.');
         }
 
-        $this->registerMessageFactory($container);
-
         $handlerId = 'rcsofttech_audit_trail.handler.persist_audit_log';
         $container->register($handlerId, PersistAuditLogHandler::class)
             ->setAutowired(true)
@@ -207,6 +212,18 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         }
 
         $container->register(AuditLogMessageFactory::class, AuditLogMessageFactory::class)
+            ->setAutowired(true);
+    }
+
+    private function registerMessengerSupport(ContainerBuilder $container): void
+    {
+        $this->registerMessageFactory($container);
+
+        if ($container->has(AuditLogMessageSerializer::class)) {
+            return;
+        }
+
+        $container->register(AuditLogMessageSerializer::class, AuditLogMessageSerializer::class)
             ->setAutowired(true);
     }
 
@@ -238,8 +255,6 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         if (!interface_exists(MessageBusInterface::class)) {
             throw new LogicException('To use the Queue transport, you must install the symfony/messenger package.');
         }
-
-        $this->registerMessageFactory($container);
 
         $id = 'rcsofttech_audit_trail.transport.queue';
         $definition = $container->register($id, QueueAuditTransport::class)

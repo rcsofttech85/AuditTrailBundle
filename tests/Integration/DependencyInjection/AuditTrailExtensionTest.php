@@ -31,6 +31,13 @@ final class AuditTrailExtensionTest extends TestCase
             (string) $container->getAlias(AuditTransportInterface::class)
         );
         self::assertSame('ROLE_ADMIN', $container->getParameter('audit_trail.admin_permission'));
+        self::assertFalse($container->hasDefinition('rcsofttech_audit_trail.handler.persist_audit_log'));
+
+        if (interface_exists(MessageBusInterface::class)) {
+            self::assertTrue($container->hasDefinition('Rcsofttech\\AuditTrailBundle\\Serializer\\AuditLogMessageSerializer'));
+        } else {
+            self::assertFalse($container->hasDefinition('Rcsofttech\\AuditTrailBundle\\Serializer\\AuditLogMessageSerializer'));
+        }
     }
 
     public function testCustomAdminPermissionIsStored(): void
@@ -43,6 +50,16 @@ final class AuditTrailExtensionTest extends TestCase
         ]], $container);
 
         self::assertSame('ROLE_AUDIT_ADMIN', $container->getParameter('audit_trail.admin_permission'));
+    }
+
+    public function testEasyAdminControllerIsNotRegisteredWhenBundleIsMissing(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([], $container);
+
+        self::assertFalse($container->hasDefinition('Rcsofttech\\AuditTrailBundle\\Controller\\Admin\\AuditLogCrudController'));
     }
 
     public function testValidTablePrefixAndSuffixAreStored(): void
@@ -158,6 +175,27 @@ final class AuditTrailExtensionTest extends TestCase
             'rcsofttech_audit_trail.transport.queue',
             (string) $container->getAlias(AuditTransportInterface::class)
         );
+    }
+
+    public function testAsyncDatabaseTransportRegistersPersistHandlerWhenMessengerIsAvailable(): void
+    {
+        if (!interface_exists(MessageBusInterface::class)) {
+            self::markTestSkipped('Messenger is not installed.');
+        }
+
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([[
+            'transports' => [
+                'database' => ['enabled' => true, 'async' => true],
+                'http' => ['enabled' => false],
+                'queue' => ['enabled' => false],
+            ],
+        ]], $container);
+
+        self::assertTrue($container->hasDefinition('rcsofttech_audit_trail.transport.async_database'));
+        self::assertTrue($container->hasDefinition('rcsofttech_audit_trail.handler.persist_audit_log'));
     }
 
     public function testChainTransportConfiguration(): void

@@ -47,11 +47,17 @@ final class ChainAuditTransportTest extends TestCase
         $context = $this->createContext(AuditPhase::OnFlush, $log);
 
         $t1 = $this->createMock(AuditTransportInterface::class);
-        $t1->method('supports')->with($context)->willReturn(true);
+        $t1->expects($this->once())
+            ->method('supports')
+            ->with($context)
+            ->willReturn(true);
         $t1->expects($this->once())->method('send')->with($context);
 
         $t2 = $this->createMock(AuditTransportInterface::class);
-        $t2->method('supports')->with($context)->willReturn(false);
+        $t2->expects($this->once())
+            ->method('supports')
+            ->with($context)
+            ->willReturn(false);
         $t2->expects($this->never())->method('send');
 
         $chain = new ChainAuditTransport([$t1, $t2]);
@@ -86,7 +92,10 @@ final class ChainAuditTransportTest extends TestCase
         $context = $this->createContext(AuditPhase::PostFlush, $log);
 
         $failingTransport = $this->createMock(AuditTransportInterface::class);
-        $failingTransport->method('supports')->with($context)->willReturn(true);
+        $failingTransport->expects($this->once())
+            ->method('supports')
+            ->with($context)
+            ->willReturn(true);
         $failingTransport->expects($this->once())
             ->method('send')
             ->willThrowException(new RuntimeException('boom'));

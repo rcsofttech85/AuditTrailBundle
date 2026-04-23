@@ -115,6 +115,13 @@ Track not just what changed, but who did it and where they were.
 composer require rcsofttech/audit-trail-bundle
 ```
 
+Transport-specific packages are optional:
+
+- Database transport in synchronous mode: no extra package required
+- Async database transport or queue transport: `composer require symfony/messenger`
+- HTTP transport: `composer require symfony/http-client`
+- EasyAdmin dashboard: `composer require easycorp/easyadmin-bundle`
+
 ### 2. Database Setup (Doctrine Transport)
 
 If you are using the **Doctrine Transport** (default), update your database schema:
@@ -152,6 +159,8 @@ class Product
 
 The default transport stores audit logs in the database. If you enable integrity signing, make sure `audit_trail.integrity.secret` is configured.
 
+If you enable a transport without its supporting package installed, the bundle fails fast during container build with a clear `LogicException`.
+
 ### 4. Requirements
 
 - **PHP**: 8.4+
@@ -167,6 +176,13 @@ If you are choosing settings for a production rollout:
 - Use synchronous database transport with `fail_on_transport_error: true` when compliance requires the write and audit to succeed or fail together.
 - Keep `fallback_to_database: true` when you want external transport failures to still leave a local audit trail.
 - Configure a PSR-6 `cache_pool` if you rely on cross-request access-audit cooldowns.
+
+Feature dependency notes:
+
+- `database.async: true` requires `symfony/messenger` and a Messenger transport named `audit_trail_database`
+- `queue.enabled: true` requires `symfony/messenger`
+- `http.enabled: true` requires `symfony/http-client`
+- EasyAdmin integration is registered only when `EasyAdminBundle` is enabled
 
 Operational notes:
 
