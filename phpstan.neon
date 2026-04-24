@@ -4,6 +4,10 @@ parameters:
     paths:
         - src
         - tests
+    excludePaths:
+        analyse:
+            - src/Controller/Admin/AuditLogCrudController.php
+            - src/Twig/AuditTrailTwigExtension.php
     tmpDir: .phpunit.cache/phpstan
 
     # forbiddenFunctions

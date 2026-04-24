@@ -136,9 +136,15 @@ final class EntityIdResolverTest extends TestCase
         $uow->method('isInIdentityMap')->willReturn(false);
 
         $metadata = $this->createMock(ClassMetadata::class);
-        $metadata->method('getIdentifierValues')->with($entity)->willReturn([]);
+        $metadata->expects($this->once())
+            ->method('getIdentifierValues')
+            ->with($entity)
+            ->willReturn([]);
         $metadata->method('getIdentifierFieldNames')->willReturn(['id']);
-        $metadata->method('getReflectionProperty')->with('id')->willReturn(new ReflectionProperty($entity, 'id'));
+        $metadata->expects($this->once())
+            ->method('getReflectionProperty')
+            ->with('id')
+            ->willReturn(new ReflectionProperty($entity, 'id'));
 
         $em = self::createMock(EntityManagerInterface::class);
         $em->expects($this->once())

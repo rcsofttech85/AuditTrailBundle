@@ -60,7 +60,7 @@ audit_trail:
         # Store logs in the local database
         database:
             enabled: true
-            async: false   # Set to true to persist via Messenger worker (requires 'audit_trail_database' transport)
+            async: false   # Set to true to persist via Messenger worker (requires symfony/messenger and an 'audit_trail_database' transport)
 
         # Send logs to an external API
         http:
@@ -108,11 +108,23 @@ audit_trail:
 
 - At least one transport must be enabled when `audit_trail.enabled` is `true`
 - The database transport is enabled by default
+- Enabling `transports.database.async` or `transports.queue` without `symfony/messenger` installed throws a clear `LogicException`
+- Enabling `transports.http` without `symfony/http-client` installed throws a clear `LogicException`
 - `integrity.secret` is required only when `integrity.enabled` is `true`
 - `http.endpoint` must start with `http://` or `https://` when HTTP transport is enabled
 - `table_prefix` and `table_suffix` must be strings; non-empty values may contain only letters, numbers, and underscores and must not start with a digit
 - `max_collection_items` must be at least `1`
 - If `cache_pool` is `null`, access-audit cooldowns are request-local only; cross-request cooldown persistence is disabled
+
+## Package Requirements By Feature
+
+Install additional packages only for the features you enable:
+
+- Synchronous database transport: no extra package required
+- `transports.database.async: true`: install `symfony/messenger`
+- `transports.queue.enabled: true`: install `symfony/messenger`
+- `transports.http.enabled: true`: install `symfony/http-client`
+- EasyAdmin UI: install `easycorp/easyadmin-bundle` and enable `EasyAdminBundle`
 
 ## Transaction Safety Guide
 

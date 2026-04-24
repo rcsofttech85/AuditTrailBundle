@@ -44,7 +44,10 @@ final class AuditLogWriterTest extends TestCase
             );
 
         $em = $this->createMock(EntityManagerInterface::class);
-        $em->method('getClassMetadata')->with(AuditLog::class)->willReturn($metadata);
+        $em->expects($this->once())
+            ->method('getClassMetadata')
+            ->with(AuditLog::class)
+            ->willReturn($metadata);
         $em->method('getConnection')->willReturn($connection);
 
         $writer->insert($audit, $em);
@@ -70,7 +73,10 @@ final class AuditLogWriterTest extends TestCase
             ->willReturn(1);
 
         $em = $this->createMock(EntityManagerInterface::class);
-        $em->method('getClassMetadata')->with(AuditLog::class)->willReturn($metadata);
+        $em->expects($this->once())
+            ->method('getClassMetadata')
+            ->with(AuditLog::class)
+            ->willReturn($metadata);
         $em->method('getConnection')->willReturn($connection);
 
         $writer->insert($audit, $em);

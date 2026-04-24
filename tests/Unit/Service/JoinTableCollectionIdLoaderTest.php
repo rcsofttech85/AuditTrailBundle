@@ -51,9 +51,18 @@ final class JoinTableCollectionIdLoaderTest extends TestCase
         $result->method('fetchFirstColumn')->willReturn(['1', '2']);
 
         $queryBuilder = $this->createMock(QueryBuilder::class);
-        $queryBuilder->method('select')->with('tag_id')->willReturnSelf();
-        $queryBuilder->method('from')->with('post_tag')->willReturnSelf();
-        $queryBuilder->method('where')->with('post_id = :ownerId')->willReturnSelf();
+        $queryBuilder->expects($this->once())
+            ->method('select')
+            ->with('tag_id')
+            ->willReturnSelf();
+        $queryBuilder->expects($this->once())
+            ->method('from')
+            ->with('post_tag')
+            ->willReturnSelf();
+        $queryBuilder->expects($this->once())
+            ->method('where')
+            ->with('post_id = :ownerId')
+            ->willReturnSelf();
         $queryBuilder->expects($this->once())
             ->method('setParameter')
             ->with('ownerId', '10', 'integer')

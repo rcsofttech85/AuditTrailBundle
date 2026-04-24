@@ -12,10 +12,26 @@ In `v3`, the transport pipeline is strongly typed. Custom transports receive a r
 >
 > They can be used simultaneously because they target different Messenger message types and transport names.
 > [!NOTE]
-> In `v3`, `symfony/messenger` and `symfony/http-client` are installed as bundle dependencies.
-> You do not need a separate Composer step to enable queue, async database, or HTTP delivery.
-> What you still need is the corresponding runtime configuration:
+> `symfony/messenger` and `symfony/http-client` are optional integrations.
+> Install only what your chosen transport needs:
+>
+> - `symfony/messenger` for queue delivery or async database persistence
+> - `symfony/http-client` for HTTP delivery
+>
+> If you enable a transport without its package installed, the bundle fails fast with a clear `LogicException` during container build.
+> You still need the corresponding runtime configuration:
 > Messenger routing/buses for queue or async database, and an endpoint for HTTP transport.
+
+## Install Matrix
+
+Use the base bundle by itself if you only need the synchronous database transport.
+
+| Feature | Extra package | Extra Symfony config |
+| :--- | :--- | :--- |
+| Synchronous database transport | none | none |
+| Async database transport | `symfony/messenger` | `audit_trail_database` Messenger transport |
+| Queue transport | `symfony/messenger` | `audit_trail` Messenger transport/routing |
+| HTTP transport | `symfony/http-client` | HTTP endpoint config |
 
 ## Transport Contract
 
@@ -91,6 +107,12 @@ framework:
             audit_trail_database: '%env(MESSENGER_TRANSPORT_DSN)%'
 ```
 
+If `symfony/messenger` is not installed and you enable `database.async: true`, the bundle throws:
+
+```text
+To use async database transport, you must install the symfony/messenger package.
+```
+
 *(The bundle auto-registers `PersistAuditLogHandler` to consume from this transport and insert the records into the database).*
 
 > [!IMPORTANT]
@@ -103,6 +125,12 @@ framework:
 ## 2. Queue Transport (External Delivery)
 
 The `queue` transport dispatches a strictly-typed DTO (`AuditLogMessage`) to a Symfony Messenger bus. You must define the Messenger transport routing yourself and provide the downstream consumer that ingests those messages.
+
+If `symfony/messenger` is not installed and you enable `queue`, the bundle throws:
+
+```text
+To use the Queue transport, you must install the symfony/messenger package.
+```
 
 ### Configuration for Queue transport
 
@@ -183,6 +211,12 @@ HTTP delivery is synchronous when it runs, but it is phase-limited: the built-in
 HTTP transport only supports deferred phases such as `postFlush` and `postLoad`.
 Setting `defer_transport_until_commit: false` does not move HTTP delivery into
 Doctrine's `onFlush` transaction window.
+
+If `symfony/http-client` is not installed and you enable `http`, the bundle throws:
+
+```text
+To use the HTTP transport, you must install the symfony/http-client package.
+```
 
 ### Configuration for http transport
 

@@ -82,6 +82,9 @@ services:
   Rcsofttech\AuditTrailBundle\Contract\AuditExporterInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\AuditExporter
 
+  Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\AuditReverter
+
   Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\AuditService
 
@@ -111,7 +114,9 @@ services:
       - '../../DataCollector/'
       - '../../Entity/'
       - '../../Enum/'
+      - '../../MessageHandler/'
       - '../../Message/'
+      - '../../Serializer/'
       - '../../Service/AuditIntegrityService.php'
       - '../../Transport/'
       - '../../Controller/'

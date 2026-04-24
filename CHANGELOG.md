@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.3.0]
+
+### Changed
+
+- `symfony/messenger`, `symfony/http-client`, and `easycorp/easyadmin-bundle` are no longer required for every install.
+- You only need to install them if you enable the queue, async database, or HTTP audit transports, or if you want the EasyAdmin audit UI.
+- If one of those features is enabled without its required package, the bundle now fails early with a clear error message.
+
 ## [3.2.0]
 
 This release focuses on flush-time performance, tighter Doctrine 3 integration, and a few operational fixes around audit context and CLI behavior.

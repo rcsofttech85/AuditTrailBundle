@@ -218,7 +218,10 @@ final class AuditReverterTest extends AbstractAuditTestCase
         $entity = new RevertTestUser();
         $this->filterCollection->method('getEnabledFilters')->willReturn([]);
         $this->em->method('find')->willReturn($entity);
-        $this->softDeleteHandler->method('isSoftDeleted')->with($entity)->willReturn(true);
+        $this->softDeleteHandler->expects($this->once())
+            ->method('isSoftDeleted')
+            ->with($entity)
+            ->willReturn(true);
         $this->softDeleteHandler->expects($this->never())->method('restoreSoftDeleted');
         $this->em->expects($this->never())->method('persist');
         $this->em->expects($this->never())->method('flush');
@@ -278,7 +281,10 @@ final class AuditReverterTest extends AbstractAuditTestCase
         $this->filterCollection->method('getEnabledFilters')->willReturn([]);
         $this->em->method('find')->willReturn($entity);
 
-        $this->softDeleteHandler->method('isSoftDeleted')->with($entity)->willReturn(false);
+        $this->softDeleteHandler->expects($this->once())
+            ->method('isSoftDeleted')
+            ->with($entity)
+            ->willReturn(false);
 
         $this->em->method('wrapInTransaction')->willReturnCallback(static fn (callable $c) => $c());
 
@@ -433,9 +439,12 @@ final class AuditReverterTest extends AbstractAuditTestCase
         ]));
         $metadata->expects($this->never())->method('setFieldValue');
 
-        $targetMetadata->method('getIdentifierValues')->with($target)->willReturn(['id' => 'target']);
+        $targetMetadata->method('getIdentifierValues')->willReturn(['id' => 'target']);
         $targetMetadata->method('getIdentifierFieldNames')->willReturn(['id']);
-        $targetMetadata->method('getTypeOfField')->with('id')->willReturn('string');
+        $targetMetadata->expects($this->once())
+            ->method('getTypeOfField')
+            ->with('id')
+            ->willReturn('string');
 
         $this->em->method('wrapInTransaction')->willReturnCallback(static fn (callable $c) => $c());
         $this->validator->method('validate')->willReturn(new ConstraintViolationList());
@@ -487,7 +496,10 @@ final class AuditReverterTest extends AbstractAuditTestCase
         $this->filterCollection->method('getEnabledFilters')->willReturn([]);
         $this->em->method('find')->willReturn($entity);
 
-        $this->softDeleteHandler->method('isSoftDeleted')->with($entity)->willReturn(true);
+        $this->softDeleteHandler->expects($this->once())
+            ->method('isSoftDeleted')
+            ->with($entity)
+            ->willReturn(true);
         $this->softDeleteHandler->expects($this->once())->method('restoreSoftDeleted')->with($entity);
 
         $this->em->method('wrapInTransaction')->willReturnCallback(static fn (callable $c) => $c());

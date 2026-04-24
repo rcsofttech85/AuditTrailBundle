@@ -563,7 +563,10 @@ final class AuditDispatcherTest extends TestCase
 
         $transport->method('supports')->willReturn(true);
         $transport->expects($this->once())->method('send')->willThrowException(new Exception('Transport error'));
-        $em->method('contains')->with($this->audit)->willReturn(false);
+        $em->expects($this->once())
+            ->method('contains')
+            ->with($this->audit)
+            ->willReturn(false);
         $em->expects($this->once())->method('persist')->with($this->audit);
         $em->expects($this->never())->method('flush');
         $em->expects($this->once())->method('getClassMetadata')->with(AuditLog::class)->willReturn($metadata);
@@ -709,7 +712,10 @@ final class AuditDispatcherTest extends TestCase
 
         $transport->method('supports')->willReturn(true);
         $transport->expects($this->once())->method('send')->willThrowException(new Exception('Transport error'));
-        $em->method('contains')->with($this->audit)->willReturn(false);
+        $em->expects($this->once())
+            ->method('contains')
+            ->with($this->audit)
+            ->willReturn(false);
         $em->expects($this->once())->method('persist')->with($this->audit);
         $logger->expects($this->once())
             ->method('critical')
