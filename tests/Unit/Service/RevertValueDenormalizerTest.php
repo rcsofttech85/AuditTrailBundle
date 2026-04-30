@@ -162,7 +162,7 @@ final class RevertValueDenormalizerTest extends TestCase
             ->willReturn('uuid');
 
         $entity = new stdClass();
-        $uuid = Uuid::v7()->toString();
+        $uuid = Uuid::v7()->toRfc4122();
 
         $this->em = self::createMock(EntityManagerInterface::class);
         $this->denormalizer = new RevertValueDenormalizer($this->em);
@@ -172,7 +172,7 @@ final class RevertValueDenormalizerTest extends TestCase
             ->willReturn($targetMetadata);
         $this->em->expects($this->once())
             ->method('getReference')
-            ->with(stdClass::class, self::callback(static fn (mixed $value): bool => $value instanceof Uuid && $uuid === $value->toString()))
+            ->with(stdClass::class, self::callback(static fn (mixed $value): bool => $value instanceof Uuid && $uuid === (string) $value))
             ->willReturn($entity);
 
         $result = $this->denormalizer->denormalize($metadata, 'field', $uuid, true);
@@ -201,7 +201,7 @@ final class RevertValueDenormalizerTest extends TestCase
         $normalized = $this->denormalizer->normalizeEntityIdentifier(stdClass::class, $ulid);
 
         self::assertInstanceOf(Ulid::class, $normalized);
-        self::assertSame($ulid, $normalized->toString());
+        self::assertSame($ulid, (string) $normalized);
     }
 
     public function testNormalizeEntityIdentifierFallsBackSafelyForCompositeAssociationIds(): void

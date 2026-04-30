@@ -79,7 +79,7 @@ final class AuditQueryTest extends TestCase
     {
         $repository = $this->useRepositoryMock();
 
-        $afterId = Uuid::v7()->toString();
+        $afterId = Uuid::v7()->toRfc4122();
 
         $repository->expects($this->once())
             ->method('findWithFilters')
@@ -124,8 +124,8 @@ final class AuditQueryTest extends TestCase
     {
         $repository = $this->useRepositoryMock();
 
-        $afterId = Uuid::v7()->toString();
-        $beforeId = Uuid::v7()->toString();
+        $afterId = Uuid::v7()->toRfc4122();
+        $beforeId = Uuid::v7()->toRfc4122();
 
         $callCount = 0;
         $repository->expects($this->exactly(2))
@@ -288,7 +288,7 @@ final class AuditQueryTest extends TestCase
 
     public function testChangedFieldRejectsReversePagination(): void
     {
-        $beforeId = Uuid::v7()->toString();
+        $beforeId = Uuid::v7()->toRfc4122();
 
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('Reverse pagination with changedField() is not supported.');
@@ -298,7 +298,7 @@ final class AuditQueryTest extends TestCase
 
     public function testChangedFieldRejectsReversePaginationWhenCursorSetFirst(): void
     {
-        $beforeId = Uuid::v7()->toString();
+        $beforeId = Uuid::v7()->toRfc4122();
 
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('Reverse pagination with changedField() is not supported.');
@@ -310,11 +310,11 @@ final class AuditQueryTest extends TestCase
     {
         $repository = $this->useRepositoryMock();
 
-        $uuid1 = Uuid::v7()->toString();
+        $uuid1 = Uuid::v7()->toRfc4122();
         $log1 = new AuditLog('Class', '1', 'create');
         $this->setLogId($log1, $uuid1);
         $log2 = new AuditLog('Class', '2', 'create');
-        $this->setLogId($log2, Uuid::v7()->toString());
+        $this->setLogId($log2, Uuid::v7()->toRfc4122());
 
         // Should call findWithFilters with limit 1
         $repository->expects($this->once())
@@ -325,7 +325,7 @@ final class AuditQueryTest extends TestCase
         $result = $this->query->getFirstResult();
         self::assertNotNull($result);
         self::assertNotNull($result->id);
-        self::assertSame($uuid1, $result->id->toString());
+        self::assertSame($uuid1, (string) $result->id);
     }
 
     public function testExists(): void
@@ -346,10 +346,10 @@ final class AuditQueryTest extends TestCase
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
         $this->query = new AuditQuery($this->repository);
 
-        $uuid1 = Uuid::v7()->toString();
+        $uuid1 = Uuid::v7()->toRfc4122();
         $log1 = new AuditLog('Class', '1', 'create');
         $this->setLogId($log1, $uuid1);
-        $uuid2 = Uuid::v7()->toString();
+        $uuid2 = Uuid::v7()->toRfc4122();
         $log2 = new AuditLog('Class', '2', 'create');
         $this->setLogId($log2, $uuid2);
 

@@ -43,19 +43,19 @@ final class Configuration implements ConfigurationInterface
             ->scalarPrototype()->end()
             ->defaultValue(['updatedAt', 'updated_at'])
             ->end()
-            ->stringNode('table_prefix')
+            ->scalarNode('table_prefix')
             ->defaultValue('')
             ->validate()
-            ->ifTrue(fn (string $value): bool => !$this->isValidTableNameFragment($value))
+            ->ifTrue(fn (mixed $value): bool => !is_string($value) || !$this->isValidTableNameFragment($value))
             ->thenInvalid(
                 'The table_prefix may contain only letters, numbers, and underscores, and must not start with a digit.'
             )
             ->end()
             ->end()
-            ->stringNode('table_suffix')
+            ->scalarNode('table_suffix')
             ->defaultValue('')
             ->validate()
-            ->ifTrue(fn (string $value): bool => !$this->isValidTableNameFragment($value))
+            ->ifTrue(fn (mixed $value): bool => !is_string($value) || !$this->isValidTableNameFragment($value))
             ->thenInvalid(
                 'The table_suffix may contain only letters, numbers, and underscores, and must not start with a digit.'
             )

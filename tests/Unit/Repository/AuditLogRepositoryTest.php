@@ -177,7 +177,7 @@ final class AuditLogRepositoryTest extends TestCase
             'transactionHash' => 'tx1',
             'from' => new DateTimeImmutable(),
             'to' => new DateTimeImmutable(),
-            'afterId' => Uuid::v7()->toString(),
+            'afterId' => Uuid::v7()->toRfc4122(),
         ];
 
         // Verify filter application
@@ -202,7 +202,7 @@ final class AuditLogRepositoryTest extends TestCase
     {
         [$repository, $qb, $query] = $this->createQueryHarness(false);
 
-        $filters = ['beforeId' => Uuid::v7()->toString()];
+        $filters = ['beforeId' => (string) Uuid::v7()];
 
         $qb->expects($this->once())->method('andWhere')->with('a.id > :beforeId');
         $qb->expects($this->once())->method('orderBy')->with('a.id', 'ASC');
@@ -229,13 +229,13 @@ final class AuditLogRepositoryTest extends TestCase
     {
         [$repository, $qb, $query] = $this->createQueryHarness(false);
 
-        $uuid = Uuid::v7()->toString();
+        $uuid = Uuid::v7()->toRfc4122();
         $filters = ['beforeId' => $uuid];
 
         $log1 = new AuditLog('Class', '1', 'create');
-        $this->setLogId($log1, Uuid::v7()->toString());
+        $this->setLogId($log1, Uuid::v7()->toRfc4122());
         $log2 = new AuditLog('Class', '2', 'create');
-        $this->setLogId($log2, Uuid::v7()->toString());
+        $this->setLogId($log2, Uuid::v7()->toRfc4122());
 
         // Results from DB will be ASC: [11, 12]
         $qb->expects($this->once())->method('orderBy')->with('a.id', 'ASC')->willReturnSelf();
@@ -335,7 +335,7 @@ final class AuditLogRepositoryTest extends TestCase
         [$repository, $qb, $query] = $this->createQueryHarnessWithQueryMock();
 
         $log = new AuditLog('Class', '1', 'update');
-        $this->setLogId($log, Uuid::v7()->toString());
+        $this->setLogId($log, Uuid::v7()->toRfc4122());
 
         $matchingRevertLog = new AuditLog(
             'Class',
@@ -368,7 +368,7 @@ final class AuditLogRepositoryTest extends TestCase
         [$repository, $qb, $query] = $this->createQueryHarnessWithQueryMock();
 
         $log = new AuditLog('Class', '1', 'update');
-        $this->setLogId($log, Uuid::v7()->toString());
+        $this->setLogId($log, Uuid::v7()->toRfc4122());
 
         $nonMatchingRevertLog = new AuditLog(
             'Class',
@@ -390,7 +390,7 @@ final class AuditLogRepositoryTest extends TestCase
         [$repository, $qb, $query] = $this->createQueryHarnessWithQueryMock();
 
         $olderUpdateLog = new AuditLog('Class', '1', 'update', new DateTimeImmutable('-10 minutes'));
-        $this->setLogId($olderUpdateLog, Uuid::v7()->toString());
+        $this->setLogId($olderUpdateLog, Uuid::v7()->toRfc4122());
 
         $qb->expects($this->exactly(2))
             ->method('select')
@@ -415,7 +415,7 @@ final class AuditLogRepositoryTest extends TestCase
         [$repository, $qb, $query] = $this->createQueryHarnessWithQueryMock();
 
         $latestCreateLog = new AuditLog('Class', '1', 'create', new DateTimeImmutable('-5 minutes'));
-        $this->setLogId($latestCreateLog, Uuid::v7()->toString());
+        $this->setLogId($latestCreateLog, Uuid::v7()->toRfc4122());
 
         $qb->expects($this->exactly(2))
             ->method('select')

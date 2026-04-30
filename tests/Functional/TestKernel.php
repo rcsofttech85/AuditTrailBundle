@@ -97,8 +97,14 @@ class TestKernel extends Kernel implements CompilerPassInterface
         $c->loadFromExtension('framework', [
             'test' => true,
             'secret' => 'test',
+            'http_method_override' => false,
+            'handle_all_throwables' => true,
             'php_errors' => ['log' => false, 'throw' => false],
             'validation' => ['email_validation_mode' => 'html5'],
+            'uid' => [
+                'default_uuid_version' => 7,
+                'time_based_uuid_version' => 7,
+            ],
             'cache' => [
                 'pools' => [
                     'audit_test.cache' => ['adapter' => 'cache.adapter.filesystem'],
@@ -119,6 +125,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
             'dbal' => [
                 'driver' => 'pdo_sqlite',
                 'url' => 'sqlite:///:memory:',
+                'use_savepoints' => true,
             ],
             'orm' => [
                 'naming_strategy' => 'doctrine.orm.naming_strategy.underscore_number_aware',

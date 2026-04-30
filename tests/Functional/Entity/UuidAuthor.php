@@ -12,7 +12,7 @@ use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 #[ORM\Entity]
 #[ORM\Table(name: 'uuid_author')]
 #[Auditable]
-final class UuidAuthor
+class UuidAuthor
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]

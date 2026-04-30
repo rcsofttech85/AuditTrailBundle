@@ -14,7 +14,7 @@ use Symfony\Component\Uid\Uuid;
 #[ORM\Entity]
 #[ORM\Table(name: 'uuid_tag')]
 #[Auditable]
-final class UuidTag
+class UuidTag
 {
     #[ORM\Id]
     #[ORM\Column(type: 'uuid')]
