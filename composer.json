@@ -34,20 +34,20 @@
     "minimum-stability": "stable",
     "require": {
         "php": "^8.4",
-        "symfony/framework-bundle": "^7.4|^8.0",
+        "symfony/framework-bundle": "^6.4|^7.4|^8.0",
         "doctrine/orm": "^3.6",
-        "doctrine/doctrine-bundle": "^3.1",
-        "symfony/security-bundle": "^7.4|^8.0",
-        "symfony/yaml": "^7.4|^8.0",
-        "symfony/var-exporter": "^7.4|^8.0",
-        "symfony/uid": "^7.4|^8.0",
-        "symfony/validator": "^7.4|^8.0",
-        "symfony/expression-language": "^7.4|^8.0",
+        "doctrine/doctrine-bundle": "^2.12|^3.1",
+        "symfony/security-bundle": "^6.4|^7.4|^8.0",
+        "symfony/yaml": "^6.4|^7.4|^8.0",
+        "symfony/var-exporter": "^6.4|^7.4|^8.0",
+        "symfony/uid": "^6.4|^7.4|^8.0",
+        "symfony/validator": "^6.4|^7.4|^8.0",
+        "symfony/expression-language": "^6.4|^7.4|^8.0",
         "ext-mbstring": "*"
     },
     "require-dev": {
         "phpunit/phpunit": "^13.1",
-        "symfony/phpunit-bridge": "^7.4|^8.0",
+        "symfony/phpunit-bridge": "^6.4|^7.4|^8.0",
         "phpstan/phpstan": "^2.0",
         "friendsofphp/php-cs-fixer": "^3.60",
         "phpstan/phpstan-phpunit": "^2.0",
@@ -59,8 +59,8 @@
         "infection/infection": "^0.32.0",
         "dama/doctrine-test-bundle": "^8.6",
         "easycorp/easyadmin-bundle": "^5.0",
-        "symfony/http-client": "^7.4|^8.0",
-        "symfony/messenger": "^7.4|^8.0"
+        "symfony/http-client": "^6.4|^7.4|^8.0",
+        "symfony/messenger": "^6.4|^7.4|^8.0"
     },
     "autoload-dev": {
         "psr-4": {
