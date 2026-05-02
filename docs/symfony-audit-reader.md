@@ -60,7 +60,7 @@ foreach ($history as $entry) {
 
 declare(strict_types=1);
 
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 // Find all updates to User entities in the last 30 days
 $recentUpdates = $this->auditReader
@@ -74,8 +74,8 @@ $recentUpdates = $this->auditReader
 $deletions = $this->auditReader
     ->byUser('1')
     ->action(
-        AuditLogInterface::ACTION_DELETE,
-        AuditLogInterface::ACTION_SOFT_DELETE
+        AuditAction::Delete,
+        AuditAction::SoftDelete
     )
     ->getResults();
 ```

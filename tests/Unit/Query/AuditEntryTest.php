@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Query;
 
 use PHPUnit\Framework\TestCase;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Query\AuditEntry;
 
 final class AuditEntryTest extends TestCase
@@ -19,7 +19,7 @@ final class AuditEntryTest extends TestCase
         self::assertSame('App\\Entity\\User', $entry->entityClass);
         self::assertSame('User', $entry->entityShortName);
         self::assertSame('123', $entry->entityId);
-        self::assertSame(AuditLogInterface::ACTION_UPDATE, $entry->action);
+        self::assertSame(AuditAction::Update->value, $entry->action);
         self::assertSame('42', $entry->userId);
         self::assertSame('admin', $entry->username);
         self::assertSame('127.0.0.1', $entry->ipAddress);
@@ -28,11 +28,11 @@ final class AuditEntryTest extends TestCase
 
     public function testActionHelpers(): void
     {
-        $createLog = $this->createAuditLog(AuditLogInterface::ACTION_CREATE);
-        $updateLog = $this->createAuditLog(AuditLogInterface::ACTION_UPDATE);
-        $deleteLog = $this->createAuditLog(AuditLogInterface::ACTION_DELETE);
-        $softDeleteLog = $this->createAuditLog(AuditLogInterface::ACTION_SOFT_DELETE);
-        $restoreLog = $this->createAuditLog(AuditLogInterface::ACTION_RESTORE);
+        $createLog = $this->createAuditLog(AuditAction::Create);
+        $updateLog = $this->createAuditLog(AuditAction::Update);
+        $deleteLog = $this->createAuditLog(AuditAction::Delete);
+        $softDeleteLog = $this->createAuditLog(AuditAction::SoftDelete);
+        $restoreLog = $this->createAuditLog(AuditAction::Restore);
 
         self::assertTrue(new AuditEntry($createLog)->isCreate);
         self::assertFalse(new AuditEntry($createLog)->isUpdate);
@@ -103,14 +103,14 @@ final class AuditEntryTest extends TestCase
 
     public function testGetEntityShortNameWithSimpleClass(): void
     {
-        $log = new AuditLog('User', '1', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog('User', '1', AuditAction::Create);
 
         $entry = new AuditEntry($log);
 
         self::assertSame('User', $entry->entityShortName);
     }
 
-    private function createAuditLog(string $action = AuditLogInterface::ACTION_UPDATE): AuditLog
+    private function createAuditLog(AuditAction|string $action = AuditAction::Update): AuditLog
     {
         $log = new AuditLog(
             entityClass: 'App\\Entity\\User',

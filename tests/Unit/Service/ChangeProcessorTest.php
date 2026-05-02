@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use DateTime;
+use DateTimeImmutable;
 use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\TestCase;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use stdClass;
@@ -74,22 +75,41 @@ final class ChangeProcessorTest extends TestCase
         self::assertArrayNotHasKey('float_same', $changes[1]);
     }
 
+    public function testExtractChangesUsesRelativeToleranceForLargeFloats(): void
+    {
+        $metadataManager = self::createStub(AuditMetadataManagerInterface::class);
+        $processor = $this->createProcessor($metadataManager);
+        $entity = new stdClass();
+        $changeSet = [
+            'large_float_same' => [1e15, 1e15 + 1],
+            'large_float_diff' => [1e15, 1e15 + 1e7],
+        ];
+
+        $metadataManager->method('getSensitiveFields')->willReturn([]);
+        $metadataManager->method('getIgnoredProperties')->willReturn([]);
+
+        $changes = $processor->extractChanges($entity, $changeSet);
+
+        self::assertArrayNotHasKey('large_float_same', $changes[0]);
+        self::assertArrayHasKey('large_float_diff', $changes[0]);
+    }
+
     public function testDetermineUpdateAction(): void
     {
         $processor = $this->createProcessor();
         // Normal update
         self::assertSame(
-            AuditLogInterface::ACTION_UPDATE,
+            AuditAction::Update,
             $processor->determineUpdateAction(['name' => ['old', 'new']])
         );
 
         // Restore (deletedAt: not null -> null)
         self::assertSame(
-            AuditLogInterface::ACTION_RESTORE,
+            AuditAction::Restore,
             $processor->determineUpdateAction(['deletedAt' => [new DateTime(), null]])
         );
         self::assertSame(
-            AuditLogInterface::ACTION_SOFT_DELETE,
+            AuditAction::SoftDelete,
             $processor->determineUpdateAction(['deletedAt' => [null, new DateTime()]])
         );
     }
@@ -99,7 +119,7 @@ final class ChangeProcessorTest extends TestCase
         $processor = $this->createProcessor(enabledSoftDelete: false);
 
         self::assertSame(
-            AuditLogInterface::ACTION_UPDATE,
+            AuditAction::Update,
             $processor->determineUpdateAction(['deletedAt' => [new DateTime(), null]])
         );
     }
@@ -109,17 +129,21 @@ final class ChangeProcessorTest extends TestCase
         $processor = $this->createProcessor();
         $em = self::createStub(EntityManagerInterface::class);
         $meta = self::createStub(ClassMetadata::class);
+        $uow = self::createStub(\Doctrine\ORM\UnitOfWork::class);
+
         $entity = new class {
             public ?DateTimeInterface $deletedAt = null;
         };
-        $entity->deletedAt = new DateTime();
 
         $em->method('getClassMetadata')->willReturn($meta);
+        $em->method('getUnitOfWork')->willReturn($uow);
         $meta->method('hasField')->willReturn(true);
-        $meta->method('getFieldValue')->willReturn($entity->deletedAt);
+        $uow->method('getEntityChangeSet')->willReturn([
+            'deletedAt' => [null, new DateTime()],
+        ]);
 
         $action = $processor->determineDeletionAction($em, $entity, true);
-        self::assertSame(AuditLogInterface::ACTION_SOFT_DELETE, $action);
+        self::assertSame(AuditAction::SoftDelete, $action);
     }
 
     public function testDetermineDeletionActionHardDelete(): void
@@ -127,17 +151,44 @@ final class ChangeProcessorTest extends TestCase
         $processor = $this->createProcessor();
         $em = self::createStub(EntityManagerInterface::class);
         $meta = self::createStub(ClassMetadata::class);
+        $uow = self::createStub(\Doctrine\ORM\UnitOfWork::class);
+
         $entity = new class {
             public ?DateTimeInterface $deletedAt = null;
         };
         $entity->deletedAt = null;
 
         $em->method('getClassMetadata')->willReturn($meta);
+        $em->method('getUnitOfWork')->willReturn($uow);
         $meta->method('hasField')->willReturn(true);
         $meta->method('getFieldValue')->willReturn($entity->deletedAt);
+        $uow->method('getEntityChangeSet')->willReturn([]);
 
         $action = $processor->determineDeletionAction($em, $entity, true);
-        self::assertSame(AuditLogInterface::ACTION_DELETE, $action);
+        self::assertSame(AuditAction::Delete, $action);
+    }
+
+    public function testDetermineDeletionActionPurgeYieldsHardDelete(): void
+    {
+        $processor = $this->createProcessor();
+        $em = self::createStub(EntityManagerInterface::class);
+        $meta = self::createStub(ClassMetadata::class);
+        $uow = self::createStub(\Doctrine\ORM\UnitOfWork::class);
+
+        $entity = new class {
+            public ?DateTimeInterface $deletedAt = null;
+        };
+        $entity->deletedAt = new DateTimeImmutable('2023-01-01');
+
+        $em->method('getClassMetadata')->willReturn($meta);
+        $em->method('getUnitOfWork')->willReturn($uow);
+        $meta->method('hasField')->willReturn(true);
+        $meta->method('getFieldValue')->willReturn($entity->deletedAt);
+        $uow->method('getEntityChangeSet')->willReturn([]); // Empty changeset because it's a purge (already soft deleted)
+
+        // A purge in Doctrine via remove() should be audited as a Delete, not SoftDelete
+        $action = $processor->determineDeletionAction($em, $entity, true);
+        self::assertSame(AuditAction::Delete, $action);
     }
 
     public function testDetermineDeletionActionHardDeleteDisabled(): void
@@ -145,14 +196,37 @@ final class ChangeProcessorTest extends TestCase
         $processor = $this->createProcessor();
         $em = self::createStub(EntityManagerInterface::class);
         $meta = self::createStub(ClassMetadata::class);
+        $uow = self::createStub(\Doctrine\ORM\UnitOfWork::class);
         $entity = new class {
             public ?DateTimeInterface $deletedAt = null;
         };
         $entity->deletedAt = null; // Not soft deleted
 
         $em->method('getClassMetadata')->willReturn($meta);
+        $em->method('getUnitOfWork')->willReturn($uow);
         $meta->method('hasField')->willReturn(true);
         $meta->method('getFieldValue')->willReturn($entity->deletedAt);
+        $uow->method('getEntityChangeSet')->willReturn([]);
+
+        $action = $processor->determineDeletionAction($em, $entity, false);
+        self::assertNull($action);
+    }
+
+    public function testDetermineDeletionActionPurgeWithHardDeleteDisabledIsSkipped(): void
+    {
+        $processor = $this->createProcessor();
+        $em = self::createStub(EntityManagerInterface::class);
+        $meta = self::createStub(ClassMetadata::class);
+        $uow = self::createStub(\Doctrine\ORM\UnitOfWork::class);
+        $entity = new class {
+            public ?DateTimeInterface $deletedAt = null;
+        };
+        $entity->deletedAt = new DateTimeImmutable('2023-01-01');
+
+        $em->method('getClassMetadata')->willReturn($meta);
+        $em->method('getUnitOfWork')->willReturn($uow);
+        $meta->method('hasField')->willReturn(true);
+        $uow->method('getEntityChangeSet')->willReturn([]);
 
         $action = $processor->determineDeletionAction($em, $entity, false);
         self::assertNull($action);
@@ -164,12 +238,15 @@ final class ChangeProcessorTest extends TestCase
         $em = self::createStub(EntityManagerInterface::class);
         $meta = self::createStub(ClassMetadata::class);
         $entity = new stdClass();
+        $uow = self::createStub(\Doctrine\ORM\UnitOfWork::class);
 
         $em->method('getClassMetadata')->willReturn($meta);
+        $em->method('getUnitOfWork')->willReturn($uow);
         $meta->method('hasField')->willReturn(false);
+        $uow->method('getEntityChangeSet')->willReturn([]);
 
         $action = $processor->determineDeletionAction($em, $entity, true);
-        self::assertSame(AuditLogInterface::ACTION_DELETE, $action);
+        self::assertSame(AuditAction::Delete, $action);
     }
 
     public function testExtractChangesSkipsIgnoredFieldsUsingLookup(): void

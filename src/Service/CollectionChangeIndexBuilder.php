@@ -8,6 +8,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\PersistentCollection;
 use Doctrine\ORM\UnitOfWork;
+use Rcsofttech\AuditTrailBundle\Contract\TrackableCollectionInterface;
 
 use function is_iterable;
 use function spl_object_id;
@@ -209,6 +210,10 @@ final readonly class CollectionChangeIndexBuilder
         iterable $originalValue,
         EntityManagerInterface $em,
     ): ?array {
+        if ($currentValue instanceof PersistentCollection && !$currentValue->isInitialized()) {
+            return null;
+        }
+
         $originalIds = $this->collectionIdExtractor->extractFromIterable($originalValue, $em);
         $currentIds = $this->collectionIdExtractor->extractFromIterable($currentValue, $em);
         if ($originalIds === $currentIds && $currentIds === []) {

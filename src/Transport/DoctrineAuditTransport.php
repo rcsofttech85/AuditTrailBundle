@@ -19,17 +19,19 @@ final class DoctrineAuditTransport implements AuditTransportInterface
     }
 
     #[Override]
-    public function send(AuditTransportContext $context): void
+    public function send(AuditTransportContext $context): AuditDeliveryResult
     {
         if ($context->phase->isOnFlush()) {
             $this->persistWithinCurrentUnitOfWork($context);
 
-            return;
+            return AuditDeliveryResult::delivered();
         }
 
         if ($context->phase->isDeferredPersistencePhase()) {
             $this->persistDeferredAudit($context);
         }
+
+        return AuditDeliveryResult::delivered();
     }
 
     private function persistWithinCurrentUnitOfWork(AuditTransportContext $context): void

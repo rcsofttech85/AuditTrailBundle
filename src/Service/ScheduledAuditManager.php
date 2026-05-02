@@ -8,6 +8,7 @@ use OverflowException;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 use function count;
 use function sprintf;
@@ -23,7 +24,7 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
      */
     private array $scheduledAudits = [];
 
-    /** @var list<array{entity: object, data: array<string, mixed>, is_managed: bool}> */
+    /** @var list<array{entity: object, data: array<string, mixed>, is_managed: bool, action: AuditAction}> */
     private array $pendingDeletions = [];
 
     private int $disableDepth = 0;
@@ -31,6 +32,7 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
     public function __construct(
         private readonly bool $enabled = true,
         private readonly ?int $maxScheduledAudits = null,
+        private readonly ?int $maxPendingDeletions = null,
     ) {
     }
 
@@ -75,12 +77,17 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
      * @param array<string, mixed> $data
      */
     #[Override]
-    public function addPendingDeletion(object $entity, array $data, bool $isManaged): void
+    public function addPendingDeletion(object $entity, array $data, bool $isManaged, AuditAction $action): void
     {
+        if ($this->maxPendingDeletions !== null && $this->maxPendingDeletions <= count($this->pendingDeletions)) {
+            throw new OverflowException(sprintf('Maximum pending deletion queue size exceeded (%d). Consider batch processing.', $this->maxPendingDeletions));
+        }
+
         $this->pendingDeletions[] = [
             'entity' => $entity,
             'data' => $data,
             'is_managed' => $isManaged,
+            'action' => $action,
         ];
     }
 
@@ -101,7 +108,7 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
     }
 
     /**
-     * @return list<array{entity: object, data: array<string, mixed>, is_managed: bool}>
+     * @return list<array{entity: object, data: array<string, mixed>, is_managed: bool, action: AuditAction}>
      */
     #[Override]
     public function getPendingDeletions(): array
@@ -123,11 +130,18 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
     /**
      * @internal retains only deletions that still need audit delivery after a failed post-flush dispatch
      *
-     * @param list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $pendingDeletions
+     * @param list<array{entity: object, data: array<string, mixed>, is_managed: bool, action: AuditAction}> $pendingDeletions
      */
     #[Override]
     public function replacePendingDeletions(array $pendingDeletions): void
     {
         $this->pendingDeletions = $pendingDeletions;
+    }
+
+    #[Override]
+    public function reset(): void
+    {
+        $this->clear();
+        $this->disableDepth = 0;
     }
 }

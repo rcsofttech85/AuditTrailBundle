@@ -14,6 +14,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Repository\AuditLogQueryFilterApplier;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use ReflectionClass;
 use Symfony\Bridge\Doctrine\ManagerRegistry;
@@ -31,7 +32,7 @@ final class AuditLogRepositoryTest extends TestCase
         $entityManager->method('getClassMetadata')->willReturn($classMetadata);
         $classMetadata->name = AuditLog::class;
 
-        return new AuditLogRepository($registry);
+        return new AuditLogRepository($registry, new AuditLogQueryFilterApplier());
     }
 
     /**
@@ -67,8 +68,9 @@ final class AuditLogRepositoryTest extends TestCase
         if ($stubGetResult) {
             $query->method('getResult')->willReturn([]);
         }
+        $query->method('toIterable')->willReturn([]);
 
-        return [new AuditLogRepository($registry), $qb, $query];
+        return [new AuditLogRepository($registry, new AuditLogQueryFilterApplier()), $qb, $query];
     }
 
     /**
@@ -101,7 +103,7 @@ final class AuditLogRepositoryTest extends TestCase
         $qb->method('setMaxResults')->willReturnSelf();
         $qb->method('getQuery')->willReturn($query);
 
-        return [new AuditLogRepository($registry), $qb, $query];
+        return [new AuditLogRepository($registry, new AuditLogQueryFilterApplier()), $qb, $query];
     }
 
     public function testFindByEntity(): void

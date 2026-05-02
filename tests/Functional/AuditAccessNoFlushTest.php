@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditKernelSubscriber;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\Post;
 use Symfony\Component\HttpFoundation\Request;
@@ -56,7 +56,7 @@ final class AuditAccessNoFlushTest extends AbstractFunctionalTestCase
         // Verification: check if AuditLog exists
         /** @var AuditLog[] $logs */
         $logs = $em->getRepository(AuditLog::class)->findBy([
-            'action' => AuditLogInterface::ACTION_ACCESS,
+            'action' => AuditAction::Access,
         ]);
 
         self::assertCount(1, $logs, 'Should have created one access log after kernel termination');

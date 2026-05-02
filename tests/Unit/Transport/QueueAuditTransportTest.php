@@ -11,9 +11,9 @@ use Exception;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogMessageFactoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
@@ -85,7 +85,7 @@ final class QueueAuditTransportTest extends TestCase
 
     public function testSendDispatchesMessageWithStamps(): void
     {
-        $log = new AuditLog('TestEntity', '1', AuditLogInterface::ACTION_CREATE, new DateTimeImmutable());
+        $log = new AuditLog('TestEntity', '1', AuditAction::Create, new DateTimeImmutable());
 
         $queueMessage = new AuditLogMessage(
             entityClass: 'TestEntity',
@@ -140,7 +140,7 @@ final class QueueAuditTransportTest extends TestCase
 
     public function testSendPropagatesException(): void
     {
-        $log = new AuditLog('TestEntity', '1', AuditLogInterface::ACTION_CREATE, new DateTimeImmutable());
+        $log = new AuditLog('TestEntity', '1', AuditAction::Create, new DateTimeImmutable());
 
         $queueMessage = new AuditLogMessage(
             entityClass: 'TestEntity',
@@ -172,7 +172,7 @@ final class QueueAuditTransportTest extends TestCase
 
     public function testSendResolvesPendingId(): void
     {
-        $log = new AuditLog('TestEntity', 'pending', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog('TestEntity', 'pending', AuditAction::Create);
 
         $queueMessage = new AuditLogMessage(
             entityClass: 'TestEntity',
@@ -204,7 +204,7 @@ final class QueueAuditTransportTest extends TestCase
 
     public function testSendIsCancelledByStoppingPropagation(): void
     {
-        $log = new AuditLog('TestEntity', '1', AuditLogInterface::ACTION_CREATE, new DateTimeImmutable());
+        $log = new AuditLog('TestEntity', '1', AuditAction::Create, new DateTimeImmutable());
 
         $queueMessage = new AuditLogMessage(
             entityClass: 'TestEntity',
@@ -250,7 +250,7 @@ final class QueueAuditTransportTest extends TestCase
         return new AuditTransportContext(
             $phase,
             self::createStub(EntityManagerInterface::class),
-            $log ?? new AuditLog('TestEntity', '1', AuditLogInterface::ACTION_CREATE),
+            $log ?? new AuditLog('TestEntity', '1', AuditAction::Create),
         );
     }
 }

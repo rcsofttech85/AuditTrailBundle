@@ -24,11 +24,13 @@ final class AsyncDatabaseAuditTransport implements AuditTransportInterface
     }
 
     #[Override]
-    public function send(AuditTransportContext $context): void
+    public function send(AuditTransportContext $context): AuditDeliveryResult
     {
         $message = $this->messageFactory->createPersistMessage($context);
 
         $this->bus->dispatch($message);
+
+        return AuditDeliveryResult::delivered();
     }
 
     #[Override]

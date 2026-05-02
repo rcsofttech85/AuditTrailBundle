@@ -6,16 +6,15 @@ namespace Rcsofttech\AuditTrailBundle\Command;
 
 use InvalidArgumentException;
 use JsonException;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Uid\Uuid;
 
-use function in_array;
 use function is_array;
 use function is_string;
 use function sprintf;
@@ -28,8 +27,6 @@ use const JSON_THROW_ON_ERROR;
 abstract class BaseAuditCommand extends Command
 {
     use ClassNameHelperTrait;
-
-    protected const array VALID_ACTIONS = AuditLogInterface::ALL_ACTIONS;
 
     public function __construct(
         protected readonly AuditLogRepositoryInterface $auditLogRepository,
@@ -55,7 +52,7 @@ abstract class BaseAuditCommand extends Command
     {
         $action = $input->getOption('action');
 
-        if (is_string($action) && $action !== '' && !in_array($action, self::VALID_ACTIONS, true)) {
+        if (is_string($action) && $action !== '' && AuditAction::tryFrom($action) === null) {
             $io->error('Invalid action specified.');
 
             return false;

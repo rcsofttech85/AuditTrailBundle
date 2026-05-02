@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Contract;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 interface ChangeProcessorInterface
 {
@@ -16,9 +17,9 @@ interface ChangeProcessorInterface
     public function extractChanges(object $entity, array $changeSet): array;
 
     /**
-     * @param array<string, array{0: mixed, 1: mixed}> $changeSet
+     * @param array<string, mixed> $changeSet
      */
-    public function determineUpdateAction(array $changeSet): string;
+    public function determineUpdateAction(array $changeSet): AuditAction;
 
-    public function determineDeletionAction(EntityManagerInterface $em, object $entity, bool $enableHardDelete): ?string;
+    public function determineDeletionAction(EntityManagerInterface $em, object $entity, bool $enableHardDelete): ?AuditAction;
 }

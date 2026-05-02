@@ -6,18 +6,19 @@ namespace Rcsofttech\AuditTrailBundle\Contract;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
+use Rcsofttech\AuditTrailBundle\ValueObject\AssociationImpact;
 
 interface EntityProcessorInterface
 {
     public function processInsertions(EntityManagerInterface $em, UnitOfWork $uow): void;
 
     /**
-     * @param list<array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}>|null $deletedAssociationImpacts
+     * @param list<AssociationImpact>|null $deletedAssociationImpacts
      */
     public function processUpdates(EntityManagerInterface $em, UnitOfWork $uow, ?array $deletedAssociationImpacts = null): void;
 
     /**
-     * @param list<array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}>|null $deletedAssociationImpacts
+     * @param list<AssociationImpact>|null $deletedAssociationImpacts
      */
     public function processDeletions(EntityManagerInterface $em, UnitOfWork $uow, ?array $deletedAssociationImpacts = null): void;
 

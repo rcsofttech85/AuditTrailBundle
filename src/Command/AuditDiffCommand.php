@@ -132,7 +132,7 @@ class AuditDiffCommand extends BaseAuditCommand
         $io->title(sprintf('Audit Diff for %s #%s', $log->entityClass, $log->entityId));
         $io->definitionList(
             ['Log ID' => $log->id?->toRfc4122()],
-            ['Action' => strtoupper($log->action)],
+            ['Action' => strtoupper($log->action->value)],
             ['Date' => $log->createdAt->format('Y-m-d H:i:s')],
             ['User' => $log->username ?? 'System']
         );

@@ -13,6 +13,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
@@ -38,7 +39,7 @@ final class DoctrineAuditTransportTest extends TestCase
 
     public function testSendOnFlushPersistsLog(): void
     {
-        $log = new AuditLog(stdClass::class, '123', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog(stdClass::class, '123', AuditAction::Create);
         $em = $this->createMock(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
         $meta = self::createStub(ClassMetadata::class);
@@ -53,7 +54,7 @@ final class DoctrineAuditTransportTest extends TestCase
 
     public function testSendPostFlushUpdatesId(): void
     {
-        $log = new AuditLog(stdClass::class, 'pending', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog(stdClass::class, 'pending', AuditAction::Create);
 
         $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
@@ -68,7 +69,7 @@ final class DoctrineAuditTransportTest extends TestCase
 
     public function testSendPostFlushWithIsInsertUpdatesId(): void
     {
-        $log = new AuditLog(stdClass::class, 'pending', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog(stdClass::class, 'pending', AuditAction::Create);
 
         $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
@@ -83,7 +84,7 @@ final class DoctrineAuditTransportTest extends TestCase
 
     public function testSupportsOnFlushForResolvedEntityId(): void
     {
-        $log = new AuditLog(stdClass::class, '123', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog(stdClass::class, '123', AuditAction::Create);
 
         self::assertTrue($this->transport->supports(new AuditTransportContext(
             AuditPhase::OnFlush,
@@ -94,7 +95,7 @@ final class DoctrineAuditTransportTest extends TestCase
 
     public function testDoesNotSupportOnFlushForPendingEntityId(): void
     {
-        $log = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
 
         self::assertFalse($this->transport->supports(new AuditTransportContext(
             AuditPhase::OnFlush,

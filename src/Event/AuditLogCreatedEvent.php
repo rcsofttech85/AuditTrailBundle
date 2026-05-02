@@ -18,8 +18,6 @@ use Symfony\Contracts\EventDispatcher\Event;
  */
 final class AuditLogCreatedEvent extends Event
 {
-    public const string NAME = 'audit_trail.audit_log_created';
-
     public function __construct(
         public private(set) AuditLog $auditLog,
         public readonly ?object $entity = null,

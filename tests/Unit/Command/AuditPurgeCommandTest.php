@@ -6,6 +6,8 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
@@ -24,6 +26,9 @@ final class AuditPurgeCommandTest extends TestCase
     /** @var (AuditIntegrityServiceInterface&Stub)|(AuditIntegrityServiceInterface&MockObject) */
     private AuditIntegrityServiceInterface $integrityService;
 
+    /** @var (ManagerRegistry&Stub)|(ManagerRegistry&MockObject) */
+    private ManagerRegistry $managerRegistry;
+
     private CommandTester $commandTester;
 
     protected function setUp(): void
@@ -31,6 +36,7 @@ final class AuditPurgeCommandTest extends TestCase
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
         $this->integrityService = self::createStub(AuditIntegrityServiceInterface::class);
         $this->integrityService->method('isEnabled')->willReturn(false);
+        $this->managerRegistry = self::createStub(ManagerRegistry::class);
         $this->resetCommandTester();
     }
 
@@ -282,6 +288,13 @@ final class AuditPurgeCommandTest extends TestCase
     {
         $repository = $this->useRepositoryMock();
         $this->integrityService = self::createMock(AuditIntegrityServiceInterface::class);
+        $entityManager = self::createMock(EntityManagerInterface::class);
+        $managerRegistry = self::createMock(ManagerRegistry::class);
+        $managerRegistry->expects($this->once())
+            ->method('getManagerForClass')
+            ->with(AuditLog::class)
+            ->willReturn($entityManager);
+        $this->managerRegistry = $managerRegistry;
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->integrityService->expects($this->once())
             ->method('verifySignature')
@@ -292,12 +305,16 @@ final class AuditPurgeCommandTest extends TestCase
         $repository->expects($this->once())
             ->method('countOlderThan')
             ->willReturn(1);
+        $log = new AuditLog('Class', '1', 'update');
         $repository->expects($this->once())
             ->method('findAllWithFilters')
             ->with(self::callback(static function (array $filters): bool {
                 return isset($filters['to']) && $filters['to'] instanceof DateTimeImmutable;
             }))
-            ->willReturn([new AuditLog('Class', '1', 'update')]);
+            ->willReturn([$log]);
+        $entityManager->expects($this->once())
+            ->method('detach')
+            ->with($log);
         $repository->expects($this->once())
             ->method('deleteOldLogs')
             ->willReturn(1);
@@ -322,7 +339,7 @@ final class AuditPurgeCommandTest extends TestCase
 
     private function resetCommandTester(): void
     {
-        $command = new AuditPurgeCommand($this->repository, $this->integrityService);
+        $command = new AuditPurgeCommand($this->repository, $this->integrityService, $this->managerRegistry);
         $this->commandTester = new CommandTester($command);
     }
 }

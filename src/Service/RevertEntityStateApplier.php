@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
+use Rcsofttech\AuditTrailBundle\ValueObject\RevertPlan;
 
 final readonly class RevertEntityStateApplier
 {
@@ -17,44 +18,17 @@ final readonly class RevertEntityStateApplier
     ) {
     }
 
-    /**
-     * @param array{
-     *     fieldValues?: array<string, mixed>,
-     *     restoreSoftDelete?: bool
-     * } $revertData
-     */
-    public function apply(object $entity, array $revertData): void
+    public function apply(object $entity, RevertPlan $revertPlan): void
     {
         $metadata = $this->em->getClassMetadata($entity::class);
 
-        foreach ($revertData['fieldValues'] ?? [] as $field => $value) {
+        foreach ($revertPlan->fieldValues as $field => $value) {
             $this->applyRevertFieldValue($metadata, $entity, $field, $value);
         }
 
-        if (($revertData['restoreSoftDelete'] ?? false) === true) {
+        if ($revertPlan->restoreSoftDelete) {
             $this->softDeleteHandler->restoreSoftDeleted($entity);
         }
-    }
-
-    /**
-     * @param ClassMetadata<object> $metadata
-     */
-    public function shouldSkipField(
-        ClassMetadata $metadata,
-        string $field,
-        mixed $value,
-        mixed $currentValue,
-        bool $isComparableAssociation,
-    ): bool {
-        if ($metadata->isIdentifier($field) || (!$metadata->hasField($field) && !$metadata->hasAssociation($field))) {
-            return true;
-        }
-
-        if ($isComparableAssociation) {
-            return $this->collectionSynchronizer->collectionValuesAreEqual($currentValue, $value);
-        }
-
-        return false;
     }
 
     /**

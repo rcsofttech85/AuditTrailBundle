@@ -12,6 +12,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\DataMaskerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Service\ContextResolver;
 use RuntimeException;
 use stdClass;
@@ -48,7 +49,7 @@ final class ContextResolverTest extends TestCase
         );
 
         $entity = new stdClass();
-        $result = $resolver->resolve($entity, 'INSERT', [], [
+        $result = $resolver->resolve($entity, AuditAction::Create, [], [
             AuditLogInterface::CONTEXT_USER_ID => 'ctx_u1',
             AuditLogInterface::CONTEXT_USERNAME => 'ctx_admin',
             'other' => 'val',
@@ -91,7 +92,7 @@ final class ContextResolverTest extends TestCase
         );
 
         $entity = new stdClass();
-        $result = $resolver->resolve($entity, 'access', [], [
+        $result = $resolver->resolve($entity, AuditAction::Access, [], [
             AuditLogInterface::CONTEXT_USER_ID => 'captured_u1',
             AuditLogInterface::CONTEXT_USERNAME => 'captured_admin',
             AuditLogInterface::CONTEXT_IP_ADDRESS => '127.0.0.10',
@@ -141,7 +142,7 @@ final class ContextResolverTest extends TestCase
         );
 
         $entity = new stdClass();
-        $result = $resolver->resolve($entity, 'INSERT', [], []);
+        $result = $resolver->resolve($entity, AuditAction::Create, [], []);
 
         self::assertNull($result['userId']);
         self::assertSame('admin', $result['username']);
@@ -185,7 +186,7 @@ final class ContextResolverTest extends TestCase
             $logger,
         );
 
-        $result = $resolver->resolve(new stdClass(), 'INSERT', [], []);
+        $result = $resolver->resolve(new stdClass(), AuditAction::Create, [], []);
 
         self::assertSame('u1', $result['userId']);
         self::assertSame('admin', $result['username']);

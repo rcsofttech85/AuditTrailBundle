@@ -6,8 +6,9 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityNormalizer;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 
 final class AuditIntegrityRevertTest extends TestCase
@@ -16,12 +17,12 @@ final class AuditIntegrityRevertTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->service = new AuditIntegrityService('secret', true, 'sha256');
+        $this->service = new AuditIntegrityService(new AuditIntegrityNormalizer(), 'secret', true, 'sha256');
     }
 
     public function testVerifySignatureRejectsRevertWithoutSignature(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_REVERT);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Revert);
         $log->signature = null;
 
         self::assertFalse($this->service->verifySignature($log));
@@ -29,7 +30,7 @@ final class AuditIntegrityRevertTest extends TestCase
 
     public function testVerifySignatureFailsForOtherActionsWithoutSignature(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Update);
         $log->signature = null;
 
         self::assertFalse($this->service->verifySignature($log));
@@ -40,7 +41,7 @@ final class AuditIntegrityRevertTest extends TestCase
         $log = new AuditLog(
             'App\Entity\User',
             '1',
-            AuditLogInterface::ACTION_REVERT,
+            AuditAction::Revert,
             new DateTimeImmutable('2024-01-01 12:00:00'),
             ['name' => 'John']
         );

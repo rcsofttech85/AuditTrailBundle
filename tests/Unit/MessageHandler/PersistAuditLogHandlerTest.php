@@ -11,6 +11,7 @@ use LogicException;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Message\PersistAuditLogMessage;
 use Rcsofttech\AuditTrailBundle\MessageHandler\PersistAuditLogHandler;
 
@@ -62,7 +63,7 @@ final class PersistAuditLogHandlerTest extends TestCase
         $persistedLog = $this->assertPersistedAuditLog($persistedLog);
         self::assertSame('App\Entity\Product', $persistedLog->entityClass);
         self::assertSame('42', $persistedLog->entityId);
-        self::assertSame('create', $persistedLog->action);
+        self::assertSame(AuditAction::Create, $persistedLog->action);
         self::assertNull($persistedLog->oldValues);
         self::assertSame(['name' => 'Widget'], $persistedLog->newValues);
         self::assertSame(['name'], $persistedLog->changedFields);
@@ -113,7 +114,7 @@ final class PersistAuditLogHandlerTest extends TestCase
         $persistedLog = $this->assertPersistedAuditLog($persistedLog);
         self::assertSame('App\Entity\Order', $persistedLog->entityClass);
         self::assertSame('99', $persistedLog->entityId);
-        self::assertSame('delete', $persistedLog->action);
+        self::assertSame(AuditAction::Delete, $persistedLog->action);
         self::assertSame(['status' => 'active'], $persistedLog->oldValues);
         self::assertNull($persistedLog->newValues);
         self::assertNull($persistedLog->changedFields);

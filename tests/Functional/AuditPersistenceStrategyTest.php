@@ -14,7 +14,7 @@ use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntityWithUuid;
 
 use function sprintf;
 
-final class SmartFlushDetectionProofTest extends AbstractFunctionalTestCase
+final class AuditPersistenceStrategyTest extends AbstractFunctionalTestCase
 {
     private int $flushCount = 0;
 
@@ -27,7 +27,7 @@ final class SmartFlushDetectionProofTest extends AbstractFunctionalTestCase
         $this->flushLog = [];
 
         $listener = new class($this) {
-            public function __construct(private SmartFlushDetectionProofTest $test)
+            public function __construct(private AuditPersistenceStrategyTest $test)
             {
             }
 
@@ -160,8 +160,8 @@ final class SmartFlushDetectionProofTest extends AbstractFunctionalTestCase
         self::assertNotNull($autoAudit, 'Auto-increment audit should exist');
         self::assertNotNull($uuidAudit, 'UUID audit should exist');
 
-        self::assertSame('create', $autoAudit->action);
-        self::assertSame('create', $uuidAudit->action);
+        self::assertSame('create', $autoAudit->action->value);
+        self::assertSame('create', $uuidAudit->action->value);
 
         self::assertNotSame('pending', $autoAudit->entityId, 'Auto-increment ID should be resolved');
         self::assertNotSame('pending', $uuidAudit->entityId, 'UUID ID should be resolved');

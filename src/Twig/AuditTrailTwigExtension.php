@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Twig;
 
 use JsonException;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFilter;
 use Twig\TwigFunction;
@@ -47,31 +47,14 @@ final class AuditTrailTwigExtension extends AbstractExtension
         ];
     }
 
-    public function getActionBadgeClass(string $action): string
+    public function getActionBadgeClass(AuditAction|string $action): string
     {
-        return match ($action) {
-            AuditLogInterface::ACTION_CREATE => 'success',
-            AuditLogInterface::ACTION_UPDATE => 'warning',
-            AuditLogInterface::ACTION_DELETE, AuditLogInterface::ACTION_SOFT_DELETE => 'danger',
-            AuditLogInterface::ACTION_RESTORE => 'info',
-            AuditLogInterface::ACTION_REVERT => 'primary',
-            AuditLogInterface::ACTION_ACCESS => 'secondary',
-            default => 'light',
-        };
+        return AuditAction::tryFromScalar($action)?->badgeClass() ?? 'light';
     }
 
-    public function getActionIcon(string $action): string
+    public function getActionIcon(AuditAction|string $action): string
     {
-        return match ($action) {
-            AuditLogInterface::ACTION_CREATE => 'fa-plus-circle',
-            AuditLogInterface::ACTION_UPDATE => 'fa-pencil-alt',
-            AuditLogInterface::ACTION_DELETE => 'fa-trash-alt',
-            AuditLogInterface::ACTION_SOFT_DELETE => 'fa-eye-slash',
-            AuditLogInterface::ACTION_RESTORE => 'fa-undo-alt',
-            AuditLogInterface::ACTION_REVERT => 'fa-history',
-            AuditLogInterface::ACTION_ACCESS => 'fa-eye',
-            default => 'fa-question-circle',
-        };
+        return AuditAction::tryFromScalar($action)?->icon() ?? 'fa-question-circle';
     }
 
     public function formatJson(mixed $value): string

@@ -61,6 +61,19 @@ final class DataMaskerTest extends TestCase
         self::assertSame('********', $redacted['sessionId']);
     }
 
+    public function testRedactMasksExactTokenAndKeyFields(): void
+    {
+        $redacted = $this->dataMasker->redact([
+            'token' => 'secret-token',
+            'key' => 'secret-key',
+            'primaryKeyValue' => 'keep',
+        ]);
+
+        self::assertSame('********', $redacted['token']);
+        self::assertSame('********', $redacted['key']);
+        self::assertSame('keep', $redacted['primaryKeyValue']);
+    }
+
     public function testMaskExplicitFields(): void
     {
         $data = [

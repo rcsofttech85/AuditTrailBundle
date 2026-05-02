@@ -7,16 +7,16 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
 use Override;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\ValueObject\AssociationImpact;
 
 use function array_key_exists;
 use function is_array;
-use function spl_object_id;
 
 final readonly class EntityProcessor implements EntityProcessorInterface
 {
@@ -26,23 +26,34 @@ final readonly class EntityProcessor implements EntityProcessorInterface
         private ScheduledAuditManagerInterface $auditManager,
         private AssociationImpactAnalyzer $associationImpactAnalyzer,
         private CollectionChangeResolver $collectionChangeResolver,
-        private CollectionTransitionMerger $collectionTransitionMerger,
         private EntityAuditDispatchManager $dispatchManager,
+        private bool $enableHardDelete = true,
+        ?EntityUpdateTransitionResolver $updateTransitionResolver = null,
+        ?DeletedAssociationImpactResolver $deletedAssociationImpactResolver = null,
+        ?CollectionTransitionMerger $collectionTransitionMerger = null,
     ) {
+        $this->updateTransitionResolver = $updateTransitionResolver ?? new EntityUpdateTransitionResolver(
+            $this->changeProcessor,
+            $deletedAssociationImpactResolver ?? new DeletedAssociationImpactResolver(),
+            $this->collectionChangeResolver,
+            $collectionTransitionMerger ?? new CollectionTransitionMerger(),
+        );
     }
+
+    private EntityUpdateTransitionResolver $updateTransitionResolver;
 
     #[Override]
     public function processInsertions(EntityManagerInterface $em, UnitOfWork $uow): void
     {
         foreach ($uow->getScheduledEntityInsertions() as $entity) {
             $data = $this->auditService->getEntityData($entity, [], $em);
-            if (!$this->auditService->shouldAudit($entity, AuditLogInterface::ACTION_CREATE, $data)) {
+            if (!$this->auditService->shouldAudit($entity, AuditAction::Create, $data)) {
                 continue;
             }
 
             $audit = $this->auditService->createAuditLog(
                 $entity,
-                AuditLogInterface::ACTION_CREATE,
+                AuditAction::Create,
                 null,
                 $data,
                 [],
@@ -53,33 +64,30 @@ final readonly class EntityProcessor implements EntityProcessorInterface
     }
 
     #[Override]
+    /**
+     * @param list<AssociationImpact>|null $deletedAssociationImpacts
+     */
     public function processUpdates(EntityManagerInterface $em, UnitOfWork $uow, ?array $deletedAssociationImpacts = null): void
     {
         $deletedAssociationImpacts ??= $this->associationImpactAnalyzer->buildAggregatedDeletedAssociationImpacts($em, $uow);
-        $deletedAssociationImpactsByOwner = $this->indexDeletedAssociationImpactsByOwner($deletedAssociationImpacts);
-        $collectionChangesByOwner = $this->collectionChangeResolver->extractCollectionChangesIndexedByOwner($em, $uow);
+        $deletedAssociationImpactsByOwner = $this->updateTransitionResolver->indexDeletedAssociationImpacts($deletedAssociationImpacts);
+        $collectionChangesByOwner = $this->updateTransitionResolver->indexCollectionChanges($em, $uow);
 
         foreach ($uow->getScheduledEntityUpdates() as $entity) {
-            $changeSet = $uow->getEntityChangeSet($entity);
-            /* @var array<string, array{mixed, mixed}> $changeSet */
-            [$old, $new] = $this->changeProcessor->extractChanges($entity, $changeSet);
-            [$collectionOld, $collectionNew] = $this->collectionChangeResolver->extractIndexedCollectionChangesForOwner(
+            $transition = $this->updateTransitionResolver->resolve(
                 $entity,
+                $uow,
+                $deletedAssociationImpactsByOwner,
                 $collectionChangesByOwner,
             );
-            [$deletedAssocOld, $deletedAssocNew] = $this->extractDeletedAssociationChangesForOwner(
-                $entity,
-                $deletedAssociationImpactsByOwner,
-            );
-            $this->mergeFieldTransitions($old, $new, $collectionOld, $collectionNew);
-            $this->mergeFieldTransitions($old, $new, $deletedAssocOld, $deletedAssocNew);
+            $old = $transition['old'];
+            $new = $transition['new'];
 
             if ($old === [] && $new === []) {
                 continue;
             }
 
-            /** @var array<string, array{mixed, mixed}> $changeSet */
-            $action = $this->changeProcessor->determineUpdateAction($changeSet);
+            $action = $transition['action'];
 
             if (!$this->auditService->shouldAudit($entity, $action, $new)) {
                 continue;
@@ -121,13 +129,13 @@ final readonly class EntityProcessor implements EntityProcessorInterface
             $oldValues = [$transition['field'] => $transition['old']];
             $newValues = [$transition['field'] => $transition['new']];
 
-            if (!$this->auditService->shouldAudit($owner, AuditLogInterface::ACTION_UPDATE, $newValues)) {
+            if (!$this->auditService->shouldAudit($owner, AuditAction::Update, $newValues)) {
                 continue;
             }
 
             $audit = $this->auditService->createAuditLog(
                 $owner,
-                AuditLogInterface::ACTION_UPDATE,
+                AuditAction::Update,
                 $oldValues,
                 $newValues,
                 [],
@@ -138,6 +146,9 @@ final readonly class EntityProcessor implements EntityProcessorInterface
     }
 
     #[Override]
+    /**
+     * @param list<AssociationImpact>|null $deletedAssociationImpacts
+     */
     public function processDeletions(EntityManagerInterface $em, UnitOfWork $uow, ?array $deletedAssociationImpacts = null): void
     {
         $this->processRelatedEntityCollectionImpacts(
@@ -151,14 +162,16 @@ final readonly class EntityProcessor implements EntityProcessorInterface
                 continue;
             }
 
-            if ($this->isAlreadyTrackedAsSoftDelete($entity, $uow)) {
+            $action = $this->resolveDeletionAction($entity, $em, $uow);
+            if ($action === null) {
                 continue;
             }
 
             $this->auditManager->addPendingDeletion(
                 $entity,
                 $this->auditService->getEntityData($entity, [], $em),
-                $em->contains($entity)
+                $em->contains($entity),
+                $action,
             );
         }
     }
@@ -168,11 +181,15 @@ final readonly class EntityProcessor implements EntityProcessorInterface
         return !$entity instanceof AuditLog && $this->auditService->shouldAudit($entity);
     }
 
-    private function isAlreadyTrackedAsSoftDelete(object $entity, UnitOfWork $uow): bool
+    private function resolveDeletionAction(object $entity, EntityManagerInterface $em, UnitOfWork $uow): ?AuditAction
     {
         $changeSet = $uow->getEntityChangeSet($entity);
 
-        return $this->isSoftDeleteChangeSet($changeSet);
+        if ($this->isSoftDeleteChangeSet($changeSet)) {
+            return null;
+        }
+
+        return $this->changeProcessor->determineDeletionAction($em, $entity, $this->enableHardDelete);
     }
 
     private function isScheduledForInsertion(object $entity, UnitOfWork $uow): bool
@@ -186,49 +203,7 @@ final readonly class EntityProcessor implements EntityProcessorInterface
     }
 
     /**
-     * @param list<array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}> $impacts
-     *
-     * @return array<int, array<string, array{old: array<int, int|string>, new: array<int, int|string>}>>
-     */
-    private function indexDeletedAssociationImpactsByOwner(array $impacts): array
-    {
-        $indexed = [];
-
-        foreach ($impacts as $impact) {
-            $indexed[spl_object_id($impact['entity'])][$impact['field']] = [
-                'old' => $impact['old'],
-                'new' => $impact['new'],
-            ];
-        }
-
-        return $indexed;
-    }
-
-    /**
-     * @param array<int, array<string, array{old: array<int, int|string>, new: array<int, int|string>}>> $indexedImpacts
-     *
-     * @return array{0: array<string, mixed>, 1: array<string, mixed>}
-     */
-    private function extractDeletedAssociationChangesForOwner(object $owner, array $indexedImpacts): array
-    {
-        $ownerImpacts = $indexedImpacts[spl_object_id($owner)] ?? null;
-        if ($ownerImpacts === null) {
-            return [[], []];
-        }
-
-        $oldValues = [];
-        $newValues = [];
-
-        foreach ($ownerImpacts as $field => $impact) {
-            $oldValues[$field] = $impact['old'];
-            $newValues[$field] = $impact['new'];
-        }
-
-        return [$oldValues, $newValues];
-    }
-
-    /**
-     * @param list<array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}> $impacts
+     * @param list<AssociationImpact> $impacts
      */
     private function processRelatedEntityCollectionImpacts(
         array $impacts,
@@ -236,75 +211,27 @@ final readonly class EntityProcessor implements EntityProcessorInterface
         UnitOfWork $uow,
     ): void {
         foreach ($impacts as $impact) {
-            $relatedEntity = $impact['entity'];
+            $relatedEntity = $impact->entity;
 
             if ($this->isScheduledForInsertion($relatedEntity, $uow) || $this->isScheduledForUpdate($relatedEntity, $uow)) {
                 continue;
             }
 
-            $newValues = [$impact['field'] => $impact['new']];
-            if (!$this->auditService->shouldAudit($relatedEntity, AuditLogInterface::ACTION_UPDATE, $newValues)) {
+            $newValues = [$impact->field => $impact->new];
+            if (!$this->auditService->shouldAudit($relatedEntity, AuditAction::Update, $newValues)) {
                 continue;
             }
 
             $audit = $this->auditService->createAuditLog(
                 $relatedEntity,
-                AuditLogInterface::ACTION_UPDATE,
-                [$impact['field'] => $impact['old']],
+                AuditAction::Update,
+                [$impact->field => $impact->old],
                 $newValues,
                 [],
                 $em,
             );
             $this->dispatchManager->dispatchOrSchedule($audit, $relatedEntity, $em, $uow, false);
         }
-    }
-
-    /**
-     * @param array<string, mixed> $oldValues
-     * @param array<string, mixed> $newValues
-     * @param array<string, mixed> $incomingOldValues
-     * @param array<string, mixed> $incomingNewValues
-     */
-    private function mergeFieldTransitions(
-        array &$oldValues,
-        array &$newValues,
-        array $incomingOldValues,
-        array $incomingNewValues,
-    ): void {
-        foreach ($incomingNewValues as $field => $incomingNewValue) {
-            $incomingOldValue = $incomingOldValues[$field] ?? [];
-
-            if (!$this->canMergeFieldTransition($oldValues, $newValues, $field, $incomingOldValue, $incomingNewValue)) {
-                $oldValues[$field] = $incomingOldValue;
-                $newValues[$field] = $incomingNewValue;
-                continue;
-            }
-
-            $this->collectionTransitionMerger->mergeSingleFieldTransition(
-                $oldValues[$field],
-                $newValues[$field],
-                $incomingOldValue,
-                $incomingNewValue,
-            );
-        }
-    }
-
-    /**
-     * @param array<string, mixed> $oldValues
-     * @param array<string, mixed> $newValues
-     */
-    private function canMergeFieldTransition(
-        array $oldValues,
-        array $newValues,
-        string $field,
-        mixed $incomingOldValue,
-        mixed $incomingNewValue,
-    ): bool {
-        return isset($oldValues[$field], $newValues[$field])
-            && is_array($oldValues[$field])
-            && is_array($newValues[$field])
-            && is_array($incomingOldValue)
-            && is_array($incomingNewValue);
     }
 
     /**
@@ -323,6 +250,6 @@ final readonly class EntityProcessor implements EntityProcessorInterface
         }
 
         /** @var array<string, array{0: mixed, 1: mixed}> $changeSet */
-        return $this->changeProcessor->determineUpdateAction($changeSet) === AuditLogInterface::ACTION_SOFT_DELETE;
+        return $this->changeProcessor->determineUpdateAction($changeSet) === AuditAction::SoftDelete;
     }
 }

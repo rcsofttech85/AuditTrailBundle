@@ -16,6 +16,8 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityDataExtractorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Service\AuditLogFactory;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
@@ -67,16 +69,9 @@ final class AuditServiceTest extends AbstractAuditTestCase
 
         $this->service = new AuditService(
             $this->entityManager,
-            $this->clock,
-            $this->transactionIdGenerator,
             $this->dataExtractor,
             $this->metadataManager,
-            $this->contextResolver,
-            $this->idResolver,
-            new ContextSanitizer(),
-            $this->logger,
-            'UTC',
-            [],
+            $this->createAuditLogFactory(),
         );
     }
 
@@ -111,19 +106,24 @@ final class AuditServiceTest extends AbstractAuditTestCase
     {
         $this->service = new AuditService(
             $this->entityManager,
-            $this->clock,
-            $this->transactionIdGenerator,
             $this->dataExtractor,
             $this->metadataManager,
+            $this->createAuditLogFactory($logger),
+        );
+
+        return $this->service;
+    }
+
+    private function createAuditLogFactory(?LoggerInterface $logger = null): AuditLogFactory
+    {
+        return new AuditLogFactory(
+            $this->clock,
+            $this->transactionIdGenerator,
             $this->contextResolver,
             $this->idResolver,
             new ContextSanitizer(),
             $logger ?? $this->logger,
-            'UTC',
-            [],
         );
-
-        return $this->service;
     }
 
     public function testShouldAuditWhenEntityIsNotIgnored(): void
@@ -145,15 +145,9 @@ final class AuditServiceTest extends AbstractAuditTestCase
 
         $service = new AuditService(
             $this->entityManager,
-            $this->clock,
-            $this->transactionIdGenerator,
             $this->dataExtractor,
             $this->metadataManager,
-            $this->contextResolver,
-            $this->idResolver,
-            new ContextSanitizer(),
-            null,
-            'UTC',
+            $this->createAuditLogFactory(null),
             [$voter1, $voter2],
         );
 
@@ -188,7 +182,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
             'context' => ['foo' => 'bar'],
         ]);
 
-        $log = $this->service->createAuditLog($entity, AuditLogInterface::ACTION_UPDATE, ['a' => 1], ['a' => 2]);
+        $log = $this->service->createAuditLog($entity, AuditAction::Update, ['a' => 1], ['a' => 2]);
 
         self::assertSame('1', $log->entityId);
         self::assertSame(['a'], $log->changedFields);
@@ -211,7 +205,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
 
         $log = $this->service->createAuditLog(
             $entity,
-            AuditLogInterface::ACTION_SOFT_DELETE,
+            AuditAction::SoftDelete,
             ['deletedAt' => null],
             ['deletedAt' => '2026-04-05T08:46:03+00:00'],
         );
@@ -238,7 +232,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
             ],
         ]);
 
-        $log = $this->service->createAuditLog($entity, AuditLogInterface::ACTION_UPDATE, ['a' => 1], ['a' => 2]);
+        $log = $this->service->createAuditLog($entity, AuditAction::Update, ['a' => 1], ['a' => 2]);
 
         $context = $log->context;
         self::assertArrayHasKey('impersonation', $context);
@@ -264,7 +258,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
         $invalid = "\xB1\x31";
         $log = $this->service->createAuditLog(
             $entity,
-            AuditLogInterface::ACTION_UPDATE,
+            AuditAction::Update,
             ['title' => $invalid],
             ['title' => $invalid, 'nested' => ['value' => $invalid]],
         );
@@ -290,7 +284,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
             'context' => [],
         ]);
 
-        $log = $this->service->createAuditLog($entity, AuditLogInterface::ACTION_UPDATE, ['a' => 1], ['a' => 2]);
+        $log = $this->service->createAuditLog($entity, AuditAction::Update, ['a' => 1], ['a' => 2]);
 
         self::assertSame('[invalid utf-8]', $log->userId);
         self::assertSame('[invalid utf-8]', $log->username);
@@ -310,7 +304,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
             'context' => ['custom_info' => 'custom_value'],
         ]);
 
-        $log = $this->service->createAuditLog($entity, AuditLogInterface::ACTION_UPDATE, ['a' => 1], ['a' => 2]);
+        $log = $this->service->createAuditLog($entity, AuditAction::Update, ['a' => 1], ['a' => 2]);
 
         $context = $log->context;
         self::assertArrayHasKey('custom_info', $context);
@@ -332,7 +326,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
 
         $log = $this->service->createAuditLog(
             $entity,
-            AuditLogInterface::ACTION_UPDATE,
+            AuditAction::Update,
             ['a' => 1],
             ['a' => 2],
             ['manual_info' => 'manual_value']
@@ -359,7 +353,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
 
         $log = $this->service->createAuditLog(
             $entity,
-            AuditLogInterface::ACTION_DELETE,
+            AuditAction::Delete,
             ['id' => 123, 'data' => 'val'],
             null
         );
@@ -383,7 +377,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
 
         $log = $this->service->createAuditLog(
             $entity,
-            AuditLogInterface::ACTION_DELETE,
+            AuditAction::Delete,
             ['id1' => 1, 'id2' => 2],
             null
         );
@@ -403,7 +397,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
         $logger->expects($this->once())->method('warning');
 
         $service = $this->rebuildService($logger);
-        $service->createAuditLog($entity, 'create');
+        $service->createAuditLog($entity, AuditAction::Create);
     }
 
     public function testCreateAuditLogSanitizesNonJsonSafeContext(): void
@@ -422,7 +416,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
                 'context' => ['stream' => $resource],
             ]);
 
-            $log = $this->service->createAuditLog($entity, AuditLogInterface::ACTION_CREATE);
+            $log = $this->service->createAuditLog($entity, AuditAction::Create);
 
             self::assertSame('[resource:stream]', $log->context['stream'] ?? null);
         } finally {
@@ -442,7 +436,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
             'context' => ['foo' => 'bar'],
         ]);
 
-        $log = $this->service->createAuditLog($entity, AuditLogInterface::ACTION_CREATE);
+        $log = $this->service->createAuditLog($entity, AuditAction::Create);
 
         self::assertTrue($log->isContextNormalized());
     }
@@ -455,31 +449,25 @@ final class AuditServiceTest extends AbstractAuditTestCase
 
     public function testPassesVotersWithNoVoters(): void
     {
-        self::assertTrue($this->service->passesVoters(new stdClass(), AuditLogInterface::ACTION_ACCESS));
+        self::assertTrue($this->service->passesVoters(new stdClass(), AuditAction::Access));
     }
 
     public function testPassesVotersWithApprovingVoter(): void
     {
         $voter = self::createMock(AuditVoterInterface::class);
         $voter->expects($this->once())->method('vote')
-            ->with(self::isInstanceOf(stdClass::class), AuditLogInterface::ACTION_ACCESS, [])
+            ->with(self::isInstanceOf(stdClass::class), AuditAction::Access, [])
             ->willReturn(true);
 
         $service = new AuditService(
             $this->entityManager,
-            $this->clock,
-            $this->transactionIdGenerator,
             $this->dataExtractor,
             $this->metadataManager,
-            $this->contextResolver,
-            $this->idResolver,
-            new ContextSanitizer(),
-            null,
-            'UTC',
+            $this->createAuditLogFactory(null),
             [$voter],
         );
 
-        self::assertTrue($service->passesVoters(new stdClass(), AuditLogInterface::ACTION_ACCESS));
+        self::assertTrue($service->passesVoters(new stdClass(), AuditAction::Access));
     }
 
     public function testPassesVotersWithVetoingVoter(): void
@@ -489,18 +477,12 @@ final class AuditServiceTest extends AbstractAuditTestCase
 
         $service = new AuditService(
             $this->entityManager,
-            $this->clock,
-            $this->transactionIdGenerator,
             $this->dataExtractor,
             $this->metadataManager,
-            $this->contextResolver,
-            $this->idResolver,
-            new ContextSanitizer(),
-            null,
-            'UTC',
+            $this->createAuditLogFactory(null),
             [$voter],
         );
 
-        self::assertFalse($service->passesVoters(new stdClass(), AuditLogInterface::ACTION_ACCESS));
+        self::assertFalse($service->passesVoters(new stdClass(), AuditAction::Access));
     }
 }

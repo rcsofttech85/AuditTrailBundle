@@ -26,7 +26,9 @@ use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
+use Rcsofttech\AuditTrailBundle\Service\AuditFallbackPersister;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogContextProcessor;
+use Rcsofttech\AuditTrailBundle\Service\AuditLogFactory;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogWriter;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\CollectionChangeIndexBuilder;
@@ -34,9 +36,11 @@ use Rcsofttech\AuditTrailBundle\Service\CollectionChangeResolver;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
 use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
+use Rcsofttech\AuditTrailBundle\Service\DeletedAssociationImpactResolver;
 use Rcsofttech\AuditTrailBundle\Service\EntityAuditDispatchManager;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
+use Rcsofttech\AuditTrailBundle\Service\EntityUpdateTransitionResolver;
 use Rcsofttech\AuditTrailBundle\Service\JoinTableCollectionIdLoader;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
@@ -69,16 +73,15 @@ abstract class AbstractAuditTestCase extends TestCase
 
         return new AuditService(
             $em,
-            new MockClock(),
-            $transactionIdGenerator,
             $extractor,
             $metadataManager,
-            $contextResolver,
-            $idResolver,
-            new ContextSanitizer(),
-            null,
-            'UTC',
-            [],
+            new AuditLogFactory(
+                new MockClock(),
+                $transactionIdGenerator,
+                $contextResolver,
+                $idResolver,
+                new ContextSanitizer(),
+            ),
         );
     }
 
@@ -97,7 +100,7 @@ abstract class AbstractAuditTestCase extends TestCase
         return new AuditDispatcher(
             $transport,
             new AuditLogContextProcessor(new ContextSanitizer()),
-            new AuditLogWriter(),
+            new AuditFallbackPersister(new AuditLogWriter()),
             null, // eventDispatcher
             $integrityService ?? self::createStub(AuditIntegrityServiceInterface::class),
         );
@@ -114,17 +117,29 @@ abstract class AbstractAuditTestCase extends TestCase
         $collectionIdExtractor = new CollectionIdExtractor($idResolver);
         $joinTableLoader = new JoinTableCollectionIdLoader($idResolver);
 
+        $deletedAssociationImpactResolver = new DeletedAssociationImpactResolver();
+        $collectionTransitionMerger = new CollectionTransitionMerger();
+        $collectionChangeResolver = new CollectionChangeResolver(
+            $collectionIdExtractor,
+            new CollectionChangeIndexBuilder($collectionIdExtractor, $joinTableLoader),
+        );
+
         return new EntityProcessor(
             $auditService,
             $changeProcessor,
             $auditManager,
             new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger()),
-            new CollectionChangeResolver(
-                $collectionIdExtractor,
-                new CollectionChangeIndexBuilder($collectionIdExtractor, $joinTableLoader),
-            ),
-            new CollectionTransitionMerger(),
+            $collectionChangeResolver,
             new EntityAuditDispatchManager($dispatcher, $auditManager, $deferTransportUntilCommit, false),
+            true,
+            new EntityUpdateTransitionResolver(
+                $changeProcessor,
+                $deletedAssociationImpactResolver,
+                $collectionChangeResolver,
+                $collectionTransitionMerger,
+            ),
+            $deletedAssociationImpactResolver,
+            $collectionTransitionMerger,
         );
     }
 

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.0.0]
+
+This release is mostly about cleaning up the public API.
+
+### Changed
+
+- Audit actions now use `Rcsofttech\AuditTrailBundle\Enum\AuditAction`.
+- `AuditLog::$action` is now an `AuditAction` enum, not a string.
+- `AuditServiceInterface`, `AuditVoterInterface`, and `ChangeProcessorInterface` now use `AuditAction`.
+- `TrackableCollectionInterface` moved from `Service` to `Contract`.
+- Bundle event name constants were removed. Use the event class when subscribing.
+
+Most apps using only the built-in features should not need much more than a
+normal dependency update and test run.
+
+If you have custom integrations, check any code that reads `AuditLog::$action`,
+implements the audit contracts above, imports
+`TrackableCollectionInterface`, or subscribes to bundle events by the old name
+constants.
+
+### Added
+
+- `AuditDeliveryFailedEvent` for transport or fallback delivery failures.
+- `RevertActionHandlerInterface` for custom revert handling.
+- Helper methods on `AuditAction` for labels, badges, icons, and state checks.
+
 ## [3.3.0]
 
 ### Changed

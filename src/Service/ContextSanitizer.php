@@ -19,14 +19,20 @@ use function is_object;
 use function is_resource;
 use function is_string;
 use function mb_check_encoding;
+use function mb_strcut;
 use function method_exists;
 use function sprintf;
+use function strlen;
 
 final readonly class ContextSanitizer
 {
     public const int MAX_CONTEXT_BYTES = 65_536;
 
     public const int MAX_CONTEXT_DEPTH = 5;
+
+    public const int MAX_STRING_BYTES = 8_192;
+
+    private const string TRUNCATION_SUFFIX = '[truncated]';
 
     /**
      * @param array<mixed> $values
@@ -66,10 +72,19 @@ final readonly class ContextSanitizer
 
     public function sanitizeString(string $value): string
     {
-        if (mb_check_encoding($value, 'UTF-8')) {
+        if (!mb_check_encoding($value, 'UTF-8')) {
+            return '[invalid utf-8]';
+        }
+
+        if (strlen($value) <= self::MAX_STRING_BYTES) {
             return $value;
         }
 
-        return '[invalid utf-8]';
+        return mb_strcut(
+            $value,
+            0,
+            self::MAX_STRING_BYTES - strlen(self::TRUNCATION_SUFFIX),
+            'UTF-8',
+        ).self::TRUNCATION_SUFFIX;
     }
 }

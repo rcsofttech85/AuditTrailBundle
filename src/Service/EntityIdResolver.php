@@ -78,10 +78,14 @@ final class EntityIdResolver implements EntityIdResolverInterface
     public function resolveFromValues(object $entity, array $values, EntityManagerInterface $em): ?string
     {
         try {
-            $meta = $em->getClassMetadata($entity::class);
+            $meta = $this->tryGetClassMetadata($entity, $em);
+            if ($meta === null) {
+                return null;
+            }
+
             $idFields = $meta->getIdentifierFieldNames();
 
-            $ids = $this->collectIdsFromValues($idFields, $values);
+            $ids = $this->collectIdsFromValues($idFields, $values, $em);
             if ($ids === null) {
                 return null;
             }
@@ -102,13 +106,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
             return null;
         }
 
-        $idValues = [];
-        foreach ($ids as $val) {
-            $formatted = $this->formatId($val);
-            if ($formatted !== null) {
-                $idValues[] = $formatted;
-            }
-        }
+        $idValues = $this->normalizeIdentifierValues($ids, $em);
 
         if ($idValues === []) {
             return null;
@@ -122,22 +120,38 @@ final class EntityIdResolver implements EntityIdResolverInterface
     }
 
     /**
+     * @param array<string, mixed> $ids
+     *
+     * @return list<string>
+     */
+    private function normalizeIdentifierValues(array $ids, EntityManagerInterface $em): array
+    {
+        $formattedIds = [];
+
+        foreach ($ids as $value) {
+            $formatted = $this->normalizeIdentifierValue($value, $em);
+            if ($formatted === null) {
+                return [];
+            }
+
+            $formattedIds[] = $formatted;
+        }
+
+        return $formattedIds;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function extractEntityIds(object $entity, EntityManagerInterface $em): array
     {
-        /** @var ClassMetadata<object>|null $meta */
-        $meta = null;
-
-        try {
-            $meta = $em->getClassMetadata($entity::class);
+        $meta = $this->tryGetClassMetadata($entity, $em);
+        if ($meta !== null) {
             $ids = $meta->getIdentifierValues($entity);
             if ($ids !== []) {
                 /** @var array<string, mixed> $ids */
                 return $ids;
             }
-        } catch (Throwable) {
-            // Metadata extraction is best-effort here; UnitOfWork and reflection fallbacks follow.
         }
 
         $uow = $em->getUnitOfWork();
@@ -151,11 +165,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
 
         // Final fallback: Reflection
         if ($meta === null) {
-            try {
-                $meta = $em->getClassMetadata($entity::class);
-            } catch (Throwable) {
-                return [];
-            }
+            return [];
         }
 
         try {
@@ -176,6 +186,19 @@ final class EntityIdResolver implements EntityIdResolverInterface
         }
 
         return [];
+    }
+
+    /**
+     * @return ClassMetadata<object>|null
+     */
+    private function tryGetClassMetadata(object $entity, EntityManagerInterface $em): ?ClassMetadata
+    {
+        try {
+            return $em->getClassMetadata($entity::class);
+        } catch (Throwable) {
+            // Metadata extraction is best-effort here; callers have additional fallbacks.
+            return null;
+        }
     }
 
     private function resolveFromMethod(object $entity): ?string
@@ -205,13 +228,44 @@ final class EntityIdResolver implements EntityIdResolverInterface
         return null;
     }
 
+    private function normalizeIdentifierValue(mixed $value, EntityManagerInterface $em): ?string
+    {
+        $formatted = $this->formatId($value);
+        if ($formatted !== null) {
+            return $formatted;
+        }
+
+        if (!is_object($value)) {
+            return null;
+        }
+
+        try {
+            $nestedIds = $this->extractEntityIds($value, $em);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if ($nestedIds === []) {
+            return null;
+        }
+
+        $normalizedNestedIds = $this->normalizeIdentifierValues($nestedIds, $em);
+        if ($normalizedNestedIds === []) {
+            return null;
+        }
+
+        return 1 < count($normalizedNestedIds)
+            ? json_encode($normalizedNestedIds, JSON_THROW_ON_ERROR)
+            : $normalizedNestedIds[0];
+    }
+
     /**
      * @param array<string>        $idFields
      * @param array<string, mixed> $values
      *
      * @return array<string>|null
      */
-    private function collectIdsFromValues(array $idFields, array $values): ?array
+    private function collectIdsFromValues(array $idFields, array $values, EntityManagerInterface $em): ?array
     {
         $ids = [];
         foreach ($idFields as $idField) {
@@ -219,7 +273,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
                 return null;
             }
             $val = $values[$idField];
-            $formatted = $this->formatId($val);
+            $formatted = $this->normalizeIdentifierValue($val, $em);
             if ($formatted === null) {
                 return null;
             }

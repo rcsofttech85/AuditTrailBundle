@@ -8,10 +8,10 @@ use DateTimeImmutable;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditDiffCommand;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\DiffGeneratorInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use ReflectionClass;
 use stdClass;
 use Symfony\Component\Console\Command\Command;
@@ -74,7 +74,7 @@ final class AuditDiffCommandTest extends TestCase
         $log = new AuditLog(
             'App\Entity\Post',
             '123',
-            AuditLogInterface::ACTION_UPDATE,
+            AuditAction::Update,
             new DateTimeImmutable('2023-01-01 10:00:00'),
             oldValues: ['title' => 'Old Title'],
             newValues: ['title' => 'New Title'],
@@ -112,7 +112,7 @@ final class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithNoSemanticChanges(): void
     {
-        $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\Post', '123', AuditAction::Update);
         $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
 
         $this->repository->method('find')->willReturn($log);
@@ -131,7 +131,7 @@ final class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithEntityClassAndId(): void
     {
-        $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\Post', '123', AuditAction::Update);
         $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
 
         $repository = $this->useRepositoryMock();
@@ -158,7 +158,7 @@ final class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithEntityShortName(): void
     {
-        $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\Post', '123', AuditAction::Update);
 
         $repository = $this->useRepositoryMock();
         $repository->expects($this->once())
@@ -182,7 +182,7 @@ final class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithJsonOption(): void
     {
-        $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\Post', '123', AuditAction::Update);
 
         $this->repository->method('find')->willReturn($log);
         $this->diffGenerator->method('generate')->willReturn(['title' => ['old' => 'A', 'new' => 'B']]);
@@ -203,7 +203,7 @@ final class AuditDiffCommandTest extends TestCase
         $log = new AuditLog(
             'App\Entity\Post',
             '123',
-            AuditLogInterface::ACTION_UPDATE,
+            AuditAction::Update,
             new DateTimeImmutable('2023-01-01 12:00:00')
         );
 
@@ -236,7 +236,7 @@ final class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithNumericIdentifierAndEntityId(): void
     {
-        $log = new AuditLog('123', '456', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('123', '456', AuditAction::Update);
 
         $repository = $this->useRepositoryMock();
         $repository->expects($this->once())
@@ -256,7 +256,7 @@ final class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithRawOption(): void
     {
-        $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\Post', '123', AuditAction::Update);
 
         $this->repository->method('find')->willReturn($log);
 
@@ -319,7 +319,7 @@ final class AuditDiffCommandTest extends TestCase
 
     public function testExecuteWithNullAndBoolValues(): void
     {
-        $log = new AuditLog('App\Entity\Post', '123', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\Post', '123', AuditAction::Update);
         $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a362731');
 
         $this->repository->method('find')->willReturn($log);
@@ -344,7 +344,7 @@ final class AuditDiffCommandTest extends TestCase
 
     public function testFormatValueBooleanTernaryOrder(): void
     {
-        $log = new AuditLog('App\\Entity\\Post', '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\\Entity\\Post', '1', AuditAction::Update);
         $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
 
         $this->repository->method('find')->willReturn($log);
@@ -369,7 +369,7 @@ final class AuditDiffCommandTest extends TestCase
 
     public function testExecuteFormatsDateObjectsFallbackObjectsAndInvalidUtf8Arrays(): void
     {
-        $log = new AuditLog('App\\Entity\\Post', '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\\Entity\\Post', '1', AuditAction::Update);
         $this->setLogId($log, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
 
         $this->repository->method('find')->willReturn($log);

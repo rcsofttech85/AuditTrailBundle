@@ -7,8 +7,9 @@ namespace Rcsofttech\AuditTrailBundle\Command;
 use DateTimeImmutable;
 use Exception;
 use Rcsofttech\AuditTrailBundle\Contract\AuditExporterInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Service\AuditExportFileWriter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -16,8 +17,6 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
-use function dirname;
-use function filesize;
 use function in_array;
 use function is_string;
 use function sprintf;
@@ -41,6 +40,7 @@ final class AuditExportCommand extends Command
     public function __construct(
         private readonly AuditLogRepositoryInterface $repository,
         private readonly AuditExporterInterface $exporter,
+        private readonly AuditExportFileWriter $fileWriter,
     ) {
         parent::__construct();
     }
@@ -71,7 +71,7 @@ final class AuditExportCommand extends Command
                 'action',
                 null,
                 InputOption::VALUE_OPTIONAL,
-                sprintf('Filter by action (%s)', implode(', ', AuditLogInterface::ALL_ACTIONS))
+                sprintf('Filter by action (%s)', implode(', ', AuditAction::values()))
             )
             ->addOption(
                 'from',
@@ -217,7 +217,7 @@ final class AuditExportCommand extends Command
             if (!$this->validateAction($action, $io)) {
                 return false;
             }
-            $filters['action'] = $action;
+            $filters['action'] = AuditAction::from($action)->value;
         }
 
         return true;
@@ -242,8 +242,8 @@ final class AuditExportCommand extends Command
 
     private function validateAction(string $action, SymfonyStyle $io): bool
     {
-        $available = AuditLogInterface::ALL_ACTIONS;
-        if (!in_array($action, $available, true)) {
+        $available = AuditAction::values();
+        if (AuditAction::tryFrom($action) === null) {
             $io->error(sprintf('Invalid action "%s". Available: %s', $action, implode(', ', $available)));
 
             return false;
@@ -273,9 +273,10 @@ final class AuditExportCommand extends Command
         string $format,
         int $limit,
     ): bool {
-        $directory = dirname($outputFile);
-        if (!is_dir($directory) && !mkdir($directory, 0o755, true) && !is_dir($directory)) {
-            $io->error(sprintf('Failed to create directory: %s', $directory));
+        try {
+            $this->fileWriter->ensureDirectoryExists($outputFile);
+        } catch (Exception $e) {
+            $io->error($e->getMessage());
 
             return false;
         }
@@ -287,32 +288,27 @@ final class AuditExportCommand extends Command
             return true;
         }
 
-        $handle = @fopen($outputFile, 'w');
-        if ($handle === false) {
-            $io->error(sprintf('Failed to write to file: %s', $outputFile));
-
-            return false;
-        }
-
         $count = 0;
 
         try {
-            $this->exporter->exportToStream(
-                $this->takeAudits($this->countYieldedAudits($this->repository->findAllWithFilters($filters), $count), $limit),
-                $format,
-                $handle
-            );
-        } finally {
-            fclose($handle);
-        }
+            $size = $this->fileWriter->write($outputFile, function (mixed $handle) use ($filters, &$count, $format, $limit): void {
+                $this->exporter->exportToStream(
+                    $this->takeAudits($this->countYieldedAudits($this->repository->findAllWithFilters($filters), $count), $limit),
+                    $format,
+                    $handle
+                );
+            });
+        } catch (Exception $e) {
+            $io->error($e->getMessage());
 
-        $size = filesize($outputFile);
+            return false;
+        }
 
         $io->success(sprintf(
             'Exported %s audit logs to %s (%s)',
             number_format($count),
             $outputFile,
-            $this->exporter->formatFileSize($size !== false ? $size : 0)
+            $this->exporter->formatFileSize($size)
         ));
 
         return true;

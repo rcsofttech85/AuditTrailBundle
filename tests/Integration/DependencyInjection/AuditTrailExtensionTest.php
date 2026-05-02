@@ -11,6 +11,7 @@ use Rcsofttech\AuditTrailBundle\DependencyInjection\AuditTrailExtension;
 use Rcsofttech\AuditTrailBundle\Transport\NullAuditTransport;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -31,6 +32,7 @@ final class AuditTrailExtensionTest extends TestCase
             (string) $container->getAlias(AuditTransportInterface::class)
         );
         self::assertSame('ROLE_ADMIN', $container->getParameter('audit_trail.admin_permission'));
+        self::assertFalse($container->hasParameter('audit_trail.integrity.secret'));
         self::assertFalse($container->hasDefinition('rcsofttech_audit_trail.handler.persist_audit_log'));
 
         if (interface_exists(MessageBusInterface::class)) {
@@ -118,6 +120,40 @@ final class AuditTrailExtensionTest extends TestCase
         ]], $container);
     }
 
+    public function testIntegritySecretMustMeetMinimumLength(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('The integrity secret must be at least 32 characters long.');
+
+        $extension->load([[
+            'integrity' => [
+                'enabled' => true,
+                'secret' => 'too-short-secret',
+            ],
+        ]], $container);
+    }
+
+    public function testIntegritySecretAcceptsEnvPlaceholder(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([[
+            'integrity' => [
+                'enabled' => true,
+                'secret' => '%env(string:AUDIT_INTEGRITY_SECRET)%',
+            ],
+        ]], $container);
+
+        self::assertSame(
+            '%env(string:AUDIT_INTEGRITY_SECRET)%',
+            $container->getDefinition('Rcsofttech\\AuditTrailBundle\\Service\\AuditIntegrityService')->getArgument('$secret'),
+        );
+    }
+
     public function testHttpTransportConfiguration(): void
     {
         if (!interface_exists(HttpClientInterface::class)) {
@@ -125,6 +161,7 @@ final class AuditTrailExtensionTest extends TestCase
         }
 
         $container = new ContainerBuilder();
+        $container->setParameter('kernel.environment', 'dev');
         $extension = new AuditTrailExtension();
 
         $config = [
@@ -146,6 +183,58 @@ final class AuditTrailExtensionTest extends TestCase
             'rcsofttech_audit_trail.transport.http',
             (string) $container->getAlias(AuditTransportInterface::class)
         );
+        self::assertTrue($container->getParameter('audit_trail.fail_on_transport_error'));
+        self::assertFalse($container->getParameter('audit_trail.fallback_to_database'));
+    }
+
+    public function testRemoteTransportDefaultsToStrictFailureHandling(): void
+    {
+        if (!interface_exists(HttpClientInterface::class)) {
+            self::markTestSkipped('HttpClient is not installed.');
+        }
+
+        $container = new ContainerBuilder();
+        $container->setParameter('kernel.environment', 'dev');
+        $extension = new AuditTrailExtension();
+
+        $extension->load([[
+            'transports' => [
+                'database' => ['enabled' => true],
+                'http' => [
+                    'enabled' => true,
+                    'endpoint' => 'http://example.com',
+                ],
+            ],
+        ]], $container);
+
+        self::assertTrue($container->getParameter('audit_trail.fail_on_transport_error'));
+        self::assertFalse($container->getParameter('audit_trail.fallback_to_database'));
+    }
+
+    public function testExplicitRemoteTransportFailureOverridesArePreserved(): void
+    {
+        if (!interface_exists(HttpClientInterface::class)) {
+            self::markTestSkipped('HttpClient is not installed.');
+        }
+
+        $container = new ContainerBuilder();
+        $container->setParameter('kernel.environment', 'dev');
+        $extension = new AuditTrailExtension();
+
+        $extension->load([[
+            'fail_on_transport_error' => false,
+            'fallback_to_database' => true,
+            'transports' => [
+                'database' => ['enabled' => true],
+                'http' => [
+                    'enabled' => true,
+                    'endpoint' => 'http://example.com',
+                ],
+            ],
+        ]], $container);
+
+        self::assertFalse($container->getParameter('audit_trail.fail_on_transport_error'));
+        self::assertTrue($container->getParameter('audit_trail.fallback_to_database'));
     }
 
     public function testQueueTransportConfiguration(): void
@@ -205,6 +294,7 @@ final class AuditTrailExtensionTest extends TestCase
         }
 
         $container = new ContainerBuilder();
+        $container->setParameter('kernel.environment', 'dev');
         $extension = new AuditTrailExtension();
 
         $config = [
@@ -226,6 +316,30 @@ final class AuditTrailExtensionTest extends TestCase
             'rcsofttech_audit_trail.transport.chain',
             (string) $container->getAlias(AuditTransportInterface::class)
         );
+    }
+
+    public function testInsecureHttpTransportIsRejectedOutsideDev(): void
+    {
+        if (!interface_exists(HttpClientInterface::class)) {
+            self::markTestSkipped('HttpClient is not installed.');
+        }
+
+        $container = new ContainerBuilder();
+        $container->setParameter('kernel.environment', 'prod');
+        $extension = new AuditTrailExtension();
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('Insecure audit HTTP endpoints are only allowed in the "dev" environment.');
+
+        $extension->load([[
+            'transports' => [
+                'database' => ['enabled' => false],
+                'http' => [
+                    'enabled' => true,
+                    'endpoint' => 'http://example.com',
+                ],
+            ],
+        ]], $container);
     }
 
     public function testTablePrefixSubscriberRegistration(): void
@@ -303,5 +417,68 @@ final class AuditTrailExtensionTest extends TestCase
             (string) $container->getAlias(AuditTransportInterface::class)
         );
         self::assertSame(NullAuditTransport::class, $container->getDefinition('rcsofttech_audit_trail.transport.null')->getClass());
+    }
+
+    public function testCachePoolAliasIsRegisteredWhenConfigured(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([[
+            'cache_pool' => 'cache.app',
+        ]], $container);
+
+        self::assertTrue($container->hasAlias('rcsofttech_audit_trail.cache'));
+        self::assertSame('cache.app', (string) $container->getAlias('rcsofttech_audit_trail.cache'));
+    }
+
+    public function testPrependDoesNothingWhenDoctrineExtensionIsMissing(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->prepend($container);
+
+        self::assertSame([], $container->getExtensionConfig('doctrine'));
+    }
+
+    public function testPrependRegistersDoctrineMappingWhenDoctrineExtensionExists(): void
+    {
+        $container = new ContainerBuilder();
+        $container->registerExtension(new class implements ExtensionInterface {
+            public function getAlias(): string
+            {
+                return 'doctrine';
+            }
+
+            public function getNamespace(): string
+            {
+                return '';
+            }
+
+            public function getXsdValidationBasePath(): false
+            {
+                return false;
+            }
+
+            public function load(array $configs, ContainerBuilder $container): void
+            {
+            }
+        });
+
+        $extension = new AuditTrailExtension();
+        $extension->prepend($container);
+
+        $configs = $container->getExtensionConfig('doctrine');
+        self::assertCount(1, $configs);
+        self::assertSame(
+            'Rcsofttech\\AuditTrailBundle\\Entity',
+            $configs[0]['orm']['mappings']['RcsofttechAuditTrailBundle']['prefix'] ?? null
+        );
+    }
+
+    public function testGetAliasReturnsAuditTrail(): void
+    {
+        self::assertSame('audit_trail', new AuditTrailExtension()->getAlias());
     }
 }

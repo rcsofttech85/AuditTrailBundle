@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Command;
 
+use Doctrine\Persistence\ManagerRegistry;
 use JsonException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
@@ -29,9 +30,12 @@ use const JSON_THROW_ON_ERROR;
 )]
 final class VerifyIntegrityCommand extends Command
 {
+    private const int MAX_TAMPERED_LOG_PREVIEW = 50;
+
     public function __construct(
         private readonly AuditLogRepositoryInterface $repository,
         private readonly AuditIntegrityServiceInterface $integrityService,
+        private readonly ManagerRegistry $managerRegistry,
     ) {
         parent::__construct();
     }
@@ -81,7 +85,7 @@ final class VerifyIntegrityCommand extends Command
 
         $io->title(sprintf('Verifying Audit Log #%s', $id));
         $io->writeln(sprintf('Entity: %s [%s]', $log->entityClass, $log->entityId));
-        $io->writeln(sprintf('Action: %s', $log->action));
+        $io->writeln(sprintf('Action: %s', $log->action->value));
         $io->writeln(sprintf('Created: %s', $log->createdAt->format('Y-m-d H:i:s')));
         $io->newLine();
 
@@ -95,8 +99,7 @@ final class VerifyIntegrityCommand extends Command
 
         if ($io->isVeryVerbose()) {
             $io->section('Debug Information');
-            $io->writeln('<info>Expected Signature:</info> '.$this->integrityService->generateSignature($log));
-            $io->writeln('<info>Actual Signature:  </info> '.$log->signature);
+            $io->writeln('<info>Stored Signature Present:</info> '.($log->signature !== null ? 'yes' : 'no'));
             $io->writeln('<info>Normalized Old Values:</info> '.$this->encodeDebugValue($log->oldValues));
             $io->writeln('<info>Normalized New Values:</info> '.$this->encodeDebugValue($log->newValues));
         }
@@ -117,35 +120,49 @@ final class VerifyIntegrityCommand extends Command
         $progressBar = new ProgressBar($output, $count);
         $progressBar->start();
 
+        $auditEntityManager = $this->managerRegistry->getManagerForClass(AuditLog::class);
         $tamperedLogs = [];
+        $tamperedCount = 0;
         foreach ($this->repository->findAllWithFilters() as $log) {
             if (!$this->integrityService->verifySignature($log)) {
-                $tamperedLogs[] = [
-                    'id' => $log->id?->toRfc4122(),
-                    'entity' => $log->entityClass,
-                    'entity_id' => $log->entityId,
-                    'action' => $log->action,
-                    'created_at' => $log->createdAt->format('Y-m-d H:i:s'),
-                ];
+                ++$tamperedCount;
+                if (count($tamperedLogs) < self::MAX_TAMPERED_LOG_PREVIEW) {
+                    $tamperedLogs[] = [
+                        'id' => $log->id?->toRfc4122(),
+                        'entity' => $log->entityClass,
+                        'entity_id' => $log->entityId,
+                        'action' => $log->action->value,
+                        'created_at' => $log->createdAt->format('Y-m-d H:i:s'),
+                    ];
+                }
             }
 
+            $auditEntityManager?->detach($log);
             $progressBar->advance();
         }
 
         $progressBar->finish();
         $io->newLine(2);
 
-        if ($tamperedLogs === []) {
+        if ($tamperedCount === 0) {
             $io->success(sprintf('All %d audit logs verified successfully.', $count));
 
             return Command::SUCCESS;
         }
 
-        $io->error(sprintf('Found %d tampered audit logs!', count($tamperedLogs)));
+        $io->error(sprintf('Found %d tampered audit logs!', $tamperedCount));
         $io->table(
             ['ID', 'Entity', 'Entity ID', 'Action', 'Created At'],
             $tamperedLogs
         );
+
+        if ($tamperedCount > count($tamperedLogs)) {
+            $io->note(sprintf(
+                'Showing the first %d tampered logs out of %d.',
+                count($tamperedLogs),
+                $tamperedCount,
+            ));
+        }
 
         return Command::FAILURE;
     }

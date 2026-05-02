@@ -6,8 +6,8 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use OverflowException;
 use PHPUnit\Framework\TestCase;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use stdClass;
 
@@ -71,20 +71,30 @@ final class ScheduledAuditManagerTest extends TestCase
         $entity = new stdClass();
         $data = ['id' => 1];
 
-        $manager->addPendingDeletion($entity, $data, true);
+        $manager->addPendingDeletion($entity, $data, true, AuditAction::Delete);
 
         $deletions = $manager->getPendingDeletions();
         self::assertCount(1, $deletions);
         self::assertSame($entity, $deletions[0]['entity']);
         self::assertSame($data, $deletions[0]['data']);
         self::assertTrue($deletions[0]['is_managed']);
+        self::assertSame(AuditAction::Delete, $deletions[0]['action']);
+    }
+
+    public function testPendingDeletionOverflow(): void
+    {
+        $manager = new ScheduledAuditManager(maxPendingDeletions: 1);
+        $manager->addPendingDeletion(new stdClass(), ['id' => 1], true, AuditAction::Delete);
+
+        self::expectException(OverflowException::class);
+        $manager->addPendingDeletion(new stdClass(), ['id' => 2], true, AuditAction::Delete);
     }
 
     public function testClear(): void
     {
         $manager = new ScheduledAuditManager();
         $manager->schedule(new stdClass(), $this->createAuditLog(), true);
-        $manager->addPendingDeletion(new stdClass(), [], true);
+        $manager->addPendingDeletion(new stdClass(), [], true, AuditAction::Delete);
 
         $manager->clear();
 
@@ -94,6 +104,6 @@ final class ScheduledAuditManagerTest extends TestCase
 
     private function createAuditLog(): AuditLog
     {
-        return new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
+        return new AuditLog(stdClass::class, '1', AuditAction::Create);
     }
 }

@@ -47,7 +47,7 @@ readonly class PersistAuditLogMessage
         return new self(
             entityClass: $log->entityClass,
             entityId: $resolvedEntityId ?? $log->entityId,
-            action: $log->action,
+            action: $log->action->value,
             oldValues: $log->oldValues,
             newValues: $log->newValues,
             changedFields: $log->changedFields,

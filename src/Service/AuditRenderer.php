@@ -63,7 +63,7 @@ final readonly class AuditRenderer implements AuditRendererInterface
         if ($showDetails) {
             return [
                 $audit->entityId,
-                $audit->action,
+                $audit->action->value,
                 $user,
                 $hash,
                 $this->formatChangedDetails($audit),
@@ -75,7 +75,7 @@ final readonly class AuditRenderer implements AuditRendererInterface
             $audit->id?->toRfc4122(),
             $this->shortenClass($audit->entityClass),
             $audit->entityId,
-            $audit->action,
+            $audit->action->value,
             $user,
             $hash,
             $date,

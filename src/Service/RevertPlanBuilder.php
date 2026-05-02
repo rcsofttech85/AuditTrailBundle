@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
+use Rcsofttech\AuditTrailBundle\ValueObject\RevertPlan;
 
 final readonly class RevertPlanBuilder
 {
@@ -20,10 +21,8 @@ final readonly class RevertPlanBuilder
 
     /**
      * @param array<string, mixed> $values
-     *
-     * @return array{changes: array<string, mixed>, previousValues: array<string, mixed>, fieldValues: array<string, mixed>}
      */
-    public function build(object $entity, array $values, bool $dryRun): array
+    public function build(object $entity, array $values, bool $dryRun): RevertPlan
     {
         $metadata = $this->em->getClassMetadata($entity::class);
         $appliedChanges = [];
@@ -41,11 +40,7 @@ final readonly class RevertPlanBuilder
             $previousValues[$field] = $this->serializer->serialize($currentValue);
         }
 
-        return [
-            'changes' => $appliedChanges,
-            'previousValues' => $previousValues,
-            'fieldValues' => $appliedChanges,
-        ];
+        return RevertPlan::forFieldChanges($appliedChanges, $previousValues, $appliedChanges);
     }
 
     /**

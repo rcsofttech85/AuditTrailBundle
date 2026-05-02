@@ -11,6 +11,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
+use Rcsofttech\AuditTrailBundle\Service\AuditFallbackPersister;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogContextProcessor;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogWriter;
@@ -26,7 +27,7 @@ final class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
             'audit_config' => [
                 'integrity' => [
                     'enabled' => true,
-                    'secret' => 'test-secret',
+                    'secret' => '%env(string:AUDIT_INTEGRITY_SECRET)%',
                 ],
             ],
         ];
@@ -51,7 +52,7 @@ final class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
         $dispatcher = new AuditDispatcher(
             $transport,
             new AuditLogContextProcessor(new ContextSanitizer()),
-            new AuditLogWriter(),
+            new AuditFallbackPersister(new AuditLogWriter(), $eventDispatcher),
             $eventDispatcher,
             $integrityService,
             null,

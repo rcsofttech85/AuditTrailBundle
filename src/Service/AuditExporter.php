@@ -18,6 +18,7 @@ use function count;
 use function is_array;
 use function is_resource;
 use function is_scalar;
+use function ltrim;
 use function sprintf;
 use function str_contains;
 
@@ -103,7 +104,7 @@ final readonly class AuditExporter implements AuditExporterInterface
             'id' => $audit->id?->toRfc4122(),
             'entity_class' => $audit->entityClass,
             'entity_id' => $audit->entityId,
-            'action' => $audit->action,
+            'action' => $audit->action->value,
             'old_values' => $audit->oldValues,
             'new_values' => $audit->newValues,
             'changed_fields' => $audit->changedFields,
@@ -196,7 +197,9 @@ final readonly class AuditExporter implements AuditExporterInterface
 
     private function sanitizeCsvValue(string $value): string
     {
-        if ($value !== '' && str_contains('=+-@', $value[0])) {
+        $trimmed = ltrim($value, " \t\r\n");
+
+        if ($trimmed !== '' && str_contains('=+-@', $trimmed[0])) {
             return "'".$value;
         }
 

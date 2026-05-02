@@ -66,6 +66,8 @@ final class AuditLogMessageSerializerTest extends TestCase
             'user_agent' => 'Mozilla',
             'transaction_hash' => 'hash123',
             'created_at' => $createdAt->format(DateTimeInterface::ATOM),
+            'signature' => null,
+            'delivery_id' => null,
             'context' => ['ctx' => 'val'],
         ];
 

@@ -28,7 +28,7 @@ final class QueueAuditTransport implements AuditTransportInterface
     }
 
     #[Override]
-    public function send(AuditTransportContext $context): void
+    public function send(AuditTransportContext $context): AuditDeliveryResult
     {
         $message = $this->messageFactory->createQueueMessage($context);
 
@@ -36,7 +36,7 @@ final class QueueAuditTransport implements AuditTransportInterface
         $this->eventDispatcher->dispatch($event);
 
         if ($event->isPropagationStopped()) {
-            return;
+            return AuditDeliveryResult::delivered();
         }
 
         $stamps = $event->getStamps();
@@ -52,6 +52,8 @@ final class QueueAuditTransport implements AuditTransportInterface
         }
 
         $this->bus->dispatch($message, $stamps);
+
+        return AuditDeliveryResult::delivered();
     }
 
     #[Override]

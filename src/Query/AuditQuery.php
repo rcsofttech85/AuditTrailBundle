@@ -4,15 +4,14 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Query;
 
-use DateTimeImmutable;
 use DateTimeInterface;
 use InvalidArgumentException;
 use LogicException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Symfony\Component\Uid\Uuid;
 
-use function array_fill_keys;
 use function array_key_exists;
 use function array_slice;
 use function count;
@@ -33,11 +32,13 @@ readonly class AuditQuery
     private const int FILTER_BATCH_SIZE = 250;
 
     /**
-     * @param array<string> $actions
-     * @param array<string> $changedFields
+     * @param list<AuditAction> $actions
+     * @param array<string>     $changedFields
      */
     public function __construct(
         private AuditLogRepositoryInterface $repository,
+        private AuditQueryFilterFactory $filterFactory,
+        private AuditChangedFieldMatcher $changedFieldMatcher,
         private ?string $entityClass = null,
         private ?string $entityId = null,
         private array $actions = [],
@@ -71,9 +72,11 @@ readonly class AuditQuery
     /**
      * Filter by one or more action types.
      */
-    public function action(string ...$actions): self
+    public function action(AuditAction|string ...$actions): self
     {
-        return $this->with(['actions' => $actions]);
+        return $this->with([
+            'actions' => array_map(AuditAction::fromScalar(...), $actions),
+        ]);
     }
 
     /**
@@ -81,7 +84,7 @@ readonly class AuditQuery
      */
     public function creates(): self
     {
-        return $this->action('create');
+        return $this->action(AuditAction::Create);
     }
 
     /**
@@ -89,7 +92,7 @@ readonly class AuditQuery
      */
     public function updates(): self
     {
-        return $this->action('update');
+        return $this->action(AuditAction::Update);
     }
 
     /**
@@ -97,7 +100,7 @@ readonly class AuditQuery
      */
     public function deletes(): self
     {
-        return $this->action('delete', 'soft_delete');
+        return $this->action(AuditAction::Delete, AuditAction::SoftDelete);
     }
 
     /**
@@ -202,6 +205,8 @@ readonly class AuditQuery
     {
         $state = [
             'repository' => $this->repository,
+            'filterFactory' => $this->filterFactory,
+            'changedFieldMatcher' => $this->changedFieldMatcher,
             'entityClass' => $this->entityClass,
             'entityId' => $this->entityId,
             'actions' => $this->actions,
@@ -223,10 +228,11 @@ readonly class AuditQuery
 
         /** @var array{
          *     repository: AuditLogRepositoryInterface,
+         *     filterFactory: AuditQueryFilterFactory,
+         *     changedFieldMatcher: AuditChangedFieldMatcher,
          *     entityClass: ?string,
-         *
          *     entityId: ?string,
-         *     actions: array<string>,
+         *     actions: list<AuditAction>,
          *     userId: ?string,
          *     transactionHash: ?string,
          *     since: ?DateTimeInterface,
@@ -234,7 +240,7 @@ readonly class AuditQuery
          *     changedFields: array<string>,
          *     limit: int,
          *     afterId: ?string,
-         *     beforeId: ?string
+         *     beforeId: ?string,
          * } $state */
         return new self(...$state);
     }
@@ -302,26 +308,17 @@ readonly class AuditQuery
      */
     private function buildFilters(): array
     {
-        $filters = array_filter([
-            'entityClass' => $this->entityClass,
-            'entityId' => $this->entityId,
-            'userId' => $this->userId,
-            'transactionHash' => $this->transactionHash,
-            'afterId' => $this->afterId,
-            'beforeId' => $this->beforeId,
-            'action' => 1 === count($this->actions) ? $this->actions[0] : null,
-            'actions' => count($this->actions) > 1 ? $this->actions : null,
-        ], static fn ($v) => $v !== null);
-
-        if ($this->since !== null) {
-            $filters['from'] = DateTimeImmutable::createFromInterface($this->since);
-        }
-
-        if ($this->until !== null) {
-            $filters['to'] = DateTimeImmutable::createFromInterface($this->until);
-        }
-
-        return $filters;
+        return $this->filterFactory->build(
+            $this->entityClass,
+            $this->entityId,
+            $this->actions,
+            $this->userId,
+            $this->transactionHash,
+            $this->since,
+            $this->until,
+            $this->afterId,
+            $this->beforeId,
+        );
     }
 
     /**
@@ -380,7 +377,7 @@ readonly class AuditQuery
     private function countBatchMatches(array $batch): int
     {
         return $this->changedFields !== []
-            ? count($this->filterByChangedFields($batch))
+            ? $this->changedFieldMatcher->countMatches($batch, $this->changedFields)
             : count($batch);
     }
 
@@ -409,19 +406,6 @@ readonly class AuditQuery
      */
     private function filterByChangedFields(array $logs): array
     {
-        return array_values(array_filter(
-            $logs,
-            $this->logMatchesChangedFields(...),
-        ));
-    }
-
-    private function logMatchesChangedFields(AuditLog $log): bool
-    {
-        $changedFieldLookup = array_fill_keys($log->changedFields ?? [], true);
-
-        return array_any(
-            $this->changedFields,
-            static fn (string $field): bool => isset($changedFieldLookup[$field]),
-        );
+        return $this->changedFieldMatcher->filter($logs, $this->changedFields);
     }
 }

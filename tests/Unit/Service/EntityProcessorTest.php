@@ -25,14 +25,17 @@ use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
 use Rcsofttech\AuditTrailBundle\Service\CollectionChangeIndexBuilder;
 use Rcsofttech\AuditTrailBundle\Service\CollectionChangeResolver;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
+use Rcsofttech\AuditTrailBundle\Service\DeletedAssociationImpactResolver;
 use Rcsofttech\AuditTrailBundle\Service\EntityAuditDispatchManager;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
+use Rcsofttech\AuditTrailBundle\Service\EntityUpdateTransitionResolver;
 use Rcsofttech\AuditTrailBundle\Service\JoinTableCollectionIdLoader;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubCollection;
 use stdClass;
@@ -72,23 +75,34 @@ final class EntityProcessorTest extends TestCase
         $idResolver = $this->idResolver;
         $collectionIdExtractor = new CollectionIdExtractor($idResolver);
         $joinTableLoader = new JoinTableCollectionIdLoader($idResolver);
+        $deletedAssociationImpactResolver = new DeletedAssociationImpactResolver();
+        $collectionTransitionMerger = new CollectionTransitionMerger();
+        $collectionChangeResolver = new CollectionChangeResolver(
+            $collectionIdExtractor,
+            new CollectionChangeIndexBuilder($collectionIdExtractor, $joinTableLoader),
+        );
 
         return new EntityProcessor(
             $this->auditService,
             $changeProcessor ?? $this->changeProcessor,
             $this->auditManager,
             new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger()),
-            new CollectionChangeResolver(
-                $collectionIdExtractor,
-                new CollectionChangeIndexBuilder($collectionIdExtractor, $joinTableLoader),
-            ),
-            new CollectionTransitionMerger(),
+            $collectionChangeResolver,
             new EntityAuditDispatchManager(
                 $dispatcher ?? $this->dispatcher,
                 $this->auditManager,
                 $deferTransportUntilCommit,
                 $failOnTransportError,
             ),
+            true,
+            new EntityUpdateTransitionResolver(
+                $changeProcessor ?? $this->changeProcessor,
+                $deletedAssociationImpactResolver,
+                $collectionChangeResolver,
+                $collectionTransitionMerger,
+            ),
+            $deletedAssociationImpactResolver,
+            $collectionTransitionMerger,
         );
     }
 
@@ -114,12 +128,12 @@ final class EntityProcessorTest extends TestCase
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
         // Entity ID is already resolved (UUID case) — should dispatch immediately
-        $audit = new AuditLog(stdClass::class, '550e8400-e29b-41d4-a716-446655440000', AuditLogInterface::ACTION_CREATE);
+        $audit = new AuditLog(stdClass::class, '550e8400-e29b-41d4-a716-446655440000', AuditAction::Create);
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
-            ->with($entity, AuditLogInterface::ACTION_CREATE, [])
+            ->with($entity, AuditAction::Create, [])
             ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
         $this->auditService->method('createAuditLog')->willReturn($audit);
@@ -139,12 +153,12 @@ final class EntityProcessorTest extends TestCase
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
         // Entity ID is PENDING (auto-increment) — must defer to postFlush
-        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditLogInterface::ACTION_CREATE);
+        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
-            ->with($entity, AuditLogInterface::ACTION_CREATE, [])
+            ->with($entity, AuditAction::Create, [])
             ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
         $this->auditService->method('createAuditLog')->willReturn($audit);
@@ -178,7 +192,7 @@ final class EntityProcessorTest extends TestCase
         $em = self::createStub(EntityManagerInterface::class);
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
 
         $uow->method('getScheduledEntityUpdates')->willReturn([$entity]);
         $uow->method('getScheduledCollectionUpdates')->willReturn([]);
@@ -187,13 +201,13 @@ final class EntityProcessorTest extends TestCase
 
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
-            ->with($entity, AuditLogInterface::ACTION_UPDATE, ['field' => 'new'])
+            ->with($entity, AuditAction::Update, ['field' => 'new'])
             ->willReturn(true);
         $this->changeProcessor->method('extractChanges')->willReturn([['field' => 'old'], ['field' => 'new']]);
-        $this->changeProcessor->method('determineUpdateAction')->willReturn(AuditLogInterface::ACTION_UPDATE);
+        $this->changeProcessor->method('determineUpdateAction')->willReturn(AuditAction::Update);
         $this->auditService->expects($this->once())
             ->method('createAuditLog')
-            ->with($entity, AuditLogInterface::ACTION_UPDATE, ['field' => 'old'], ['field' => 'new'])
+            ->with($entity, AuditAction::Update, ['field' => 'old'], ['field' => 'new'])
             ->willReturn($audit);
 
         $this->auditManager->expects($this->once())->method('schedule')->with($entity, $audit, false);
@@ -237,7 +251,7 @@ final class EntityProcessorTest extends TestCase
                 return 2;
             }
         };
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
 
         $uow->method('getScheduledEntityUpdates')->willReturn([$entity]);
         $uow->method('getScheduledCollectionDeletions')->willReturn([]);
@@ -251,16 +265,16 @@ final class EntityProcessorTest extends TestCase
             [$item2, $em, '2'],
         ]);
         $this->changeProcessor->method('extractChanges')->willReturn([['title' => 'old'], ['title' => 'new']]);
-        $this->changeProcessor->method('determineUpdateAction')->willReturn(AuditLogInterface::ACTION_UPDATE);
+        $this->changeProcessor->method('determineUpdateAction')->willReturn(AuditAction::Update);
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
-            ->with($entity, AuditLogInterface::ACTION_UPDATE, ['title' => 'new', 'tags' => ['1', '2']])
+            ->with($entity, AuditAction::Update, ['title' => 'new', 'tags' => ['1', '2']])
             ->willReturn(true);
         $this->auditService->expects($this->once())
             ->method('createAuditLog')
             ->with(
                 $entity,
-                AuditLogInterface::ACTION_UPDATE,
+                AuditAction::Update,
                 ['title' => 'old', 'tags' => ['1']],
                 ['title' => 'new', 'tags' => ['1', '2']]
             )
@@ -284,8 +298,9 @@ final class EntityProcessorTest extends TestCase
             ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn(['data']);
         $em->method('contains')->willReturn(true);
+        $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditAction::Delete);
 
-        $this->auditManager->expects($this->once())->method('addPendingDeletion')->with($entity, ['data'], true);
+        $this->auditManager->expects($this->once())->method('addPendingDeletion')->with($entity, ['data'], true, AuditAction::Delete);
 
         $this->processor->processDeletions($em, $uow);
     }
@@ -310,7 +325,7 @@ final class EntityProcessorTest extends TestCase
                 return 2;
             }
         };
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
 
         $collection = new StubCollection(
             $owner,
@@ -381,7 +396,7 @@ final class EntityProcessorTest extends TestCase
                 return 2;
             }
         };
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
 
         $collection = new StubCollection(
             $owner,
@@ -403,7 +418,7 @@ final class EntityProcessorTest extends TestCase
             ->method('createAuditLog')
             ->with(
                 $owner,
-                AuditLogInterface::ACTION_UPDATE,
+                AuditAction::Update,
                 ['items' => ['1', '2']],
                 ['items' => ['2']]
             )
@@ -494,7 +509,7 @@ final class EntityProcessorTest extends TestCase
                 return 1;
             }
         };
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
 
         $collection = new StubCollection(
             $owner,
@@ -509,13 +524,13 @@ final class EntityProcessorTest extends TestCase
         ]);
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
-            ->with($owner, AuditLogInterface::ACTION_UPDATE, ['items' => []])
+            ->with($owner, AuditAction::Update, ['items' => []])
             ->willReturn(true);
         $this->auditService->expects($this->once())
             ->method('createAuditLog')
             ->with(
                 $owner,
-                AuditLogInterface::ACTION_UPDATE,
+                AuditAction::Update,
                 ['items' => ['1']],
                 ['items' => []]
             )
@@ -532,7 +547,7 @@ final class EntityProcessorTest extends TestCase
         $em = self::createStub(EntityManagerInterface::class);
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Create);
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->expects($this->once())
@@ -554,7 +569,7 @@ final class EntityProcessorTest extends TestCase
         $em = self::createStub(EntityManagerInterface::class);
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditLogInterface::ACTION_CREATE);
+        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->expects($this->once())
@@ -577,7 +592,7 @@ final class EntityProcessorTest extends TestCase
         $em = self::createStub(EntityManagerInterface::class);
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditLogInterface::ACTION_CREATE);
+        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
 
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->expects($this->once())
@@ -615,7 +630,7 @@ final class EntityProcessorTest extends TestCase
         $changeProcessor->expects($this->once())
             ->method('determineUpdateAction')
             ->with(['deletedAt' => [null, '2026-04-02T00:00:00+00:00']])
-            ->willReturn(AuditLogInterface::ACTION_SOFT_DELETE);
+            ->willReturn(AuditAction::SoftDelete);
         $this->auditService->expects($this->never())->method('getEntityData');
         $this->auditManager->expects($this->never())->method('addPendingDeletion');
 
@@ -645,7 +660,7 @@ final class EntityProcessorTest extends TestCase
         $changeProcessor->expects($this->once())
             ->method('determineUpdateAction')
             ->with(['deletedAt' => [null, '2026-04-02T00:00:00+00:00']])
-            ->willReturn(AuditLogInterface::ACTION_SOFT_DELETE);
+            ->willReturn(AuditAction::SoftDelete);
         $this->auditService->expects($this->never())->method('getEntityData');
         $this->auditManager->expects($this->never())->method('addPendingDeletion');
 
@@ -657,7 +672,7 @@ final class EntityProcessorTest extends TestCase
         $em = self::createStub(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
         $owner = new stdClass();
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $currentCollection = new StubCollection(
             $owner,
             [],
@@ -696,7 +711,7 @@ final class EntityProcessorTest extends TestCase
         $uow->expects($this->once())->method('getOriginalEntityData')->with($owner)->willReturn([]);
 
         $this->changeProcessor->method('extractChanges')->willReturn([[], []]);
-        $this->changeProcessor->method('determineUpdateAction')->willReturn(AuditLogInterface::ACTION_UPDATE);
+        $this->changeProcessor->method('determineUpdateAction')->willReturn(AuditAction::Update);
         $this->idResolver->method('resolveFromEntity')->willReturn('1');
 
         $em->method('getClassMetadata')->willReturnMap([
@@ -751,11 +766,11 @@ final class EntityProcessorTest extends TestCase
 
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
-            ->with($owner, AuditLogInterface::ACTION_UPDATE, ['tags' => []])
+            ->with($owner, AuditAction::Update, ['tags' => []])
             ->willReturn(true);
         $this->auditService->expects($this->once())
             ->method('createAuditLog')
-            ->with($owner, AuditLogInterface::ACTION_UPDATE, ['tags' => [5, 7]], ['tags' => []])
+            ->with($owner, AuditAction::Update, ['tags' => [5, 7]], ['tags' => []])
             ->willReturn($audit);
         $this->auditManager->expects($this->once())->method('schedule')->with($owner, $audit, false);
 
@@ -769,7 +784,7 @@ final class EntityProcessorTest extends TestCase
         $deletedA = new class {};
         $deletedB = new class {};
         $relatedEntity = new class {};
-        $audit = new AuditLog($relatedEntity::class, '10', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog($relatedEntity::class, '10', AuditAction::Update);
         $deletedMetadata = $this->createMock(ClassMetadata::class);
         $relatedMetadata = $this->createMock(ClassMetadata::class);
         $mapping = OneToManyAssociationMapping::fromMappingArray([
@@ -818,9 +833,9 @@ final class EntityProcessorTest extends TestCase
 
         $this->auditService->expects($this->exactly(3))
             ->method('shouldAudit')
-            ->willReturnCallback(static function (object $entity, ?string $action = null, ?array $newValues = null) use ($deletedA, $deletedB, $relatedEntity): bool {
+            ->willReturnCallback(static function (object $entity, AuditAction|string|null $action = null, ?array $newValues = null) use ($deletedA, $deletedB, $relatedEntity): bool {
                 if ($entity === $relatedEntity) {
-                    return $action === AuditLogInterface::ACTION_UPDATE && $newValues === ['items' => []];
+                    return $action === AuditAction::Update && $newValues === ['items' => []];
                 }
 
                 return $entity === $deletedA || $entity === $deletedB;
@@ -828,11 +843,12 @@ final class EntityProcessorTest extends TestCase
         $this->auditService->expects($this->exactly(2))
             ->method('getEntityData')
             ->willReturn([]);
+        $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditAction::Delete);
         $this->auditService->expects($this->once())
             ->method('createAuditLog')
             ->with(
                 $relatedEntity,
-                AuditLogInterface::ACTION_UPDATE,
+                AuditAction::Update,
                 ['items' => ['1', '2']],
                 ['items' => []]
             )

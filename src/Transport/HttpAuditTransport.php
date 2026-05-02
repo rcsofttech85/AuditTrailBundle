@@ -34,7 +34,7 @@ final class HttpAuditTransport implements AuditTransportInterface
     }
 
     #[Override]
-    public function send(AuditTransportContext $context): void
+    public function send(AuditTransportContext $context): AuditDeliveryResult
     {
         $log = $context->audit;
         $entityId = $this->idResolver->resolve($log, $context) ?? $log->entityId;
@@ -42,7 +42,7 @@ final class HttpAuditTransport implements AuditTransportInterface
         $payload = [
             'entity_class' => $log->entityClass,
             'entity_id' => $entityId,
-            'action' => $log->action,
+            'action' => $log->action->value,
             'old_values' => $log->oldValues,
             'new_values' => $log->newValues,
             'changed_fields' => $log->changedFields,
@@ -73,18 +73,18 @@ final class HttpAuditTransport implements AuditTransportInterface
         $statusCode = $response->getStatusCode();
 
         if ($statusCode < 200 || $statusCode >= 300) {
-            $responseBody = mb_substr($response->getContent(false), 0, 500);
             $message = sprintf(
-                'HTTP audit transport failed for %s#%s with status code %d: %s',
+                'HTTP audit transport failed for %s#%s with status code %d.',
                 $log->entityClass,
                 $entityId,
                 $statusCode,
-                $responseBody
             );
             $this->logger?->error($message);
 
             throw new RuntimeException($message);
         }
+
+        return AuditDeliveryResult::delivered();
     }
 
     #[Override]

@@ -6,6 +6,7 @@ services:
       $enableSoftDelete: '%audit_trail.enable_soft_delete%'
       $enableHardDelete: '%audit_trail.enable_hard_delete%'
       $softDeleteField: '%audit_trail.soft_delete_field%'
+      $softDeleteFilterNames: '%audit_trail.soft_delete_filter_names%'
       $enabled: '%audit_trail.enabled%'
       $deferTransportUntilCommit: '%audit_trail.defer_transport_until_commit%'
       $failOnTransportError: '%audit_trail.fail_on_transport_error%'
@@ -21,21 +22,10 @@ services:
       $maxCollectionItems: '%audit_trail.max_collection_items%'
       $trackIpAddress: '%audit_trail.track_ip_address%'
       $trackUserAgent: '%audit_trail.track_user_agent%'
-
-  _instanceof:
-    Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface:
-      tags: ['audit_trail.voter']
-    Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface:
-      tags: ['audit_trail.context_contributor']
-    Rcsofttech\AuditTrailBundle\Contract\AuditLogAiProcessorInterface:
-      tags: ['audit_trail.ai_processor']
-
+      $adminPermission: '%audit_trail.admin_permission%'
 
   Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService:
-    bind:
-      $enabled: '%audit_trail.integrity.enabled%'
-      $secret: '%audit_trail.integrity.secret%'
-      $algorithm: '%audit_trail.integrity.algorithm%'
+    ~
 
   Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService
@@ -105,6 +95,9 @@ services:
 
   Rcsofttech\AuditTrailBundle\Service\AuditExporter:
     lazy: true
+
+  Symfony\Component\ExpressionLanguage\ExpressionLanguage:
+    ~
 
   Rcsofttech\AuditTrailBundle\:
     resource: '../../*'

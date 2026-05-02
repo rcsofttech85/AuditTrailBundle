@@ -41,9 +41,9 @@ interface AuditLogRepositoryInterface
     public function findAllWithFilters(array $filters = []): iterable;
 
     /**
-     * @return array<AuditLog>
+     * @return iterable<AuditLog>
      */
-    public function findOlderThan(DateTimeImmutable $before): array;
+    public function findOlderThan(DateTimeImmutable $before): iterable;
 
     public function countOlderThan(DateTimeImmutable $before): int;
 

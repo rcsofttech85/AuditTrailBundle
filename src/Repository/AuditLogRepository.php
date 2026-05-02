@@ -6,18 +6,14 @@ namespace Rcsofttech\AuditTrailBundle\Repository;
 
 use DateTimeImmutable;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
-use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
 use InvalidArgumentException;
 use Override;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 use function array_any;
-use function in_array;
-use function is_array;
-use function is_string;
 
 /**
  * @extends ServiceEntityRepository<AuditLog>
@@ -25,15 +21,17 @@ use function is_string;
 final class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepositoryInterface
 {
     private const array STATE_CHANGING_ACTIONS = [
-        AuditLogInterface::ACTION_CREATE,
-        AuditLogInterface::ACTION_UPDATE,
-        AuditLogInterface::ACTION_DELETE,
-        AuditLogInterface::ACTION_SOFT_DELETE,
-        AuditLogInterface::ACTION_RESTORE,
+        AuditAction::Create,
+        AuditAction::Update,
+        AuditAction::Delete,
+        AuditAction::SoftDelete,
+        AuditAction::Restore,
     ];
 
-    public function __construct(ManagerRegistry $registry)
-    {
+    public function __construct(
+        ManagerRegistry $registry,
+        private readonly AuditLogQueryFilterApplier $filterApplier,
+    ) {
         parent::__construct($registry, AuditLog::class);
     }
 
@@ -120,9 +118,7 @@ final class AuditLogRepository extends ServiceEntityRepository implements AuditL
     {
         $qb = $this->createQueryBuilder('a');
 
-        $this->applyEntityClassFilter($qb, $filters);
-        $this->applyScalarFilters($qb, $filters);
-        $this->applyDateRangeFilters($qb, $filters);
+        $this->filterApplier->apply($qb, $filters, false);
         $qb->orderBy('a.id', 'DESC');
 
         /** @var iterable<AuditLog> $iterable */
@@ -146,10 +142,7 @@ final class AuditLogRepository extends ServiceEntityRepository implements AuditL
         $qb = $this->createQueryBuilder('a')
             ->setMaxResults($limit);
 
-        $this->applyEntityClassFilter($qb, $filters);
-        $this->applyScalarFilters($qb, $filters);
-        $this->applyDateRangeFilters($qb, $filters);
-        $this->applyKeysetPagination($qb, $filters);
+        $this->filterApplier->apply($qb, $filters);
 
         /** @var array<int, AuditLog> $result */
         $result = $qb->getQuery()->getResult();
@@ -162,98 +155,6 @@ final class AuditLogRepository extends ServiceEntityRepository implements AuditL
         return $result;
     }
 
-    /**
-     * @param array<string, mixed> $filters
-     */
-    private function applyEntityClassFilter(QueryBuilder $qb, array $filters): void
-    {
-        if (!isset($filters['entityClass']) || !is_string($filters['entityClass'])) {
-            return;
-        }
-
-        $entityClass = $filters['entityClass'];
-
-        // Check if it's a FQCN (contains backslash) or valid class
-        if (str_contains($entityClass, '\\') || class_exists($entityClass)) {
-            // Exact match for FQCN or existing class
-            $qb->andWhere('a.entityClass = :entityClass')
-                ->setParameter('entityClass', $entityClass);
-        } else {
-            // Partial match for short names - escape wildcards
-            $escaped = addcslashes($entityClass, '%_');
-            $qb->andWhere('a.entityClass LIKE :entityClass')
-                ->setParameter('entityClass', '%'.$escaped.'%');
-        }
-    }
-
-    /**
-     * @param array<string, mixed> $filters
-     */
-    private function applyScalarFilters(QueryBuilder $qb, array $filters): void
-    {
-        $scalarFilters = [
-            'entityId' => 'a.entityId',
-            'userId' => 'a.userId',
-            'username' => 'a.username',
-            'transactionHash' => 'a.transactionHash',
-        ];
-
-        foreach ($scalarFilters as $filterKey => $fieldPath) {
-            if (isset($filters[$filterKey])) {
-                $qb->andWhere("$fieldPath = :$filterKey")
-                    ->setParameter($filterKey, $filters[$filterKey]);
-            }
-        }
-
-        if (isset($filters['action'])) {
-            $qb->andWhere('a.action = :action')
-                ->setParameter('action', $filters['action']);
-        }
-
-        if (isset($filters['actions']) && is_array($filters['actions']) && $filters['actions'] !== []) {
-            $qb->andWhere('a.action IN (:actions)')
-                ->setParameter('actions', $filters['actions']);
-        }
-    }
-
-    /**
-     * @param array<string, mixed> $filters
-     */
-    private function applyDateRangeFilters(QueryBuilder $qb, array $filters): void
-    {
-        if (isset($filters['from'])) {
-            $qb->andWhere('a.createdAt >= :from')
-                ->setParameter('from', $filters['from']);
-        }
-
-        if (isset($filters['to'])) {
-            $qb->andWhere('a.createdAt <= :to')
-                ->setParameter('to', $filters['to']);
-        }
-    }
-
-    /**
-     * @param array<string, mixed> $filters
-     */
-    private function applyKeysetPagination(QueryBuilder $qb, array $filters): void
-    {
-        $order = 'DESC';
-
-        if (isset($filters['afterId'])) {
-            $qb->andWhere('a.id < :afterId')
-                ->setParameter('afterId', $filters['afterId'], 'uuid');
-        }
-
-        if (isset($filters['beforeId'])) {
-            $qb->andWhere('a.id > :beforeId')
-                ->setParameter('beforeId', $filters['beforeId'], 'uuid');
-
-            $order = 'ASC';
-        }
-
-        $qb->orderBy('a.id', $order);
-    }
-
     private function assertPositiveLimit(int $limit): void
     {
         if ($limit < 1) {
@@ -264,19 +165,19 @@ final class AuditLogRepository extends ServiceEntityRepository implements AuditL
     /**
      * Find audit logs older than a given date.
      *
-     * @return array<AuditLog>
+     * @return iterable<AuditLog>
      */
     #[Override]
-    public function findOlderThan(DateTimeImmutable $before): array
+    public function findOlderThan(DateTimeImmutable $before): iterable
     {
-        /** @var array<AuditLog> $results */
+        /** @var iterable<AuditLog> $results */
         $results = $this->createQueryBuilder('a')
             ->where('a.createdAt < :before')
             ->setParameter('before', $before)
             ->orderBy('a.createdAt', 'ASC')
             ->addOrderBy('a.id', 'ASC')
             ->getQuery()
-            ->getResult();
+            ->toIterable();
 
         return $results;
     }
@@ -311,7 +212,7 @@ final class AuditLogRepository extends ServiceEntityRepository implements AuditL
             ->andWhere('a.action = :action')
             ->setParameter('entityClass', $log->entityClass)
             ->setParameter('entityId', $log->entityId)
-            ->setParameter('action', AuditLogInterface::ACTION_REVERT)
+            ->setParameter('action', AuditAction::Revert)
             ->setMaxResults(25)
             ->getQuery()
             ->getResult();
@@ -347,8 +248,8 @@ final class AuditLogRepository extends ServiceEntityRepository implements AuditL
         return $count > 0;
     }
 
-    private function isStateChangingAction(string $action): bool
+    private function isStateChangingAction(AuditAction $action): bool
     {
-        return in_array($action, self::STATE_CHANGING_ACTIONS, true);
+        return $action->isStateChanging();
     }
 }

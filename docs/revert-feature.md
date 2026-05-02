@@ -56,6 +56,22 @@ $auditReverter->revert($log, false, false, [], false);
 - **Dry Run Mode**: Preview exactly what will change before applying (`--dry-run`).
 - **Validation**: Validates the entity before completing a persisted revert.
 
+## Custom Revert Handlers
+
+In v4, custom revert behavior can be extended through dedicated action handlers.
+
+Implement:
+
+```php
+use Rcsofttech\AuditTrailBundle\Contract\RevertActionHandlerInterface;
+```
+
+Implementations are auto-tagged by the bundle; you do not need to add the
+`audit_trail.revert_action_handler` tag manually when autoconfiguration is enabled.
+
+This is useful when you need action-specific revert planning without decorating
+the bundle's main revert orchestration service.
+
 ## EasyAdmin Preview Behavior
 
 The EasyAdmin revert modal uses the same dry-run logic as the programmatic reverter.

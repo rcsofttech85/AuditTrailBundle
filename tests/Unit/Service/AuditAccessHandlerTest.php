@@ -18,12 +18,15 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Http\AuditRequestAttributes;
 use Rcsofttech\AuditTrailBundle\Service\AuditAccessContextProvider;
 use Rcsofttech\AuditTrailBundle\Service\AuditAccessCooldownManager;
 use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
 use Rcsofttech\AuditTrailBundle\Service\AuditAccessIntentResolver;
+use Rcsofttech\AuditTrailBundle\Service\AuditAccessLogDispatcher;
+use Rcsofttech\AuditTrailBundle\Service\AuditAccessRequestEvaluator;
 use ReflectionClass;
 use stdClass;
 use Symfony\Component\HttpFoundation\Request;
@@ -57,16 +60,15 @@ final class AuditAccessHandlerTest extends TestCase
         ?CacheItemPoolInterface $cache = null,
         array $auditedMethods = ['GET'],
     ): AuditAccessHandler {
+        $cooldownManager = new AuditAccessCooldownManager($cache);
+
         return new AuditAccessHandler(
             $this->auditService,
-            $this->dispatcher,
-            $this->requestStack,
+            new AuditAccessLogDispatcher($this->auditService, $this->dispatcher, $cooldownManager),
+            new AuditAccessRequestEvaluator($this->requestStack, new AuditAccessIntentResolver(), $auditedMethods),
             $this->idResolver,
-            new AuditAccessIntentResolver(),
-            new AuditAccessCooldownManager($cache),
+            $cooldownManager,
             new AuditAccessContextProvider($this->userResolver),
-            null,
-            $auditedMethods,
         );
     }
 
@@ -408,7 +410,7 @@ final class AuditAccessHandlerTest extends TestCase
             ->method('createAuditLog')
             ->with(
                 $entity,
-                AuditLogInterface::ACTION_ACCESS,
+                AuditAction::Access,
                 null,
                 null,
                 self::callback(static function (array $context): bool {

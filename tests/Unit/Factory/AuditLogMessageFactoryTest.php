@@ -7,9 +7,9 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Factory;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
@@ -34,7 +34,7 @@ final class AuditLogMessageFactoryTest extends TestCase
         $this->idResolver = $idResolver;
         $this->factory = new AuditLogMessageFactory($idResolver);
 
-        $log = new AuditLog(stdClass::class, 'pending', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog(stdClass::class, 'pending', AuditAction::Create);
 
         $message = $this->factory->createQueueMessage($this->createContext($log));
 
@@ -50,7 +50,7 @@ final class AuditLogMessageFactoryTest extends TestCase
         $this->idResolver = $idResolver;
         $this->factory = new AuditLogMessageFactory($idResolver);
 
-        $log = new AuditLog(stdClass::class, 'pending', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog(stdClass::class, 'pending', AuditAction::Create);
 
         $message = $this->factory->createPersistMessage($this->createContext($log));
 
@@ -66,7 +66,7 @@ final class AuditLogMessageFactoryTest extends TestCase
         $this->idResolver = $idResolver;
         $this->factory = new AuditLogMessageFactory($idResolver);
 
-        $log = new AuditLog(stdClass::class, '100', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog(stdClass::class, '100', AuditAction::Update);
 
         $message = $this->factory->createQueueMessage($this->createContext($log));
 
@@ -80,7 +80,7 @@ final class AuditLogMessageFactoryTest extends TestCase
         $this->idResolver = $idResolver;
         $this->factory = new AuditLogMessageFactory($idResolver);
 
-        $log = new AuditLog(stdClass::class, '100', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog(stdClass::class, '100', AuditAction::Update);
 
         $message = $this->factory->createPersistMessage($this->createContext($log));
 
@@ -89,7 +89,7 @@ final class AuditLogMessageFactoryTest extends TestCase
 
     public function testCreatePersistMessageIncludesSignature(): void
     {
-        $log = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog(stdClass::class, '1', AuditAction::Create);
         $log->signature = 'test-sig';
 
         $message = $this->factory->createPersistMessage($this->createContext($log));
@@ -97,10 +97,22 @@ final class AuditLogMessageFactoryTest extends TestCase
         self::assertSame('test-sig', $message->signature);
     }
 
+    public function testCreateQueueMessageIncludesSignatureAndDeliveryId(): void
+    {
+        $log = new AuditLog(stdClass::class, '1', AuditAction::Create);
+        $log->signature = 'test-sig';
+        $log->deliveryId = 'delivery-123';
+
+        $message = $this->factory->createQueueMessage($this->createContext($log));
+
+        self::assertSame('test-sig', $message->signature);
+        self::assertSame('delivery-123', $message->deliveryId);
+    }
+
     public function testCreateQueueMessagePassesContext(): void
     {
         $idResolver = $this->useIdResolverMock();
-        $log = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog(stdClass::class, '1', AuditAction::Create);
         $context = new AuditTransportContext(
             AuditPhase::PostFlush,
             self::createStub(EntityManagerInterface::class),

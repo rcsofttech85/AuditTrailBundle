@@ -84,4 +84,24 @@ final class TablePrefixSubscriberTest extends TestCase
 
         $subscriber->loadClassMetadata($args);
     }
+
+    public function testLoadClassMetadataPreservesExistingTableConfiguration(): void
+    {
+        $subscriber = new TablePrefixSubscriber('prefix', 'suffix');
+        $metadata = new ClassMetadata(AuditLog::class);
+        $metadata->table = [
+            'name' => 'audit_log',
+            'schema' => 'tenant_audit',
+            'options' => ['charset' => 'utf8mb4'],
+        ];
+
+        $args = self::createStub(LoadClassMetadataEventArgs::class);
+        $args->method('getClassMetadata')->willReturn($metadata);
+
+        $subscriber->loadClassMetadata($args);
+
+        self::assertSame('prefix_audit_log_suffix', $metadata->getTableName());
+        self::assertArrayHasKey('schema', $metadata->table);
+        self::assertArrayHasKey('options', $metadata->table);
+    }
 }

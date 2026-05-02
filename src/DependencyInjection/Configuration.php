@@ -9,12 +9,19 @@ use Symfony\Component\Config\Definition\Builder\ArrayNodeDefinition;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
 
+use function array_key_exists;
+use function is_array;
+use function is_bool;
 use function is_string;
 use function preg_match;
+use function sprintf;
+use function str_ends_with;
 use function str_starts_with;
 
 final class Configuration implements ConfigurationInterface
 {
+    private const int MIN_INTEGRITY_SECRET_LENGTH = 32;
+
     private const array VALID_HTTP_SCHEMES = ['http://', 'https://'];
 
     private const string TABLE_NAME_FRAGMENT_PATTERN = '/^[A-Za-z_][A-Za-z0-9_]*$/';
@@ -37,6 +44,24 @@ final class Configuration implements ConfigurationInterface
     private function configureBaseSettings(ArrayNodeDefinition $rootNode): void
     {
         $rootNode
+            ->beforeNormalization()
+            ->ifArray()
+            ->then(function (array $value): array {
+                if (!$this->usesRemoteTransport($value)) {
+                    return $value;
+                }
+
+                if (!array_key_exists('fail_on_transport_error', $value)) {
+                    $value['fail_on_transport_error'] = true;
+                }
+
+                if (!array_key_exists('fallback_to_database', $value)) {
+                    $value['fallback_to_database'] = false;
+                }
+
+                return $value;
+            })
+            ->end()
             ->children()
             ->booleanNode('enabled')->defaultTrue()->end()
             ->arrayNode('ignored_properties')
@@ -71,6 +96,11 @@ final class Configuration implements ConfigurationInterface
             ->booleanNode('track_user_agent')->defaultTrue()->end()
             ->booleanNode('enable_soft_delete')->defaultTrue()->end()
             ->scalarNode('soft_delete_field')->defaultValue('deletedAt')->end()
+            ->arrayNode('soft_delete_filter_names')
+            ->scalarPrototype()->end()
+            ->defaultValue(['softdeleteable'])
+            ->info('Doctrine filter names that should be temporarily disabled while reverting soft-deleted entities.')
+            ->end()
             ->booleanNode('enable_hard_delete')->defaultTrue()->end()
             ->booleanNode('defer_transport_until_commit')->defaultTrue()->end()
             ->booleanNode('fail_on_transport_error')->defaultFalse()->end()
@@ -96,6 +126,29 @@ final class Configuration implements ConfigurationInterface
             ->info('Maximum number of items to serialize in a collection.')
             ->end()
             ->end();
+    }
+
+    /**
+     * @param array<string, mixed> $value
+     */
+    private function usesRemoteTransport(array $value): bool
+    {
+        $transports = $value['transports'] ?? null;
+        if (!is_array($transports)) {
+            return false;
+        }
+
+        return $this->isTransportEnabled($transports['http'] ?? null)
+            || $this->isTransportEnabled($transports['queue'] ?? null);
+    }
+
+    private function isTransportEnabled(mixed $transport): bool
+    {
+        if (is_bool($transport)) {
+            return $transport;
+        }
+
+        return is_array($transport) && ($transport['enabled'] ?? false) === true;
     }
 
     private function configureTransports(ArrayNodeDefinition $rootNode): void
@@ -159,8 +212,28 @@ final class Configuration implements ConfigurationInterface
             ->canBeEnabled()
             ->children()
             ->scalarNode('secret')
-            ->info('Secret key used for HMAC signature. Required if integrity is enabled.')
+            ->info('Runtime env placeholder used for HMAC signature, e.g. "%env(string:AUDIT_INTEGRITY_SECRET)%". Required if integrity is enabled.')
             ->defaultNull()
+            ->validate()
+            ->ifTrue(
+                static fn (mixed $value): bool => is_string($value)
+                    && $value !== ''
+                    && !str_starts_with($value, '%env(')
+                    && mb_strlen($value) < self::MIN_INTEGRITY_SECRET_LENGTH
+            )
+            ->thenInvalid(sprintf(
+                'The integrity secret must be at least %d characters long.',
+                self::MIN_INTEGRITY_SECRET_LENGTH,
+            ))
+            ->end()
+            ->validate()
+            ->ifTrue(
+                static fn (mixed $value): bool => is_string($value)
+                    && $value !== ''
+                    && (!str_starts_with($value, '%env(') || !str_ends_with($value, ')%'))
+            )
+            ->thenInvalid('The integrity secret must be configured as an env placeholder like "%env(string:AUDIT_INTEGRITY_SECRET)%".')
+            ->end()
             ->end()
             ->enumNode('algorithm')
             ->values(['sha256', 'sha384', 'sha512'])

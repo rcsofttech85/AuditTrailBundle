@@ -10,6 +10,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use LogicException;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Message\PersistAuditLogMessage;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
@@ -37,7 +38,7 @@ final readonly class PersistAuditLogHandler
         $log = new AuditLog(
             entityClass: $message->entityClass,
             entityId: $message->entityId,
-            action: $message->action,
+            action: AuditAction::from($message->action),
             createdAt: new DateTimeImmutable($message->createdAt),
             oldValues: $message->oldValues,
             newValues: $message->newValues,

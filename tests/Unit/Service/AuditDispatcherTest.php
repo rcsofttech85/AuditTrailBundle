@@ -19,18 +19,24 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\DataMaskerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
+use Rcsofttech\AuditTrailBundle\Event\AuditDeliveryFailedEvent;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
+use Rcsofttech\AuditTrailBundle\Service\AuditFallbackPersister;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogContextProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
 use Rcsofttech\AuditTrailBundle\Service\DataMasker;
+use Rcsofttech\AuditTrailBundle\Transport\AuditDeliveryResult;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use stdClass;
 use Stringable;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 use function fclose;
+use function is_string;
+use function str_ends_with;
 use function str_repeat;
+use function strlen;
 use function tmpfile;
 
 #[AllowMockObjectsWithoutExpectations]
@@ -118,11 +124,16 @@ final class AuditDispatcherTest extends TestCase
             $logger,
             $aiProcessors ?? [],
         );
+        $fallbackPersister = new AuditFallbackPersister(
+            $auditLogWriter ?? self::createStub(AuditLogWriterInterface::class),
+            $eventDispatcher,
+            $logger,
+        );
 
         return new AuditDispatcher(
             $transport ?? $this->transport,
             $contextProcessor,
-            $auditLogWriter ?? self::createStub(AuditLogWriterInterface::class),
+            $fallbackPersister,
             $eventDispatcher,
             $integrityService,
             $logger,
@@ -137,7 +148,7 @@ final class AuditDispatcherTest extends TestCase
         $eventDispatcher = $this->useEventDispatcherMock();
         $dispatcher = $this->createDispatcher($transport, $eventDispatcher);
         $transport->method('supports')->willReturn(true);
-        $transport->expects($this->once())->method('send');
+        $transport->expects($this->once())->method('send')->willReturn(AuditDeliveryResult::delivered());
         $eventDispatcher->expects($this->once())
             ->method('dispatch')
             ->willReturnCallback(static function (AuditLogCreatedEvent $event) {
@@ -155,7 +166,7 @@ final class AuditDispatcherTest extends TestCase
         $entity = new stdClass();
 
         $transport->method('supports')->willReturn(true);
-        $transport->expects($this->once())->method('send');
+        $transport->expects($this->once())->method('send')->willReturn(AuditDeliveryResult::delivered());
         $eventDispatcher->expects($this->once())
             ->method('dispatch')
             ->with(self::callback(static fn (AuditLogCreatedEvent $event): bool => $event->entity === $entity))
@@ -188,7 +199,8 @@ final class AuditDispatcherTest extends TestCase
             ->method('send')
             ->with(
                 self::callback(static fn (AuditTransportContext $context): bool => ($context->audit->context['event_secret'] ?? null) === '********')
-            );
+            )
+            ->willReturn(AuditDeliveryResult::delivered());
 
         self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
         self::assertSame('********', $this->audit->context['event_secret'] ?? null);
@@ -232,7 +244,7 @@ final class AuditDispatcherTest extends TestCase
             ->willReturn('test_signature');
 
         $transport->method('supports')->willReturn(true);
-        $transport->expects($this->once())->method('send');
+        $transport->expects($this->once())->method('send')->willReturn(AuditDeliveryResult::delivered());
 
         $dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush);
         self::assertSame('test_signature', $this->audit->signature);
@@ -246,7 +258,7 @@ final class AuditDispatcherTest extends TestCase
         $dispatcher = $this->createDispatcher($transport, null, $integrityService, null, null, false, true, [$aiProcessor]);
 
         $transport->method('supports')->willReturn(true);
-        $transport->expects($this->once())->method('send');
+        $transport->expects($this->once())->method('send')->willReturn(AuditDeliveryResult::delivered());
         $aiProcessor->expects($this->once())
             ->method('getNamespace')
             ->willReturn('default_ai');
@@ -299,7 +311,8 @@ final class AuditDispatcherTest extends TestCase
             ->with(
                 self::callback(static fn (AuditTransportContext $context): bool => ($context->audit->context['source'] ?? null) === 'event'
                     && ($context->audit->context['ai']['derived_ai']['summary'] ?? null) === 'Derived after event')
-            );
+            )
+            ->willReturn(AuditDeliveryResult::delivered());
 
         self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
         self::assertSame('Derived after event', $this->audit->context['ai']['derived_ai']['summary'] ?? null);
@@ -328,7 +341,8 @@ final class AuditDispatcherTest extends TestCase
             ->with(
                 self::callback(static fn (AuditTransportContext $context): bool => ($context->audit->context['ai']['existing_ai']['existing'] ?? null) === 'kept'
                     && ($context->audit->context['ai']['new_ai']['summary'] ?? null) === 'New insight')
-            );
+            )
+            ->willReturn(AuditDeliveryResult::delivered());
 
         self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
         self::assertSame('kept', $this->audit->context['ai']['existing_ai']['existing'] ?? null);
@@ -368,7 +382,8 @@ final class AuditDispatcherTest extends TestCase
             ->with(
                 self::callback(static fn (AuditTransportContext $context): bool => ($context->audit->context['ai']['summary_engine']['summary'] ?? null) === 'Price changed'
                     && ($context->audit->context['ai']['risk_engine']['summary'] ?? null) === 'Elevated risk')
-            );
+            )
+            ->willReturn(AuditDeliveryResult::delivered());
 
         self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
         self::assertSame('Price changed', $this->audit->context['ai']['summary_engine']['summary'] ?? null);
@@ -395,7 +410,8 @@ final class AuditDispatcherTest extends TestCase
             ->method('send')
             ->with(
                 self::callback(static fn (AuditTransportContext $context): bool => !isset($context->audit->context['ai']))
-            );
+            )
+            ->willReturn(AuditDeliveryResult::delivered());
 
         self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
         self::assertArrayNotHasKey('ai', $this->audit->context);
@@ -409,7 +425,7 @@ final class AuditDispatcherTest extends TestCase
         $dispatcher = $this->createDispatcher($transport, null, null, null, $logger, false, true, [$aiProcessor]);
 
         $transport->method('supports')->willReturn(true);
-        $transport->expects($this->once())->method('send');
+        $transport->expects($this->once())->method('send')->willReturn(AuditDeliveryResult::delivered());
         $aiProcessor->expects($this->once())
             ->method('getNamespace')
             ->willReturn('default_ai');
@@ -431,7 +447,7 @@ final class AuditDispatcherTest extends TestCase
         $uow = self::createStub(UnitOfWork::class);
 
         $transport->method('supports')->willReturn(true);
-        $transport->expects($this->once())->method('send');
+        $transport->expects($this->once())->method('send')->willReturn(AuditDeliveryResult::delivered());
         $aiProcessor->expects($this->never())->method('getNamespace');
         $aiProcessor->expects($this->never())->method('process');
 
@@ -449,7 +465,7 @@ final class AuditDispatcherTest extends TestCase
             ->willReturn('masking_ai');
         $aiProcessor->method('process')
             ->willReturn(['ai_secret' => 'raw-token']);
-        $transport->expects($this->once())->method('send');
+        $transport->expects($this->once())->method('send')->willReturn(AuditDeliveryResult::delivered());
 
         self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
         self::assertSame('********', $this->audit->context['ai']['masking_ai']['ai_secret'] ?? null);
@@ -483,7 +499,8 @@ final class AuditDispatcherTest extends TestCase
                 ->method('send')
                 ->with(
                     self::callback(static fn (AuditTransportContext $context): bool => ($context->audit->context['stream'] ?? null) === '[resource:stream]'),
-                );
+                )
+                ->willReturn(AuditDeliveryResult::delivered());
 
             self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
             self::assertSame('[resource:stream]', $this->audit->context['stream'] ?? null);
@@ -507,7 +524,17 @@ final class AuditDispatcherTest extends TestCase
             ->willReturn('large_ai');
         $aiProcessor->expects($this->once())
             ->method('process')
-            ->willReturn(['summary' => str_repeat('x', 70_000)]);
+            ->willReturn([
+                'summary' => str_repeat('x', 8_000),
+                'details' => str_repeat('y', 8_000),
+                'explanation' => str_repeat('z', 8_000),
+                'impact' => str_repeat('i', 8_000),
+                'confidence' => str_repeat('c', 8_000),
+                'recommendation' => str_repeat('r', 8_000),
+                'supporting_data' => str_repeat('s', 8_000),
+                'follow_up' => str_repeat('f', 8_000),
+                'evidence' => str_repeat('e', 8_000),
+            ]);
         $logger->expects($this->once())
             ->method('warning')
             ->with(self::stringContains('AI metadata'));
@@ -517,7 +544,8 @@ final class AuditDispatcherTest extends TestCase
                 self::callback(static fn (AuditTransportContext $context): bool => ($context->audit->context['request_id'] ?? null) === 'req-123'
                     && ($context->audit->context['_ai_truncated'] ?? null) === true
                     && !isset($context->audit->context['ai'])),
-            );
+            )
+            ->willReturn(AuditDeliveryResult::delivered());
 
         self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
         self::assertSame('req-123', $this->audit->context['request_id'] ?? null);
@@ -644,7 +672,8 @@ final class AuditDispatcherTest extends TestCase
             ->method('send')
             ->with(
                 self::callback(static fn (AuditTransportContext $context): bool => ($context->audit->context['_context_safety_error'] ?? false) === true),
-            );
+            )
+            ->willReturn(AuditDeliveryResult::delivered());
         $dataMasker->expects($this->once())->method('redact')->willThrowException(new Exception('Masker failed'));
         $logger->expects($this->once())
             ->method('warning')
@@ -678,7 +707,8 @@ final class AuditDispatcherTest extends TestCase
                         && ($context->audit->context['stringable'] ?? null) === 'stringified'
                         && (($context->audit->context['deep']['a']['b']['c']['d'] ?? null) === ['_max_depth_reached' => true]);
                 }),
-            );
+            )
+            ->willReturn(AuditDeliveryResult::delivered());
 
         self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
     }
@@ -686,19 +716,22 @@ final class AuditDispatcherTest extends TestCase
     public function testDispatchTruncatesOversizedNonAiContext(): void
     {
         $transport = $this->useTransportMock();
-        $logger = $this->useLoggerMock();
-        $dispatcher = $this->createDispatcher($transport, null, null, null, $logger);
-        $this->audit->context = ['payload' => str_repeat('x', 70_000)];
+        $dispatcher = $this->createDispatcher($transport);
+        $this->audit->context = ['payload' => str_repeat('x', ContextSanitizer::MAX_STRING_BYTES + 256)];
 
         $transport->method('supports')->willReturn(true);
-        $logger->expects($this->once())
-            ->method('warning')
-            ->with(self::stringContains('Audit context for'));
         $transport->expects($this->once())
             ->method('send')
             ->with(
-                self::callback(static fn (AuditTransportContext $context): bool => ($context->audit->context['_truncated'] ?? false) === true),
-            );
+                self::callback(static function (AuditTransportContext $context): bool {
+                    $payload = $context->audit->context['payload'] ?? null;
+
+                    return is_string($payload)
+                        && str_ends_with($payload, '[truncated]')
+                        && strlen($payload) <= ContextSanitizer::MAX_STRING_BYTES;
+                }),
+            )
+            ->willReturn(AuditDeliveryResult::delivered());
 
         self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
     }
@@ -722,5 +755,63 @@ final class AuditDispatcherTest extends TestCase
             ->with(self::stringContains('AUDIT LOSS'));
 
         self::assertFalse($dispatcher->dispatch($this->audit, $em, AuditPhase::OnFlush));
+    }
+
+    public function testDispatchEmitsDeliveryFailureEventWhenTransportAndFallbackFail(): void
+    {
+        $transport = $this->useTransportMock();
+        $eventDispatcher = $this->useEventDispatcherMock();
+        $logger = $this->useLoggerMock();
+        $auditLogWriter = self::createMock(AuditLogWriterInterface::class);
+        $dispatcher = $this->createDispatcher($transport, $eventDispatcher, null, null, $logger, false, true, null, $auditLogWriter);
+        $failureEventDispatched = false;
+
+        $transport->method('supports')->willReturn(true);
+        $transport->expects($this->once())->method('send')->willThrowException(new Exception('Transport error'));
+        $auditLogWriter->expects($this->once())->method('insert')->willThrowException(new Exception('Fallback error'));
+        $logger->expects($this->once())
+            ->method('critical')
+            ->with(self::stringContains('AUDIT LOSS'));
+        $eventDispatcher->expects($this->exactly(2))
+            ->method('dispatch')
+            ->willReturnCallback(static function (object $event) use (&$failureEventDispatched) {
+                if ($event instanceof AuditLogCreatedEvent) {
+                    return $event;
+                }
+
+                if ($event instanceof AuditDeliveryFailedEvent) {
+                    $failureEventDispatched = $event->phase === AuditPhase::PostFlush
+                        && $event->auditLog->entityClass === 'App\Entity\Post'
+                        && $event->transportError->getMessage() === 'Transport error'
+                        && $event->fallbackError->getMessage() === 'Fallback error';
+
+                    return $event;
+                }
+
+                self::fail('Unexpected event dispatched: '.$event::class);
+            });
+
+        self::assertFalse($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
+        self::assertTrue($failureEventDispatched);
+    }
+
+    public function testDispatchDoesNotFallbackAfterPartialTransportDelivery(): void
+    {
+        $transport = $this->useTransportMock();
+        $logger = $this->useLoggerMock();
+        $auditLogWriter = self::createMock(AuditLogWriterInterface::class);
+        $dispatcher = $this->createDispatcher($transport, null, null, null, $logger, false, true, null, $auditLogWriter);
+
+        $transport->method('supports')->willReturn(true);
+        $transport->expects($this->once())
+            ->method('send')
+            ->willReturn(AuditDeliveryResult::partiallyDelivered(['first_transport'], new Exception('later failure')));
+        $auditLogWriter->expects($this->never())->method('insert');
+        $logger->expects($this->once())
+            ->method('critical')
+            ->with(self::stringContains('partially succeeded'));
+
+        self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
+        self::assertSame('123', $this->audit->entityId);
     }
 }

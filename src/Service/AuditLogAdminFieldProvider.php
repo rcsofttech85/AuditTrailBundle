@@ -12,37 +12,17 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\FormField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
 use Stringable;
 
-use function array_flip;
 use function is_scalar;
+use function is_string;
 
 final class AuditLogAdminFieldProvider
 {
     use ClassNameHelperTrait;
-
-    private const array ACTION_LABELS = [
-        AuditLogInterface::ACTION_CREATE => 'Create',
-        AuditLogInterface::ACTION_UPDATE => 'Update',
-        AuditLogInterface::ACTION_DELETE => 'Delete',
-        AuditLogInterface::ACTION_SOFT_DELETE => 'Soft Delete',
-        AuditLogInterface::ACTION_RESTORE => 'Restore',
-        AuditLogInterface::ACTION_REVERT => 'Revert',
-        AuditLogInterface::ACTION_ACCESS => 'Access',
-    ];
-
-    private const array ACTION_BADGES = [
-        AuditLogInterface::ACTION_CREATE => 'success',
-        AuditLogInterface::ACTION_UPDATE => 'warning',
-        AuditLogInterface::ACTION_DELETE => 'danger',
-        AuditLogInterface::ACTION_SOFT_DELETE => 'danger',
-        AuditLogInterface::ACTION_RESTORE => 'info',
-        AuditLogInterface::ACTION_REVERT => 'primary',
-        AuditLogInterface::ACTION_ACCESS => 'secondary',
-    ];
 
     public function __construct(
         private readonly AuditIntegrityServiceInterface $integrityService,
@@ -57,8 +37,8 @@ final class AuditLogAdminFieldProvider
         yield IdField::new('id')->onlyOnIndex();
 
         yield ChoiceField::new('action', 'Action')
-            ->setChoices(array_flip(self::ACTION_LABELS))
-            ->renderAsBadges(self::ACTION_BADGES)
+            ->formatValue(static fn (mixed $value): string => self::resolveActionLabel($value))
+            ->renderAsBadges(static fn (mixed $value): string => self::resolveAction($value)?->badgeClass() ?? 'secondary')
             ->onlyOnIndex();
 
         yield TextField::new('entityClass', 'Entity')
@@ -84,7 +64,9 @@ final class AuditLogAdminFieldProvider
         yield IdField::new('id', 'Audit Log ID')->onlyOnDetail();
         yield TextField::new('entityClass', 'Entity Class')->onlyOnDetail();
         yield TextField::new('entityId', 'Entity ID')->onlyOnDetail();
-        yield TextField::new('action', 'Action Type')->onlyOnDetail();
+        yield TextField::new('action', 'Action Type')
+            ->formatValue(static fn (mixed $value): string => self::resolveActionLabel($value))
+            ->onlyOnDetail();
 
         yield FormField::addRow();
         yield TextField::new('username', 'Performed By')->onlyOnDetail()->setColumns(6);
@@ -152,5 +134,19 @@ final class AuditLogAdminFieldProvider
         }
 
         return '<span class="badge badge-danger text-danger" style="background: rgba(220, 53, 69, 0.1);"><i class="fa fa-times-circle me-1"></i> Tampered / Invalid</span>';
+    }
+
+    private static function resolveActionLabel(mixed $value): string
+    {
+        return self::resolveAction($value)?->label() ?? (string) (is_scalar($value) || $value instanceof Stringable ? $value : '');
+    }
+
+    private static function resolveAction(mixed $value): ?AuditAction
+    {
+        if ($value instanceof AuditAction) {
+            return $value;
+        }
+
+        return is_string($value) ? AuditAction::tryFrom($value) : null;
     }
 }

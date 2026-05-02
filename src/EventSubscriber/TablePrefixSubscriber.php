@@ -34,8 +34,16 @@ final class TablePrefixSubscriber
         }
 
         $tableName = $classMetadata->getTableName();
-        $classMetadata->setPrimaryTable([
+        $updatedTable = [
             'name' => implode('_', array_filter([$this->tablePrefix, $tableName, $this->tableSuffix], static fn (string $part): bool => $part !== '')),
-        ]);
+        ];
+
+        if (isset($classMetadata->table)) {
+            /** @var array{name: string, schema?: string, indexes?: array<string, array<string, mixed>>, uniqueConstraints?: array<string, array<string, mixed>>, options?: array<string, mixed>, quoted?: bool} $existingTable */
+            $existingTable = $classMetadata->table;
+            $updatedTable = [...$existingTable, ...$updatedTable];
+        }
+
+        $classMetadata->setPrimaryTable($updatedTable);
     }
 }

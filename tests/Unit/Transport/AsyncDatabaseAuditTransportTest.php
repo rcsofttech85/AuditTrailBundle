@@ -7,9 +7,9 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogMessageFactoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Message\PersistAuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Transport\AsyncDatabaseAuditTransport;
@@ -40,7 +40,7 @@ final class AsyncDatabaseAuditTransportTest extends TestCase
     public function testSendDispatchesPersistMessage(): void
     {
         [$bus, $messageFactory] = $this->useTransportMocks();
-        $log = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog(stdClass::class, '1', AuditAction::Create);
 
         $persistMessage = self::createStub(PersistAuditLogMessage::class);
 
@@ -60,7 +60,7 @@ final class AsyncDatabaseAuditTransportTest extends TestCase
     public function testSendPassesContextToFactory(): void
     {
         [$bus, $messageFactory] = $this->useTransportMocks();
-        $log = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $context = $this->createContext(AuditPhase::PostFlush, $log);
 
         $persistMessage = self::createStub(PersistAuditLogMessage::class);
@@ -108,7 +108,7 @@ final class AsyncDatabaseAuditTransportTest extends TestCase
         return new AuditTransportContext(
             $phase,
             self::createStub(EntityManagerInterface::class),
-            $log ?? new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_CREATE),
+            $log ?? new AuditLog(stdClass::class, '1', AuditAction::Create),
         );
     }
 }

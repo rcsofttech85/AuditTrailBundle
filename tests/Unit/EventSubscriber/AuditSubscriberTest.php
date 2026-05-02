@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\EventSubscriber;
 
+use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Event\PostLoadEventArgs;
+use Doctrine\ORM\Events;
 use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\Stub;
@@ -15,18 +17,22 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditAccessHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
-use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
 use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
+use Rcsofttech\AuditTrailBundle\Service\AuditedEntityMarker;
+use Rcsofttech\AuditTrailBundle\Service\AuditLifecycleState;
+use Rcsofttech\AuditTrailBundle\Service\AuditOnFlushProcessor;
+use Rcsofttech\AuditTrailBundle\Service\AuditPostFlushProcessor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+use ReflectionAttribute;
 use ReflectionClass;
 use stdClass;
 
@@ -34,8 +40,6 @@ use stdClass;
 final class AuditSubscriberTest extends TestCase
 {
     private AuditServiceInterface&Stub $auditService;
-
-    private ChangeProcessorInterface&Stub $changeProcessor;
 
     private AuditDispatcherInterface&Stub $dispatcher;
 
@@ -56,7 +60,6 @@ final class AuditSubscriberTest extends TestCase
     protected function setUp(): void
     {
         $this->auditService = self::createStub(AuditServiceInterface::class);
-        $this->changeProcessor = self::createStub(ChangeProcessorInterface::class);
         $this->dispatcher = self::createStub(AuditDispatcherInterface::class);
         $this->auditManager = new MockScheduledAuditManager();
         $this->entityProcessor = self::createStub(EntityProcessorInterface::class);
@@ -71,6 +74,24 @@ final class AuditSubscriberTest extends TestCase
     public function testIsEnabled(): void
     {
         self::assertTrue($this->subscriber->isEnabled());
+    }
+
+    public function testDoctrineListenerAttributesPreferRunningAfterExtensionListeners(): void
+    {
+        $attributes = new ReflectionClass(AuditSubscriber::class)->getAttributes(AsDoctrineListener::class);
+        $listenerConfig = array_map(
+            static fn (ReflectionAttribute $attribute): array => $attribute->getArguments(),
+            $attributes,
+        );
+
+        self::assertContains(
+            ['event' => Events::onFlush, 'priority' => -1000],
+            $listenerConfig,
+        );
+        self::assertContains(
+            ['event' => Events::postFlush],
+            $listenerConfig,
+        );
     }
 
     public function testOnFlushDisabled(): void
@@ -129,14 +150,13 @@ final class AuditSubscriberTest extends TestCase
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_DELETE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Delete);
 
         $this->auditManager->seedScheduledAudits([]);
         $this->auditManager->seedPendingDeletions([
-            ['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true],
+            ['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true, 'action' => AuditAction::Delete],
         ]);
 
-        $this->changeProcessor->method('determineDeletionAction')->willReturn('delete');
         $auditService->method('createAuditLog')->willReturn($audit);
 
         $dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
@@ -154,7 +174,7 @@ final class AuditSubscriberTest extends TestCase
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, 'pending', AuditLogInterface::ACTION_CREATE);
+        $audit = new AuditLog(stdClass::class, 'pending', AuditAction::Create);
 
         $this->auditManager->seedPendingDeletions([]);
         $this->auditManager->seedScheduledAudits([
@@ -181,7 +201,7 @@ final class AuditSubscriberTest extends TestCase
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $this->auditManager->seedPendingDeletions([]);
         $this->auditManager->seedScheduledAudits([
             ['entity' => $entity, 'audit' => $audit, 'is_insert' => false],
@@ -210,7 +230,7 @@ final class AuditSubscriberTest extends TestCase
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $this->auditManager->seedPendingDeletions([]);
         $this->auditManager->seedScheduledAudits([
             ['entity' => $entity, 'audit' => $audit, 'is_insert' => false],
@@ -239,7 +259,7 @@ final class AuditSubscriberTest extends TestCase
         $subscriber = $this->createSubscriber(dispatcher: $dispatcher, logger: $logger);
         $args->method('getObjectManager')->willReturn($em);
 
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
 
         $this->auditManager->seedPendingDeletions([]);
         $this->auditManager->seedScheduledAudits([
@@ -301,9 +321,9 @@ final class AuditSubscriberTest extends TestCase
         $accessHandler = $this->createMock(AuditAccessHandlerInterface::class);
         $subscriber = $this->createSubscriber(accessHandler: $accessHandler);
 
-        $reflection = new ReflectionClass($subscriber);
-        $property = $reflection->getProperty('onFlushProcessing');
-        $property->setValue($subscriber, true);
+        $lifecycleState = new AuditLifecycleState();
+        $lifecycleState->beginOnFlush();
+        $subscriber = $this->createSubscriber(accessHandler: $accessHandler, lifecycleState: $lifecycleState);
 
         $accessHandler->expects($this->never())->method('handleAccess');
 
@@ -316,11 +336,9 @@ final class AuditSubscriberTest extends TestCase
         $em = self::createStub(EntityManagerInterface::class);
         $args = new PostLoadEventArgs($entity, $em);
         $accessHandler = $this->createMock(AuditAccessHandlerInterface::class);
-        $subscriber = $this->createSubscriber(accessHandler: $accessHandler);
-
-        $reflection = new ReflectionClass($subscriber);
-        $property = $reflection->getProperty('postFlushDepth');
-        $property->setValue($subscriber, 1);
+        $lifecycleState = new AuditLifecycleState();
+        $lifecycleState->beginPostFlush();
+        $subscriber = $this->createSubscriber(accessHandler: $accessHandler, lifecycleState: $lifecycleState);
 
         $accessHandler->expects($this->never())->method('handleAccess');
 
@@ -336,7 +354,7 @@ final class AuditSubscriberTest extends TestCase
         $auditService = $this->createMock(AuditServiceInterface::class);
         $subscriber = $this->createSubscriber(auditService: $auditService);
 
-        $this->auditManager->seedPendingDeletions([['entity' => new stdClass(), 'data' => [], 'is_managed' => true]]);
+        $this->auditManager->seedPendingDeletions([['entity' => new stdClass(), 'data' => [], 'is_managed' => true, 'action' => AuditAction::Delete]]);
         $auditService->expects($this->never())->method('createAuditLog');
 
         $subscriber->postFlush($args);
@@ -350,9 +368,7 @@ final class AuditSubscriberTest extends TestCase
         $subscriber = $this->createSubscriber(auditService: $auditService);
         $args->method('getObjectManager')->willReturn($em);
 
-        $this->auditManager->seedPendingDeletions([['entity' => new stdClass(), 'data' => [], 'is_managed' => true]]);
-        $this->changeProcessor->method('determineDeletionAction')->willReturn(null);
-
+        $this->auditManager->seedPendingDeletions([]);
         $auditService->expects($this->never())->method('createAuditLog');
 
         $subscriber->postFlush($args);
@@ -368,12 +384,10 @@ final class AuditSubscriberTest extends TestCase
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
-        $this->auditManager->seedPendingDeletions([['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true]]);
-
-        $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditLogInterface::ACTION_SOFT_DELETE);
+        $this->auditManager->seedPendingDeletions([['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true, 'action' => AuditAction::SoftDelete]]);
         $auditService->expects($this->once())->method('getEntityData')->with($entity)->willReturn(['name' => 'soft']);
 
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_SOFT_DELETE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::SoftDelete);
         $auditService->method('createAuditLog')->willReturn($audit);
         $dispatcher->method('dispatch')->willReturn(true);
 
@@ -395,11 +409,10 @@ final class AuditSubscriberTest extends TestCase
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
-        $this->auditManager->seedPendingDeletions([['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true]]);
+        $this->auditManager->seedPendingDeletions([['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true, 'action' => AuditAction::Delete]]);
         $this->auditManager->seedScheduledAudits([]);
 
-        $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditLogInterface::ACTION_DELETE);
-        $auditService->method('createAuditLog')->willReturn(new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_DELETE));
+        $auditService->method('createAuditLog')->willReturn(new AuditLog(stdClass::class, '1', AuditAction::Delete));
         $dispatcher->expects($this->once())->method('dispatch')->willReturn(false);
         $accessHandler->expects($this->never())->method('markAsAudited');
         $em->expects($this->never())->method('flush');
@@ -425,11 +438,10 @@ final class AuditSubscriberTest extends TestCase
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_DELETE);
-        $this->auditManager->seedPendingDeletions([['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true]]);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Delete);
+        $this->auditManager->seedPendingDeletions([['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true, 'action' => AuditAction::Delete]]);
         $this->auditManager->seedScheduledAudits([]);
 
-        $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditLogInterface::ACTION_DELETE);
         $auditService->method('createAuditLog')->willReturn($audit);
         $dispatcher->expects($this->exactly(2))
             ->method('dispatch')
@@ -452,7 +464,7 @@ final class AuditSubscriberTest extends TestCase
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, '123', AuditLogInterface::ACTION_CREATE);
+        $audit = new AuditLog(stdClass::class, '123', AuditAction::Create);
 
         $this->auditManager->seedScheduledAudits([
             ['entity' => $entity, 'audit' => $audit, 'is_insert' => true],
@@ -480,7 +492,7 @@ final class AuditSubscriberTest extends TestCase
         $args = self::createStub(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $this->auditManager->seedScheduledAudits([
             ['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false],
         ]);
@@ -501,7 +513,7 @@ final class AuditSubscriberTest extends TestCase
         $entityProcessor = $this->createMock(EntityProcessorInterface::class);
         $subscriber = $this->createSubscriber(dispatcher: $dispatcher, entityProcessor: $entityProcessor);
 
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $this->auditManager->seedScheduledAudits([
             ['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false],
         ]);
@@ -531,11 +543,10 @@ final class AuditSubscriberTest extends TestCase
         $args->method('getObjectManager')->willReturn($em);
 
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_DELETE);
-        $this->auditManager->seedPendingDeletions([['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true]]);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Delete);
+        $this->auditManager->seedPendingDeletions([['entity' => $entity, 'data' => ['id' => 1], 'is_managed' => true, 'action' => AuditAction::Delete]]);
         $this->auditManager->seedScheduledAudits([]);
 
-        $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditLogInterface::ACTION_DELETE);
         $auditService->method('createAuditLog')->willReturn($audit);
         $dispatcher->expects($this->once())
             ->method('dispatch')
@@ -553,24 +564,13 @@ final class AuditSubscriberTest extends TestCase
     public function testPostFlushWithLoggerButNoException(): void
     {
         $logger = $this->createMock(LoggerInterface::class);
-        $subscriber = new AuditSubscriber(
-            $this->auditService,
-            $this->changeProcessor,
-            $this->dispatcher,
-            $this->auditManager,
-            $this->entityProcessor,
-            new AssociationImpactAnalyzer(new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)), new CollectionTransitionMerger()),
-            $this->transactionIdGenerator,
-            $this->accessHandler,
-            $this->idResolver,
-            $logger
-        );
+        $subscriber = $this->createSubscriber(logger: $logger);
 
         $em = $this->createMock(EntityManagerInterface::class);
         $args = self::createStub(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $this->auditManager->seedScheduledAudits([['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false]]);
 
         $this->dispatcher->method('dispatch')->willReturn(true);
@@ -588,7 +588,7 @@ final class AuditSubscriberTest extends TestCase
         $args = self::createStub(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $this->auditManager->seedScheduledAudits([['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false]]);
 
         $this->dispatcher->method('dispatch')->willReturn(true);
@@ -608,7 +608,7 @@ final class AuditSubscriberTest extends TestCase
         $args = self::createStub(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $this->auditManager->seedScheduledAudits([['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false]]);
 
         $this->dispatcher->method('dispatch')->willReturn(true);
@@ -627,7 +627,7 @@ final class AuditSubscriberTest extends TestCase
         $args = self::createStub(PostFlushEventArgs::class);
         $args->method('getObjectManager')->willReturn($em);
 
-        $audit = new AuditLog(stdClass::class, '1', AuditLogInterface::ACTION_UPDATE);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $this->auditManager->seedScheduledAudits([['entity' => new stdClass(), 'audit' => $audit, 'is_insert' => false]]);
 
         $this->dispatcher->method('dispatch')->willReturn(true);
@@ -645,18 +645,29 @@ final class AuditSubscriberTest extends TestCase
         ?EntityProcessorInterface $entityProcessor = null,
         ?AuditAccessHandlerInterface $accessHandler = null,
         ?LoggerInterface $logger = null,
+        ?AuditLifecycleState $lifecycleState = null,
     ): AuditSubscriber {
+        $resolvedAccessHandler = $accessHandler ?? $this->accessHandler;
+        $resolvedIdResolver = $this->idResolver;
+        $resolvedLifecycleState = $lifecycleState ?? new AuditLifecycleState();
+        $associationImpactAnalyzer = new AssociationImpactAnalyzer(
+            new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)),
+            new CollectionTransitionMerger(),
+        );
+
         return new AuditSubscriber(
-            $auditService ?? $this->auditService,
-            $this->changeProcessor,
-            $dispatcher ?? $this->dispatcher,
             $this->auditManager,
-            $entityProcessor ?? $this->entityProcessor,
-            new AssociationImpactAnalyzer(new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)), new CollectionTransitionMerger()),
-            $this->transactionIdGenerator,
-            $accessHandler ?? $this->accessHandler,
-            $this->idResolver,
-            $logger ?? $this->logger,
+            $resolvedAccessHandler,
+            $resolvedLifecycleState,
+            new AuditOnFlushProcessor($entityProcessor ?? $this->entityProcessor, $associationImpactAnalyzer),
+            new AuditPostFlushProcessor(
+                $auditService ?? $this->auditService,
+                $dispatcher ?? $this->dispatcher,
+                $this->auditManager,
+                $this->transactionIdGenerator,
+                new AuditedEntityMarker($resolvedAccessHandler, $resolvedIdResolver),
+                $logger ?? $this->logger,
+            ),
         );
     }
 }

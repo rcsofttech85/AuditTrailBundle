@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
+use Rcsofttech\AuditTrailBundle\Transport\AuditDeliveryResult;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use Rcsofttech\AuditTrailBundle\Transport\ChainAuditTransport;
 use RuntimeException;
@@ -51,7 +52,7 @@ final class ChainAuditTransportTest extends TestCase
             ->method('supports')
             ->with($context)
             ->willReturn(true);
-        $t1->expects($this->once())->method('send')->with($context);
+        $t1->expects($this->once())->method('send')->with($context)->willReturn(AuditDeliveryResult::delivered());
 
         $t2 = $this->createMock(AuditTransportInterface::class);
         $t2->expects($this->once())
@@ -61,7 +62,7 @@ final class ChainAuditTransportTest extends TestCase
         $t2->expects($this->never())->method('send');
 
         $chain = new ChainAuditTransport([$t1, $t2]);
-        $chain->send($context);
+        self::assertTrue($chain->send($context)->delivered);
     }
 
     public function testSupportsDoesNotExhaustTraversableTransportsBeforeSend(): void
@@ -76,14 +77,15 @@ final class ChainAuditTransportTest extends TestCase
             ->willReturn(true);
         $transport->expects($this->once())
             ->method('send')
-            ->with($context);
+            ->with($context)
+            ->willReturn(AuditDeliveryResult::delivered());
 
         $chain = new ChainAuditTransport((static function () use ($transport): iterable {
             yield $transport;
         })());
 
         self::assertTrue($chain->supports($context));
-        $chain->send($context);
+        self::assertTrue($chain->send($context)->delivered);
     }
 
     public function testSendIsFailFastWhenATransportThrows(): void
@@ -109,6 +111,41 @@ final class ChainAuditTransportTest extends TestCase
         $this->expectExceptionMessage('boom');
 
         $chain->send($context);
+    }
+
+    public function testSendReturnsPartialDeliveryResultWhenALaterTransportFailsAfterSuccess(): void
+    {
+        $log = new AuditLog('Class', '1', 'create');
+        $context = $this->createContext(AuditPhase::PostFlush, $log);
+
+        $successfulTransport = $this->createMock(AuditTransportInterface::class);
+        $successfulTransport->expects($this->once())
+            ->method('supports')
+            ->with($context)
+            ->willReturn(true);
+        $successfulTransport->expects($this->once())
+            ->method('send')
+            ->with($context)
+            ->willReturn(AuditDeliveryResult::delivered());
+
+        $failingTransport = $this->createMock(AuditTransportInterface::class);
+        $failingTransport->expects($this->once())
+            ->method('supports')
+            ->with($context)
+            ->willReturn(true);
+        $failingTransport->expects($this->once())
+            ->method('send')
+            ->with($context)
+            ->willThrowException(new RuntimeException('boom'));
+
+        $chain = new ChainAuditTransport([$successfulTransport, $failingTransport]);
+        $result = $chain->send($context);
+
+        self::assertTrue($result->delivered);
+        self::assertTrue($result->isPartial());
+        self::assertCount(1, $result->completedTransports);
+        self::assertStringContainsString('AuditTransportInterface', $result->completedTransports[0]);
+        self::assertSame('boom', $result->failure?->getMessage());
     }
 
     private function createContext(AuditPhase $phase, ?AuditLog $audit = null): AuditTransportContext

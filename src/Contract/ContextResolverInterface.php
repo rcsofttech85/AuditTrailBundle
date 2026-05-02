@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Contract;
 
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+
 interface ContextResolverInterface
 {
     /**
@@ -18,5 +20,5 @@ interface ContextResolverInterface
      *     context: array<string, mixed>
      * }
      */
-    public function resolve(object $entity, string $action, array $newValues, array $extraContext): array;
+    public function resolve(object $entity, AuditAction $action, array $newValues, array $extraContext): array;
 }

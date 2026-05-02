@@ -37,6 +37,11 @@ final class DataMasker implements DataMaskerInterface
         'token',
     ];
 
+    private const array EXACT_SENSITIVE_KEYS = [
+        'key',
+        'token',
+    ];
+
     private const array SECRET_CONTEXT_SEGMENTS = [
         'api',
         'access',
@@ -110,6 +115,10 @@ final class DataMasker implements DataMaskerInterface
         }
 
         if (isset($this->explicitSensitiveKeyLookup[$normalizedKey])) {
+            return true;
+        }
+
+        if (in_array($normalizedKey, self::EXACT_SENSITIVE_KEYS, true)) {
             return true;
         }
 

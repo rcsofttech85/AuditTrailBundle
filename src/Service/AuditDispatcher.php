@@ -6,17 +6,17 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
-use LogicException;
 use Override;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
+use Rcsofttech\AuditTrailBundle\Event\AuditDeliveryFailedEvent;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
+use RuntimeException;
 use Symfony\Component\Uid\Uuid;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 use Throwable;
@@ -28,7 +28,7 @@ final class AuditDispatcher implements AuditDispatcherInterface
     public function __construct(
         private readonly AuditTransportInterface $transport,
         private readonly AuditLogContextProcessor $contextProcessor,
-        private readonly AuditLogWriterInterface $auditLogWriter,
+        private readonly AuditFallbackPersister $fallbackPersister,
         private readonly ?EventDispatcherInterface $eventDispatcher = null,
         private readonly ?AuditIntegrityServiceInterface $integrityService = null,
         private readonly ?LoggerInterface $logger = null,
@@ -66,8 +66,36 @@ final class AuditDispatcher implements AuditDispatcherInterface
         }
 
         try {
-            $this->transport->send($context);
+            $result = $this->transport->send($context);
+
+            if ($result->isPartial()) {
+                $failure = $result->failure ?? new RuntimeException('Audit delivery partially failed.');
+                $this->logger?->critical(
+                    sprintf(
+                        'Audit delivery partially succeeded for %s#%s before failing in a later transport.',
+                        $audit->entityClass,
+                        $audit->entityId,
+                    ),
+                    [
+                        'completed_transports' => $result->completedTransports,
+                        'exception' => $failure,
+                    ],
+                );
+
+                if ($this->eventDispatcher !== null) {
+                    $this->eventDispatcher->dispatch(
+                        new AuditDeliveryFailedEvent($audit, $phase, $failure, $failure, $entity),
+                    );
+                }
+
+                if ($this->failOnTransportError) {
+                    throw $failure;
+                }
+            }
+
             $audit->seal();
+
+            return true;
         } catch (Throwable $e) {
             $this->logger?->error(
                 sprintf('Audit transport failed for %s#%s: %s', $audit->entityClass, $audit->entityId, $e->getMessage()),
@@ -79,81 +107,11 @@ final class AuditDispatcher implements AuditDispatcherInterface
             }
 
             if ($this->fallbackToDatabase) {
-                return $this->persistFallback($audit, $em, $phase, $uow);
+                return $this->fallbackPersister->persist($audit, $em, $phase, $uow, $e, $entity);
             }
 
             return false;
         }
-
-        return true;
-    }
-
-    private function persistFallback(
-        AuditLog $audit,
-        EntityManagerInterface $em,
-        AuditPhase $phase,
-        ?UnitOfWork $uow = null,
-    ): bool {
-        try {
-            return match (true) {
-                $phase->isOnFlush() => $this->persistOnFlushFallback($audit, $em, $uow),
-                default => $this->persistDeferredFallback($audit, $em, $phase),
-            };
-        } catch (Throwable $fallbackError) {
-            $this->logger?->critical(
-                sprintf('AUDIT LOSS: Failed to persist fallback for %s#%s: %s', $audit->entityClass, $audit->entityId, $fallbackError->getMessage()),
-                ['exception' => $fallbackError],
-            );
-
-            return false;
-        }
-    }
-
-    private function persistOnFlushFallback(
-        AuditLog $audit,
-        EntityManagerInterface $em,
-        ?UnitOfWork $uow,
-    ): bool {
-        if (!$em->contains($audit)) {
-            $em->persist($audit);
-        }
-
-        if ($uow === null) {
-            throw new LogicException('UnitOfWork is required to persist fallback audit logs during on_flush.');
-        }
-
-        $uow->computeChangeSet($em->getClassMetadata(AuditLog::class), $audit);
-
-        return $this->finalizeDeferredFallback($audit);
-    }
-
-    private function persistDeferredFallback(
-        AuditLog $audit,
-        EntityManagerInterface $em,
-        ?AuditPhase $phase = null,
-    ): bool {
-        $this->auditLogWriter->insert($audit, $em);
-
-        return $this->finalizeDeferredFallback($audit, $phase);
-    }
-
-    private function finalizeDeferredFallback(AuditLog $audit, ?AuditPhase $phase = null): bool
-    {
-        $audit->seal();
-
-        $message = $phase === null
-            ? sprintf('Audit log for %s#%s saved via database fallback.', $audit->entityClass, $audit->entityId)
-            : sprintf(
-                'Audit log for %s#%s saved via database fallback during phase "%s".',
-                $audit->entityClass,
-                $audit->entityId,
-                $phase->value,
-            );
-        $this->logger?->warning(
-            $message,
-        );
-
-        return true;
     }
 
     private function ensureDeliveryId(AuditLog $audit): void

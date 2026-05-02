@@ -296,6 +296,43 @@ class AuditSubscriber implements EventSubscriberInterface
 }
 ```
 
+### `AuditDeliveryFailedEvent`
+
+Dispatched when audit transport delivery fails and the bundle can no longer
+complete the delivery path cleanly.
+
+Typical uses:
+
+- send operational alerts
+- emit metrics for transport or fallback failures
+- hook incident reporting into audit-loss scenarios
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\EventSubscriber;
+
+use Rcsofttech\AuditTrailBundle\Event\AuditDeliveryFailedEvent;
+use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+
+final class AuditFailureSubscriber implements EventSubscriberInterface
+{
+    public static function getSubscribedEvents(): array
+    {
+        return [
+            AuditDeliveryFailedEvent::class => 'onAuditDeliveryFailed',
+        ];
+    }
+
+    public function onAuditDeliveryFailed(AuditDeliveryFailedEvent $event): void
+    {
+        // Send an alert, increment a metric, or record the failure externally.
+    }
+}
+```
+
 ### `AuditMessageStampEvent`
 
 Dispatched when an audit message is about to be sent via the Messenger transport. Use this to add custom stamps (e.g., `DelayStamp`, `AmqpStamp`) to the message.

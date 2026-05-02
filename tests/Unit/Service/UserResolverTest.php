@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Service\CliExecutionContextResolver;
 use Rcsofttech\AuditTrailBundle\Service\UserResolver;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubUserWithId;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubUserWithoutId;
@@ -498,7 +499,7 @@ final class UserResolverTest extends TestCase
             $requestStack->push($request);
         }
 
-        return new UserResolver($security, $requestStack, $trackIp, $trackUserAgent);
+        return new UserResolver($security, $requestStack, new CliExecutionContextResolver(), $trackIp, $trackUserAgent);
     }
 
     private function createResolverWithImpersonation(UserInterface $originalUser): UserResolver
@@ -513,6 +514,6 @@ final class UserResolverTest extends TestCase
         $security = self::createStub(Security::class);
         $security->method('getToken')->willReturn($token);
 
-        return new UserResolver($security, new RequestStack());
+        return new UserResolver($security, new RequestStack(), new CliExecutionContextResolver());
     }
 }

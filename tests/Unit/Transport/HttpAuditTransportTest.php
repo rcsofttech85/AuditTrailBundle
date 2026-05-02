@@ -204,6 +204,26 @@ final class HttpAuditTransportTest extends TestCase
         $transport->send($this->createContext($log));
     }
 
+    public function testHttpErrorDoesNotLeakResponseBodyInExceptionMessage(): void
+    {
+        $client = $this->createMock(HttpClientInterface::class);
+        $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver);
+
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(500);
+        $response->expects($this->never())->method('getContent');
+
+        $client->expects($this->once())->method('request')->willReturn($response);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('status code 500.');
+        $this->expectExceptionMessage('TestEntity#1');
+
+        $transport->send($this->createContext(new AuditLog('TestEntity', '1', 'create')));
+    }
+
     public function testContextUsesPersistedAuditContextOnly(): void
     {
         $client = $this->createMock(HttpClientInterface::class);

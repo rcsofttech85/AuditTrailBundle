@@ -94,9 +94,12 @@ class TestKernel extends Kernel implements CompilerPassInterface
 
     protected function configureContainer(ContainerBuilder $c, LoaderInterface $loader): void
     {
+        $c->setParameter('env(AUDIT_INTEGRITY_SECRET)', 'test-integrity-secret-for-suite-123');
+        $c->setParameter('env(AUDIT_INTEGRITY_PRESSURE_SECRET)', 'pressure-secret-for-suite-verify-123');
+
         $c->loadFromExtension('framework', [
             'test' => true,
-            'secret' => 'test',
+            'secret' => 'test-integrity-secret-for-kernel-123',
             'php_errors' => ['log' => false, 'throw' => false],
             'validation' => ['email_validation_mode' => 'html5'],
             'cache' => [

@@ -11,19 +11,15 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\InverseSideMapping;
 use Doctrine\ORM\Mapping\OwningSideMapping;
 
-use function is_callable;
 use function is_string;
-use function method_exists;
-use function preg_replace;
 use function spl_object_id;
 use function sprintf;
-use function strrpos;
-use function substr;
 
 final readonly class RevertCollectionAssociationSynchronizer
 {
     public function __construct(
         private EntityManagerInterface $em,
+        private AssociationMutatorInvoker $mutatorInvoker,
     ) {
     }
 
@@ -132,7 +128,7 @@ final readonly class RevertCollectionAssociationSynchronizer
         Collection $currentValue,
         object $item,
     ): void {
-        if ($this->invokeCollectionMutator($entity, 'add', $item)) {
+        if ($this->mutatorInvoker->invokeCollectionMutator($entity, 'add', $item)) {
             return;
         }
 
@@ -152,27 +148,12 @@ final readonly class RevertCollectionAssociationSynchronizer
         Collection $currentValue,
         object $item,
     ): void {
-        if ($this->invokeCollectionMutator($entity, 'remove', $item)) {
+        if ($this->mutatorInvoker->invokeCollectionMutator($entity, 'remove', $item)) {
             return;
         }
 
         $currentValue->removeElement($item);
         $this->synchronizeCounterpartAssociation($metadata, $mapping, $entity, $field, $item, false);
-    }
-
-    private function invokeCollectionMutator(object $entity, string $prefix, object $item): bool
-    {
-        $method = $prefix.$this->resolveShortClassName($item);
-
-        if (!method_exists($entity, $method) || !is_callable([$entity, $method])) {
-            return false;
-        }
-
-        /** @var callable(object): void $callable */
-        $callable = [$entity, $method];
-        $callable($item);
-
-        return true;
     }
 
     /**
@@ -191,7 +172,7 @@ final readonly class RevertCollectionAssociationSynchronizer
             return;
         }
 
-        if ($this->invokeCounterpartMutator($entity, $item, $adding)) {
+        if ($this->mutatorInvoker->invokeCounterpartMutator($entity, $item, $adding)) {
             return;
         }
 
@@ -269,22 +250,6 @@ final readonly class RevertCollectionAssociationSynchronizer
         }
     }
 
-    private function invokeCounterpartMutator(object $entity, object $item, bool $adding): bool
-    {
-        $prefix = $adding ? 'add' : 'remove';
-        $method = $prefix.$this->resolveShortClassName($entity);
-
-        if (!method_exists($item, $method) || !is_callable([$item, $method])) {
-            return false;
-        }
-
-        /** @var callable(object): void $callable */
-        $callable = [$item, $method];
-        $callable($entity);
-
-        return true;
-    }
-
     /**
      * @param Collection<int|string, object> $collection
      *
@@ -313,22 +278,5 @@ final readonly class RevertCollectionAssociationSynchronizer
         }
 
         return $lookup;
-    }
-
-    private function resolveShortClassName(object $entity): string
-    {
-        return $this->extractShortClassName($entity::class);
-    }
-
-    private function extractShortClassName(string $class): string
-    {
-        $separator = strrpos($class, '\\');
-
-        return $this->normalizeShortClassName($separator === false ? $class : substr($class, $separator + 1));
-    }
-
-    private function normalizeShortClassName(string $shortName): string
-    {
-        return (string) preg_replace('/[^A-Za-z0-9]/', '', $shortName);
     }
 }

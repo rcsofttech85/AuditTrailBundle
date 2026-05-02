@@ -6,14 +6,15 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Override;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 use function array_fill_keys;
 use function array_key_exists;
 use function is_array;
+use function max;
 
 final class ChangeProcessor implements ChangeProcessorInterface
 {
@@ -72,47 +73,67 @@ final class ChangeProcessor implements ChangeProcessorInterface
         }
 
         if (is_numeric($oldValue) && is_numeric($newValue)) {
-            return abs((float) $oldValue - (float) $newValue) > 1e-9;
+            $oldFloat = (float) $oldValue;
+            $newFloat = (float) $newValue;
+            $difference = abs($oldFloat - $newFloat);
+            $relativeTolerance = 1e-9 * max(1.0, abs($oldFloat), abs($newFloat));
+
+            return $difference > $relativeTolerance;
         }
 
         return $oldValue !== $newValue;
     }
 
     /**
-     * @param array<string, array{0: mixed, 1: mixed}> $changeSet
+     * @param array<string, mixed> $changeSet
      */
     #[Override]
-    public function determineUpdateAction(array $changeSet): string
+    public function determineUpdateAction(array $changeSet): AuditAction
     {
         if (!$this->enableSoftDelete || !array_key_exists($this->softDeleteField, $changeSet)) {
-            return AuditLogInterface::ACTION_UPDATE;
+            return AuditAction::Update;
         }
 
-        [$oldValue, $newValue] = $changeSet[$this->softDeleteField];
+        $softDeleteChange = $changeSet[$this->softDeleteField];
+        if (
+            !is_array($softDeleteChange)
+            || !array_key_exists(0, $softDeleteChange)
+            || !array_key_exists(1, $softDeleteChange)
+        ) {
+            return AuditAction::Update;
+        }
+
+        [$oldValue, $newValue] = $softDeleteChange;
         if ($oldValue === null && $newValue !== null) {
-            return AuditLogInterface::ACTION_SOFT_DELETE;
+            return AuditAction::SoftDelete;
         }
 
         return ($oldValue !== null && $newValue === null)
-            ? AuditLogInterface::ACTION_RESTORE
-            : AuditLogInterface::ACTION_UPDATE;
+            ? AuditAction::Restore
+            : AuditAction::Update;
     }
 
     #[Override]
-    public function determineDeletionAction(EntityManagerInterface $em, object $entity, bool $enableHardDelete): ?string
+    public function determineDeletionAction(EntityManagerInterface $em, object $entity, bool $enableHardDelete): ?AuditAction
     {
         if (!$this->enableSoftDelete) {
-            return $enableHardDelete ? AuditLogInterface::ACTION_DELETE : null;
+            return $enableHardDelete ? AuditAction::Delete : null;
         }
 
         $meta = $em->getClassMetadata($entity::class);
         if ($meta->hasField($this->softDeleteField)) {
-            $softDeleteValue = $meta->getFieldValue($entity, $this->softDeleteField);
-            if ($softDeleteValue !== null) {
-                return AuditLogInterface::ACTION_SOFT_DELETE;
+            $changeSet = $em->getUnitOfWork()->getEntityChangeSet($entity);
+            $softDeleteChange = $changeSet[$this->softDeleteField] ?? null;
+
+            if (is_array($softDeleteChange)) {
+                [$oldValue, $newValue] = $softDeleteChange;
+
+                if ($oldValue === null && $newValue !== null) {
+                    return AuditAction::SoftDelete;
+                }
             }
         }
 
-        return $enableHardDelete ? AuditLogInterface::ACTION_DELETE : null;
+        return $enableHardDelete ? AuditAction::Delete : null;
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Query;
 
 use Override;
+use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReaderInterface;
@@ -27,6 +28,9 @@ final readonly class AuditReader implements AuditReaderInterface
     public function __construct(
         private AuditLogRepositoryInterface $repository,
         private EntityIdResolverInterface $idResolver,
+        private AuditQueryFilterFactory $filterFactory,
+        private AuditChangedFieldMatcher $changedFieldMatcher,
+        private ?LoggerInterface $logger = null,
     ) {
     }
 
@@ -36,7 +40,7 @@ final readonly class AuditReader implements AuditReaderInterface
     #[Override]
     public function createQuery(): AuditQuery
     {
-        return new AuditQuery($this->repository);
+        return new AuditQuery($this->repository, $this->filterFactory, $this->changedFieldMatcher);
     }
 
     /**
@@ -136,7 +140,12 @@ final readonly class AuditReader implements AuditReaderInterface
     {
         try {
             $id = $this->idResolver->resolveFromEntity($entity);
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            $this->logger?->warning('Failed to resolve entity identifier for audit lookup.', [
+                'entity_class' => $entity::class,
+                'exception' => $exception,
+            ]);
+
             return null;
         }
 

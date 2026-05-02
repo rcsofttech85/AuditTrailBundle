@@ -13,6 +13,7 @@ use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\PersistAuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
+use Rcsofttech\AuditTrailBundle\Service\AuditFallbackPersister;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogContextProcessor;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogWriter;
 use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
@@ -55,7 +56,7 @@ final class AsyncDatabaseAndQueueConflictTest extends AbstractFunctionalTestCase
         $auditDispatcher = new AuditDispatcher(
             $chainTransport,
             new AuditLogContextProcessor(new ContextSanitizer()),
-            new AuditLogWriter(),
+            new AuditFallbackPersister(new AuditLogWriter()),
             null,
             null,
             null,

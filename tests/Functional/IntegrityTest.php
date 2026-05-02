@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -23,7 +23,7 @@ final class IntegrityTest extends AbstractFunctionalTestCase
             'audit_config' => [
                 'integrity' => [
                     'enabled' => true,
-                    'secret' => 'test-secret',
+                    'secret' => '%env(string:AUDIT_INTEGRITY_SECRET)%',
                 ],
             ],
         ];
@@ -37,7 +37,7 @@ final class IntegrityTest extends AbstractFunctionalTestCase
 
         $auditLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => TestEntity::class,
-            'action' => AuditLogInterface::ACTION_CREATE,
+            'action' => AuditAction::Create,
         ]);
 
         self::assertNotNull($auditLog);
@@ -51,7 +51,7 @@ final class IntegrityTest extends AbstractFunctionalTestCase
             'audit_config' => [
                 'integrity' => [
                     'enabled' => true,
-                    'secret' => 'test-secret',
+                    'secret' => '%env(string:AUDIT_INTEGRITY_SECRET)%',
                 ],
             ],
         ];
@@ -103,7 +103,7 @@ final class IntegrityTest extends AbstractFunctionalTestCase
             'audit_config' => [
                 'integrity' => [
                     'enabled' => true,
-                    'secret' => 'test-secret',
+                    'secret' => '%env(string:AUDIT_INTEGRITY_SECRET)%',
                 ],
             ],
         ];
@@ -121,7 +121,7 @@ final class IntegrityTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $auditLog */
         $auditLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => TestEntity::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ]);
         self::assertNotNull($auditLog);
         self::assertNotNull($auditLog->id);
@@ -153,7 +153,7 @@ final class IntegrityTest extends AbstractFunctionalTestCase
             'audit_config' => [
                 'integrity' => [
                     'enabled' => true,
-                    'secret' => 'test-secret',
+                    'secret' => '%env(string:AUDIT_INTEGRITY_SECRET)%',
                 ],
             ],
         ];
@@ -171,7 +171,7 @@ final class IntegrityTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $auditLog */
         $auditLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => TestEntity::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ]);
         self::assertNotNull($auditLog);
         self::assertNotNull($auditLog->id);
@@ -193,7 +193,7 @@ final class IntegrityTest extends AbstractFunctionalTestCase
 
         $affected = $em->getConnection()->executeStatement(
             'UPDATE audit_log SET signature = ? WHERE id = ?',
-            [hash_hmac('sha256', $legacyPayload, 'test-secret'), $auditLog->id->toBinary()]
+            [hash_hmac('sha256', $legacyPayload, 'test-integrity-secret-for-suite-123'), $auditLog->id->toBinary()]
         );
         self::assertSame(1, $affected);
         $em->clear();

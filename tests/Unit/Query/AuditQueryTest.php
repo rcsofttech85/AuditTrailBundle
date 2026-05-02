@@ -8,23 +8,35 @@ use DateTimeImmutable;
 use InvalidArgumentException;
 use LogicException;
 use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Query\AuditChangedFieldMatcher;
 use Rcsofttech\AuditTrailBundle\Query\AuditQuery;
+use Rcsofttech\AuditTrailBundle\Query\AuditQueryFilterFactory;
 use ReflectionClass;
 use Symfony\Component\Uid\Uuid;
 
 final class AuditQueryTest extends TestCase
 {
-    private AuditLogRepositoryInterface $repository;
+    private AuditLogRepositoryInterface&Stub $repository;
 
     private AuditQuery $query;
 
     protected function setUp(): void
     {
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
-        $this->query = new AuditQuery($this->repository);
+        $this->query = $this->createQuery($this->repository);
+    }
+
+    private function createQuery(?AuditLogRepositoryInterface $repository = null): AuditQuery
+    {
+        return new AuditQuery(
+            $repository ?? $this->repository,
+            new AuditQueryFilterFactory(),
+            new AuditChangedFieldMatcher(),
+        );
     }
 
     public function testImmutability(): void
@@ -332,11 +344,11 @@ final class AuditQueryTest extends TestCase
     {
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
         $this->repository->method('findWithFilters')->willReturn([new AuditLog('Class', '1', 'create')]);
-        $this->query = new AuditQuery($this->repository);
+        $this->query = $this->createQuery($this->repository);
         self::assertTrue($this->query->exists());
 
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
-        $this->query = new AuditQuery($this->repository);
+        $this->query = $this->createQuery($this->repository);
         $this->repository->method('findWithFilters')->willReturn([]);
         self::assertFalse($this->query->exists());
     }
@@ -344,7 +356,7 @@ final class AuditQueryTest extends TestCase
     public function testGetNextCursor(): void
     {
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
-        $this->query = new AuditQuery($this->repository);
+        $this->query = $this->createQuery($this->repository);
 
         $uuid1 = Uuid::v7()->toString();
         $log1 = new AuditLog('Class', '1', 'create');
@@ -356,14 +368,14 @@ final class AuditQueryTest extends TestCase
         $repository = self::createStub(AuditLogRepositoryInterface::class);
         $repository->method('findWithFilters')->willReturn([$log1, $log2]);
         $this->repository = $repository;
-        $this->query = new AuditQuery($repository);
+        $this->query = $this->createQuery($repository);
 
         // getNextCursor returns the ID of the LAST result
         self::assertSame($uuid2, $this->query->getNextCursor());
 
         // Empty results should return null
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
-        $this->query = new AuditQuery($this->repository);
+        $this->query = $this->createQuery($this->repository);
         $this->repository->method('findWithFilters')->willReturn([]);
         self::assertNull($this->query->getNextCursor());
     }
@@ -396,7 +408,7 @@ final class AuditQueryTest extends TestCase
     {
         $repository = $this->createMock(AuditLogRepositoryInterface::class);
         $this->repository = $repository;
-        $this->query = new AuditQuery($repository);
+        $this->query = $this->createQuery($repository);
 
         return $repository;
     }

@@ -70,6 +70,15 @@ final class AuditExporterTest extends TestCase
         self::assertStringContainsString('127.0.0.1', $csv);
     }
 
+    public function testSanitizeCsvValueWithLeadingWhitespaceFormula(): void
+    {
+        $log = new AuditLog('User', '1', 'update', username: " \t=cmd|' /C calc'!A0");
+
+        $csv = $this->exporter->formatAsCsv([$log]);
+
+        self::assertStringContainsString("' \t=cmd|' /C calc'!A0", $csv);
+    }
+
     public function testFormatAuditsThrowsOnInvalidFormat(): void
     {
         $this->expectException(InvalidArgumentException::class);

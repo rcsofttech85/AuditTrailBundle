@@ -11,6 +11,7 @@ use Rcsofttech\AuditTrailBundle\Command\AuditExportCommand;
 use Rcsofttech\AuditTrailBundle\Contract\AuditExporterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Service\AuditExportFileWriter;
 use ReflectionClass;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Uid\Uuid;
@@ -58,7 +59,7 @@ final class AuditExportCommandTest extends TestCase
 
     private function resetCommandTester(): void
     {
-        $this->commandTester = new CommandTester(new AuditExportCommand($this->repository, $this->exporter));
+        $this->commandTester = new CommandTester(new AuditExportCommand($this->repository, $this->exporter, new AuditExportFileWriter()));
     }
 
     public function testExportWithNoResults(): void

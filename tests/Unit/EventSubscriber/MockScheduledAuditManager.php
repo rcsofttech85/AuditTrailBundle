@@ -6,13 +6,14 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\EventSubscriber;
 
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
 {
     /** @var array<int, array{entity: object, audit: AuditLog, is_insert: bool}> */
     private array $scheduledAudits = [];
 
-    /** @var list<array{entity: object, data: array<string, mixed>, is_managed: bool}> */
+    /** @var list<array{entity: object, data: array<string, mixed>, is_managed: bool, action: AuditAction}> */
     private array $pendingDeletions = [];
 
     public function schedule(object $entity, AuditLog $audit, bool $isInsert): void
@@ -20,9 +21,9 @@ final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
         $this->scheduledAudits[] = ['entity' => $entity, 'audit' => $audit, 'is_insert' => $isInsert];
     }
 
-    public function addPendingDeletion(object $entity, array $data, bool $isManaged): void
+    public function addPendingDeletion(object $entity, array $data, bool $isManaged, AuditAction $action): void
     {
-        $this->pendingDeletions[] = ['entity' => $entity, 'data' => $data, 'is_managed' => $isManaged];
+        $this->pendingDeletions[] = ['entity' => $entity, 'data' => $data, 'is_managed' => $isManaged, 'action' => $action];
     }
 
     public function clear(): void
@@ -37,7 +38,7 @@ final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
         $this->scheduledAudits = $scheduledAudits;
     }
 
-    /** @param list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $pendingDeletions */
+    /** @param list<array{entity: object, data: array<string, mixed>, is_managed: bool, action: AuditAction}> $pendingDeletions */
     public function replacePendingDeletions(array $pendingDeletions): void
     {
         $this->pendingDeletions = $pendingDeletions;
@@ -49,7 +50,7 @@ final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
         return $this->scheduledAudits;
     }
 
-    /** @return list<array{entity: object, data: array<string, mixed>, is_managed: bool}> */
+    /** @return list<array{entity: object, data: array<string, mixed>, is_managed: bool, action: AuditAction}> */
     public function getPendingDeletions(): array
     {
         return $this->pendingDeletions;
@@ -71,7 +72,7 @@ final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
         $this->scheduledAudits = $scheduledAudits;
     }
 
-    /** @param list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $pendingDeletions */
+    /** @param list<array{entity: object, data: array<string, mixed>, is_managed: bool, action: AuditAction}> $pendingDeletions */
     public function seedPendingDeletions(array $pendingDeletions): void
     {
         $this->pendingDeletions = $pendingDeletions;
@@ -92,5 +93,11 @@ final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
     public function isEnabled(): bool
     {
         return $this->enabled;
+    }
+
+    public function reset(): void
+    {
+        $this->clear();
+        $this->enabled = true;
     }
 }

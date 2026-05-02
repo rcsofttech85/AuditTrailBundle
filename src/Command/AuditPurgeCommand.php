@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Command;
 
 use DateTimeImmutable;
+use Doctrine\Persistence\ManagerRegistry;
 use Exception;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -27,6 +29,7 @@ final class AuditPurgeCommand extends Command
     public function __construct(
         private readonly AuditLogRepositoryInterface $repository,
         private readonly AuditIntegrityServiceInterface $integrityService,
+        private readonly ManagerRegistry $managerRegistry,
     ) {
         parent::__construct();
     }
@@ -188,12 +191,15 @@ final class AuditPurgeCommand extends Command
     {
         $io->section('Verifying integrity of logs before purge...');
 
+        $auditEntityManager = $this->managerRegistry->getManagerForClass(AuditLog::class);
         $tamperedCount = 0;
         foreach ($this->repository->findAllWithFilters(['to' => $before->modify('-1 microsecond')]) as $log) {
             if (!$this->integrityService->verifySignature($log)) {
                 ++$tamperedCount;
                 $io->warning(sprintf('Tampered log: %s', (string) $log->id));
             }
+
+            $auditEntityManager?->detach($log);
         }
 
         if ($tamperedCount === 0) {

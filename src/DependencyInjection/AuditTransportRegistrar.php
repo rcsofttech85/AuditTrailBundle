@@ -1,0 +1,187 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Rcsofttech\AuditTrailBundle\DependencyInjection;
+
+use LogicException;
+use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
+use Rcsofttech\AuditTrailBundle\MessageHandler\PersistAuditLogHandler;
+use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessageSerializer;
+use Rcsofttech\AuditTrailBundle\Transport\AsyncDatabaseAuditTransport;
+use Rcsofttech\AuditTrailBundle\Transport\ChainAuditTransport;
+use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
+use Rcsofttech\AuditTrailBundle\Transport\HttpAuditTransport;
+use Rcsofttech\AuditTrailBundle\Transport\NullAuditTransport;
+use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
+
+use function count;
+
+final class AuditTransportRegistrar
+{
+    /**
+     * @param array{
+     *   enabled: bool,
+     *   transports: array{
+     *     database: array{enabled: bool, async: bool},
+     *     http: array{enabled: bool, endpoint: string, headers: array<string, string>, timeout: int},
+     *     queue: array{enabled: bool, api_key: ?string, bus: ?string}
+     *   }
+     * } $config
+     */
+    public function register(ContainerBuilder $container, array $config): void
+    {
+        if (interface_exists(MessageBusInterface::class)) {
+            $this->registerMessengerSupport($container);
+        }
+
+        $transports = [];
+
+        if ($config['transports']['database']['enabled'] === true) {
+            $transports[] = $this->registerDatabaseTransport($container, $config['transports']['database']);
+        }
+
+        if ($config['transports']['http']['enabled'] === true) {
+            $transports[] = $this->registerHttpTransport($container, $config['transports']['http']);
+        }
+
+        if ($config['transports']['queue']['enabled'] === true) {
+            $transports[] = $this->registerQueueTransport($container, $config['transports']['queue']);
+        }
+
+        $this->registerMainTransport($container, $transports, $config['enabled']);
+    }
+
+    /**
+     * @param array{enabled: bool, async: bool} $config
+     */
+    private function registerDatabaseTransport(ContainerBuilder $container, array $config): string
+    {
+        if ($config['async']) {
+            return $this->registerAsyncDatabaseTransport($container);
+        }
+
+        $id = 'rcsofttech_audit_trail.transport.database';
+        $container->register($id, DoctrineAuditTransport::class)
+            ->setAutowired(true)
+            ->addTag('audit_trail.transport');
+
+        return $id;
+    }
+
+    private function registerAsyncDatabaseTransport(ContainerBuilder $container): string
+    {
+        if (!interface_exists(MessageBusInterface::class)) {
+            throw new LogicException('To use async database transport, you must install the symfony/messenger package.');
+        }
+
+        $handlerId = 'rcsofttech_audit_trail.handler.persist_audit_log';
+        $container->register($handlerId, PersistAuditLogHandler::class)
+            ->setAutowired(true)
+            ->addTag('messenger.message_handler');
+
+        $id = 'rcsofttech_audit_trail.transport.async_database';
+        $container->register($id, AsyncDatabaseAuditTransport::class)
+            ->setAutowired(true)
+            ->addTag('audit_trail.transport');
+
+        return $id;
+    }
+
+    private function registerMessengerSupport(ContainerBuilder $container): void
+    {
+        if (!$container->has(AuditLogMessageFactory::class)) {
+            $container->register(AuditLogMessageFactory::class, AuditLogMessageFactory::class)
+                ->setAutowired(true);
+        }
+
+        if (!$container->has(AuditLogMessageSerializer::class)) {
+            $container->register(AuditLogMessageSerializer::class, AuditLogMessageSerializer::class)
+                ->setAutowired(true);
+        }
+    }
+
+    /**
+     * @param array{enabled: bool, endpoint: string, headers: array<string, string>, timeout: int} $config
+     */
+    private function registerHttpTransport(ContainerBuilder $container, array $config): string
+    {
+        if (!interface_exists(HttpClientInterface::class)) {
+            throw new LogicException('To use the HTTP transport, you must install the symfony/http-client package.');
+        }
+
+        $id = 'rcsofttech_audit_trail.transport.http';
+        $container->register($id, HttpAuditTransport::class)
+            ->setAutowired(true)
+            ->setArgument('$endpoint', $config['endpoint'])
+            ->setArgument('$headers', $config['headers'])
+            ->setArgument('$timeout', $config['timeout'])
+            ->addTag('audit_trail.transport');
+
+        return $id;
+    }
+
+    /**
+     * @param array{enabled: bool, api_key: ?string, bus: ?string} $config
+     */
+    private function registerQueueTransport(ContainerBuilder $container, array $config): string
+    {
+        if (!interface_exists(MessageBusInterface::class)) {
+            throw new LogicException('To use the Queue transport, you must install the symfony/messenger package.');
+        }
+
+        $id = 'rcsofttech_audit_trail.transport.queue';
+        $definition = $container->register($id, QueueAuditTransport::class)
+            ->setAutowired(true)
+            ->setArgument('$apiKey', $config['api_key'])
+            ->addTag('audit_trail.transport');
+
+        if (isset($config['bus']) && $config['bus'] !== '') {
+            $definition->setArgument('$bus', new Reference($config['bus']));
+        }
+
+        return $id;
+    }
+
+    /**
+     * @param array<string> $transports
+     */
+    private function registerMainTransport(ContainerBuilder $container, array $transports, bool $enabled): void
+    {
+        if ($transports === []) {
+            if ($enabled) {
+                throw new LogicException('At least one audit transport must be enabled when the bundle is enabled.');
+            }
+
+            $this->registerNullTransport($container);
+
+            return;
+        }
+
+        if (1 === count($transports)) {
+            $container->setAlias(AuditTransportInterface::class, $transports[0])->setPublic(true);
+
+            return;
+        }
+
+        $id = 'rcsofttech_audit_trail.transport.chain';
+        $references = array_map(static fn (string $serviceId): Reference => new Reference($serviceId), $transports);
+
+        $container->register($id, ChainAuditTransport::class)
+            ->setArgument('$transports', $references);
+
+        $container->setAlias(AuditTransportInterface::class, $id)->setPublic(true);
+    }
+
+    private function registerNullTransport(ContainerBuilder $container): void
+    {
+        $id = 'rcsofttech_audit_trail.transport.null';
+        $container->register($id, NullAuditTransport::class);
+        $container->setAlias(AuditTransportInterface::class, $id)->setPublic(true);
+    }
+}

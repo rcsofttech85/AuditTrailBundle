@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\DataCollector;
 
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\DataCollector\TraceableAuditCollector;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
+use ReflectionClass;
+use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 
 #[CoversClass(TraceableAuditCollector::class)]
 final class TraceableAuditCollectorTest extends TestCase
@@ -21,19 +23,17 @@ final class TraceableAuditCollectorTest extends TestCase
         $this->collector = new TraceableAuditCollector();
     }
 
-    #[Test]
-    public function itStartsEmpty(): void
+    public function testStartsEmpty(): void
     {
         self::assertSame([], $this->collector->collectedAudits);
     }
 
-    #[Test]
-    public function itCollectsAuditEvents(): void
+    public function testCollectsAuditEvents(): void
     {
         $audit = new AuditLog(
             entityClass: 'App\Entity\Product',
             entityId: '42',
-            action: 'create',
+            action: AuditAction::Create,
             changedFields: ['name', 'price'],
             username: 'admin',
             transactionHash: 'abc123def4567890',
@@ -52,11 +52,10 @@ final class TraceableAuditCollectorTest extends TestCase
         self::assertSame('abc123def4567890', $collected[0]['transaction_hash']);
     }
 
-    #[Test]
-    public function itCollectsMultipleEvents(): void
+    public function testCollectsMultipleEvents(): void
     {
-        $audit1 = new AuditLog(entityClass: 'App\Entity\Product', entityId: '1', action: 'create');
-        $audit2 = new AuditLog(entityClass: 'App\Entity\Order', entityId: '5', action: 'update', changedFields: ['status']);
+        $audit1 = new AuditLog(entityClass: 'App\Entity\Product', entityId: '1', action: AuditAction::Create);
+        $audit2 = new AuditLog(entityClass: 'App\Entity\Order', entityId: '5', action: AuditAction::Update, changedFields: ['status']);
 
         $this->collector->onAuditLogCreated(new AuditLogCreatedEvent($audit1));
         $this->collector->onAuditLogCreated(new AuditLogCreatedEvent($audit2));
@@ -64,10 +63,9 @@ final class TraceableAuditCollectorTest extends TestCase
         self::assertCount(2, $this->collector->collectedAudits);
     }
 
-    #[Test]
-    public function itResetsCollectedAudits(): void
+    public function testResetsCollectedAudits(): void
     {
-        $audit = new AuditLog(entityClass: 'App\Entity\Product', entityId: '1', action: 'delete');
+        $audit = new AuditLog(entityClass: 'App\Entity\Product', entityId: '1', action: AuditAction::Delete);
         $this->collector->onAuditLogCreated(new AuditLogCreatedEvent($audit));
 
         self::assertCount(1, $this->collector->collectedAudits);
@@ -77,13 +75,12 @@ final class TraceableAuditCollectorTest extends TestCase
         self::assertSame([], $this->collector->collectedAudits);
     }
 
-    #[Test]
-    public function itFallsBackToUserIdWhenUsernameIsNull(): void
+    public function testFallsBackToUserIdWhenUsernameIsNull(): void
     {
         $audit = new AuditLog(
             entityClass: 'App\Entity\Product',
             entityId: '1',
-            action: 'update',
+            action: AuditAction::Update,
             userId: 'user-uuid-123',
         );
 
@@ -92,11 +89,13 @@ final class TraceableAuditCollectorTest extends TestCase
         self::assertSame('user-uuid-123', $this->collector->collectedAudits[0]['user']);
     }
 
-    #[Test]
-    public function itSubscribesToAuditLogCreatedEvent(): void
+    public function testIsRegisteredAsEventListener(): void
     {
-        $events = TraceableAuditCollector::getSubscribedEvents();
+        $attributes = new ReflectionClass(TraceableAuditCollector::class)
+            ->getMethod('onAuditLogCreated')
+            ->getAttributes(AsEventListener::class);
 
-        self::assertArrayHasKey(AuditLogCreatedEvent::class, $events);
+        self::assertCount(1, $attributes);
+        self::assertSame(AuditLogCreatedEvent::class, $attributes[0]->getArguments()['event'] ?? null);
     }
 }

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditKernelSubscriber;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\CooldownPost;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
@@ -59,7 +59,7 @@ final class ConfigSafetyTest extends AbstractFunctionalTestCase
                 'enabled' => false,
                 'integrity' => [
                     'enabled' => true,
-                    'secret' => 'disabled-bundle-secret',
+                    'secret' => '%env(string:AUDIT_INTEGRITY_SECRET)%',
                 ],
                 'transports' => [
                     'database' => ['enabled' => false],
@@ -107,7 +107,7 @@ final class ConfigSafetyTest extends AbstractFunctionalTestCase
         $auditLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => TestEntity::class,
             'entityId' => (string) $entity->getId(),
-            'action' => AuditLogInterface::ACTION_CREATE,
+            'action' => AuditAction::Create,
         ]);
 
         self::assertNotNull($auditLog);
@@ -157,7 +157,7 @@ final class ConfigSafetyTest extends AbstractFunctionalTestCase
         $auditLogs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => CooldownPost::class,
             'entityId' => (string) $postId,
-            'action' => AuditLogInterface::ACTION_ACCESS,
+            'action' => AuditAction::Access,
         ]);
 
         self::assertCount(0, $auditLogs, 'GET requests must not produce access logs when audited_methods excludes GET.');

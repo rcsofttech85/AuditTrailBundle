@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Query;
 
 use DateTimeImmutable;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Symfony\Component\Uid\Uuid;
 
 use function in_array;
@@ -16,7 +17,7 @@ use function in_array;
  * Provides a developer-friendly interface for accessing audit data
  * and computing field-level differences.
  */
-class AuditEntry
+final class AuditEntry
 {
     public function __construct(
         private readonly AuditLog $log,
@@ -41,7 +42,7 @@ class AuditEntry
 
     public string $entityId { get => $this->log->entityId; }
 
-    public string $action { get => $this->log->action; }
+    public string $action { get => $this->log->action->value; }
 
     public ?string $userId { get => $this->log->userId; }
 
@@ -64,15 +65,15 @@ class AuditEntry
 
     // ========== Action Helpers ==========
 
-    public bool $isCreate { get => $this->log->action === 'create'; }
+    public bool $isCreate { get => $this->log->action === AuditAction::Create; }
 
-    public bool $isUpdate { get => $this->log->action === 'update'; }
+    public bool $isUpdate { get => $this->log->action === AuditAction::Update; }
 
-    public bool $isDelete { get => $this->log->action === 'delete'; }
+    public bool $isDelete { get => $this->log->action === AuditAction::Delete; }
 
-    public bool $isSoftDelete { get => $this->log->action === 'soft_delete'; }
+    public bool $isSoftDelete { get => $this->log->action === AuditAction::SoftDelete; }
 
-    public bool $isRestore { get => $this->log->action === 'restore'; }
+    public bool $isRestore { get => $this->log->action === AuditAction::Restore; }
 
     // ========== Diff Helpers ==========
 

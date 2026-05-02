@@ -9,6 +9,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityNormalizer;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 use stdClass;
 use Stringable;
@@ -21,7 +22,7 @@ final class AuditIntegrityServiceObjectTypeTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->service = new AuditIntegrityService('test-secret', true, 'sha256');
+        $this->service = new AuditIntegrityService(new AuditIntegrityNormalizer(), 'test-secret', true, 'sha256');
     }
 
     public function testDateTimeObjectInValuesDoesNotCrash(): void

@@ -10,11 +10,11 @@ use Doctrine\ORM\Mapping as ORM;
 use InvalidArgumentException;
 use LogicException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Symfony\Bridge\Doctrine\IdGenerator\UuidGenerator;
 use Symfony\Component\Uid\Uuid;
 
-use function in_array;
 use function sprintf;
 
 use const FILTER_VALIDATE_IP;
@@ -27,13 +27,14 @@ use const FILTER_VALIDATE_IP;
 #[ORM\UniqueConstraint(name: 'uniq_delivery_id', columns: ['delivery_id'])]
 class AuditLog implements AuditLogInterface
 {
-    private const array VALID_ACTIONS = AuditLogInterface::ALL_ACTIONS;
-
     #[ORM\Id]
     #[ORM\Column(type: 'uuid')]
     #[ORM\GeneratedValue(strategy: 'CUSTOM')]
     #[ORM\CustomIdGenerator(class: UuidGenerator::class)]
     public private(set) ?Uuid $id = null;
+
+    #[ORM\Column(length: 50, enumType: AuditAction::class)]
+    public private(set) AuditAction $action;
 
     /**
      * @param array<string, mixed>|null $oldValues
@@ -64,15 +65,7 @@ class AuditLog implements AuditLogInterface
                 $this->entityId = $trimmed;
             }
         },
-        #[ORM\Column(length: 50)]
-        public private(set) string $action {
-            set {
-                if (!in_array($value, self::VALID_ACTIONS, true)) {
-                    throw new InvalidArgumentException(sprintf('Invalid action "%s". Must be one of: %s', $value, implode(', ', self::VALID_ACTIONS)));
-                }
-                $this->action = $value;
-            }
-        },
+        AuditAction|string $action,
         #[ORM\Column]
         public private(set) DateTimeImmutable $createdAt = new DateTimeImmutable(),
         #[ORM\Column(type: Types::JSON, nullable: true)]
@@ -124,6 +117,7 @@ class AuditLog implements AuditLogInterface
             }
         },
     ) {
+        $this->action = AuditAction::fromScalar($action);
     }
 
     private bool $isSealed = false;
