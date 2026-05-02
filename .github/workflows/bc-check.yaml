@@ -1,0 +1,69 @@
+name: BC Check
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bc-check:
+    name: Backward Compatibility Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@44454db4f0199b8b9685a5d763dc37cbf79108e1
+        with:
+          php-version: 8.4
+          tools: composer:v2, roave/backward-compatibility-check:^8.20
+          coverage: none
+          ini-values: memory_limit=-1
+        env:
+          fail-fast: true
+
+      - name: Determine comparison range
+        id: refs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            echo "from=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+            echo "to=HEAD" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Use git describe to find the latest reachable tag on this branch.
+          # We use HEAD^ so if the current push IS a tag, it finds the tag before it.
+          previous_tag="$(git describe --tags --abbrev=0 --match 'v*.*.*' HEAD^ 2>/dev/null || true)"
+
+          if [[ -n "$previous_tag" ]]; then
+            echo "from=$previous_tag" >> "$GITHUB_OUTPUT"
+          else
+            echo "from=HEAD^" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "to=HEAD" >> "$GITHUB_OUTPUT"
+
+      - name: Run BC check
+        continue-on-error: ${{ github.event_name == 'pull_request' && github.head_ref == 'major-release' && github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          roave-backward-compatibility-check \
+            --from="${{ steps.refs.outputs.from }}" \
+            --to="${{ steps.refs.outputs.to }}" \
+            --format=github-actions
