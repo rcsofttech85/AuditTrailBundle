@@ -33,6 +33,8 @@ final class AuditDataCollectorTest extends TestCase
         self::assertSame(0, $this->dataCollector->getAuditCount());
         self::assertSame([], $this->dataCollector->getAudits());
         self::assertSame([], $this->dataCollector->getActionBreakdown());
+        self::assertSame(0, $this->dataCollector->getAiAuditCount());
+        self::assertSame([], $this->dataCollector->getAiSeverityBreakdown());
     }
 
     public function testCollectsAuditData(): void
@@ -64,6 +66,35 @@ final class AuditDataCollectorTest extends TestCase
         $breakdown = $this->dataCollector->getActionBreakdown();
         self::assertSame(2, $breakdown['create']);
         self::assertSame(1, $breakdown['update']);
+    }
+
+    public function testReturnsAiBreakdowns(): void
+    {
+        $this->traceableCollector->onAuditLogCreated(new AuditLogCreatedEvent(new AuditLog(
+            entityClass: 'App\Entity\User',
+            entityId: '1',
+            action: 'create',
+            context: ['ai' => ['symfony_ai' => ['severity' => 'medium', 'summary' => 'Created user']]],
+        )));
+        $this->traceableCollector->onAuditLogCreated(new AuditLogCreatedEvent(new AuditLog(
+            entityClass: 'App\Entity\User',
+            entityId: '2',
+            action: 'update',
+            context: ['ai' => ['symfony_ai' => ['severity' => 'high']]],
+        )));
+        $this->traceableCollector->onAuditLogCreated(new AuditLogCreatedEvent(new AuditLog(
+            entityClass: 'App\Entity\Order',
+            entityId: '1',
+            action: 'create',
+        )));
+
+        $this->dataCollector->collect(new Request(), new Response());
+
+        self::assertSame(2, $this->dataCollector->getAiAuditCount());
+        self::assertSame([
+            'medium' => 1,
+            'high' => 1,
+        ], $this->dataCollector->getAiSeverityBreakdown());
     }
 
     public function testHasCorrectName(): void

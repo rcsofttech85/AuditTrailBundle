@@ -1,0 +1,9 @@
+{# Dedicated EasyAdmin field for Rcsofttech\AuditTrailBundle\Field\AuditActionField.
+   We intentionally avoid the stock text field template because it reads the raw
+   field value into HTML attributes, which breaks enum-backed values. #}
+{{ include('@AuditTrail/admin/_audit_action_badge.html.twig', {
+    action: field.value,
+    label: field.formattedValue,
+    title: field.formattedValue is empty ? '' : field.formattedValue|striptags,
+    icon_class: 'me-1',
+}, with_context: false) }}

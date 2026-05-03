@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This release is mostly about cleaning up the public API.
 
-### Changed
+### 3.3.0 Changed
 
 - Audit actions now use `Rcsofttech\AuditTrailBundle\Enum\AuditAction`.
 - `AuditLog::$action` is now an `AuditAction` enum, not a string.

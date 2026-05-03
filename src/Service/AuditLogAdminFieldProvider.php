@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use EasyCorp\Bundle\EasyAdminBundle\Contracts\Field\FieldInterface;
-use EasyCorp\Bundle\EasyAdminBundle\Field\ChoiceField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\CodeEditorField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\DateTimeField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\FormField;
@@ -13,12 +12,11 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\IdField;
 use EasyCorp\Bundle\EasyAdminBundle\Field\TextField;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Field\AuditActionField;
 use Rcsofttech\AuditTrailBundle\Util\ClassNameHelperTrait;
 use Stringable;
 
 use function is_scalar;
-use function is_string;
 
 final class AuditLogAdminFieldProvider
 {
@@ -36,9 +34,7 @@ final class AuditLogAdminFieldProvider
     {
         yield IdField::new('id')->onlyOnIndex();
 
-        yield ChoiceField::new('action', 'Action')
-            ->formatValue(static fn (mixed $value): string => self::resolveActionLabel($value))
-            ->renderAsBadges(static fn (mixed $value): string => self::resolveAction($value)?->badgeClass() ?? 'secondary')
+        yield AuditActionField::new('action', 'Action')
             ->onlyOnIndex();
 
         yield TextField::new('entityClass', 'Entity')
@@ -64,8 +60,7 @@ final class AuditLogAdminFieldProvider
         yield IdField::new('id', 'Audit Log ID')->onlyOnDetail();
         yield TextField::new('entityClass', 'Entity Class')->onlyOnDetail();
         yield TextField::new('entityId', 'Entity ID')->onlyOnDetail();
-        yield TextField::new('action', 'Action Type')
-            ->formatValue(static fn (mixed $value): string => self::resolveActionLabel($value))
+        yield AuditActionField::new('action', 'Action Type')
             ->onlyOnDetail();
 
         yield FormField::addRow();
@@ -134,19 +129,5 @@ final class AuditLogAdminFieldProvider
         }
 
         return '<span class="badge badge-danger text-danger" style="background: rgba(220, 53, 69, 0.1);"><i class="fa fa-times-circle me-1"></i> Tampered / Invalid</span>';
-    }
-
-    private static function resolveActionLabel(mixed $value): string
-    {
-        return self::resolveAction($value)?->label() ?? (string) (is_scalar($value) || $value instanceof Stringable ? $value : '');
-    }
-
-    private static function resolveAction(mixed $value): ?AuditAction
-    {
-        if ($value instanceof AuditAction) {
-            return $value;
-        }
-
-        return is_string($value) ? AuditAction::tryFrom($value) : null;
     }
 }

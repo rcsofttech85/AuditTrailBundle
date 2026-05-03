@@ -11,6 +11,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 use function count;
+use function is_string;
 
 /**
  * Symfony Profiler DataCollector for the AuditTrailBundle.
@@ -27,6 +28,8 @@ final class AuditDataCollector extends AbstractDataCollector
     #[Override]
     public function collect(Request $request, Response $response, ?Throwable $exception = null): void
     {
+        $this->traceableCollector->refreshSnapshots();
+
         $this->data = [
             'audits' => $this->traceableCollector->collectedAudits,
         ];
@@ -43,12 +46,33 @@ final class AuditDataCollector extends AbstractDataCollector
     }
 
     /**
-     * @return list<array{entity_class: string, entity_id: string, action: string, changed_fields: list<string>|null, user: string|null, transaction_hash: string|null, created_at: string}>
+     * @return list<array{entity_class: string, entity_id: string, action: string, changed_fields: list<string>|null, user: string|null, transaction_hash: string|null, created_at: string, ai_namespaces: list<string>, ai_summary: ?string, ai_severity: ?string, ai_anomaly_score: float|int|null, ai_hints: list<string>, ai_tags: list<string>}>
      */
     public function getAudits(): array
     {
-        /** @var list<array{entity_class: string, entity_id: string, action: string, changed_fields: list<string>|null, user: string|null, transaction_hash: string|null, created_at: string}> */
+        /** @var list<array{entity_class: string, entity_id: string, action: string, changed_fields: list<string>|null, user: string|null, transaction_hash: string|null, created_at: string, ai_namespaces: list<string>, ai_summary: ?string, ai_severity: ?string, ai_anomaly_score: float|int|null, ai_hints: list<string>, ai_tags: list<string>}> */
         return $this->data['audits'] ?? [];
+    }
+
+    public function getAiAuditCount(): int
+    {
+        return count(array_filter(
+            $this->getAudits(),
+            static fn (array $audit): bool => $audit['ai_namespaces'] !== [],
+        ));
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    public function getAiSeverityBreakdown(): array
+    {
+        $severities = array_filter(
+            array_column($this->getAudits(), 'ai_severity'),
+            static fn (mixed $severity): bool => is_string($severity) && $severity !== '',
+        );
+
+        return array_count_values($severities);
     }
 
     /**

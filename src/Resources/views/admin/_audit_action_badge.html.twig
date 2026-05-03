@@ -1,0 +1,13 @@
+{# Shared action badge renderer for EasyAdmin field templates and custom pages. #}
+{% set badge_label = label ?? ((action.value ?? action)|replace({'_': ' '})|title) %}
+{% set badge_title = title is defined ? title : badge_label %}
+{% set badge_classes = ['audit-action-badge', 'audit-action-badge-' ~ audit_action_badge_class(action)] %}
+
+{% if class is defined and class is not empty %}
+    {% set badge_classes = badge_classes|merge([class]) %}
+{% endif %}
+
+<span class="{{ badge_classes|join(' ') }}" title="{{ badge_title }}">
+    <i class="fa {{ audit_action_icon(action) }}{% if icon_class is defined and icon_class is not empty %} {{ icon_class }}{% endif %}"></i>
+    {{ badge_label }}
+</span>

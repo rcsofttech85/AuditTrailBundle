@@ -11,6 +11,10 @@
             <b>Audit Logs</b>
             <span class="sf-toolbar-status {{ collector.auditCount > 0 ? 'sf-toolbar-status-green' : '' }}">{{ collector.auditCount }}</span>
         </div>
+        <div class="sf-toolbar-info-piece">
+            <b>AI Enriched</b>
+            <span>{{ collector.aiAuditCount }}</span>
+        </div>
         {% for action, count in collector.actionBreakdown %}
             <div class="sf-toolbar-info-piece">
                 <b>{{ action|capitalize }}</b>
@@ -59,6 +63,7 @@
                                 <th>Entity</th>
                                 <th>ID</th>
                                 <th>Changed Fields</th>
+                                <th>AI</th>
                                 <th>User</th>
                                 <th>Transaction</th>
                                 <th>Time</th>
@@ -94,6 +99,30 @@
                                             <span class="text-muted">—</span>
                                         {% endif %}
                                     </td>
+                                    <td class="font-normal">
+                                        {% if audit.ai_namespaces %}
+                                            <div>
+                                                {% for namespace in audit.ai_namespaces %}
+                                                    <span class="badge">{{ namespace }}</span>
+                                                {% endfor %}
+                                            </div>
+                                            {% if audit.ai_severity %}
+                                                <div class="text-small" style="margin-top: 4px;">
+                                                    <strong>{{ audit.ai_severity|upper }}</strong>
+                                                    {% if audit.ai_anomaly_score is not null %}
+                                                        <span class="text-muted">({{ audit.ai_anomaly_score }})</span>
+                                                    {% endif %}
+                                                </div>
+                                            {% endif %}
+                                            {% if audit.ai_summary %}
+                                                <div class="text-small text-muted" style="margin-top: 4px;">
+                                                    {{ audit.ai_summary }}
+                                                </div>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
                                     <td class="font-normal">{{ audit.user ?? '—' }}</td>
                                     <td class="font-normal text-small">
                                         {% if audit.transaction_hash %}
@@ -120,6 +149,10 @@
                             <span class="value">{{ collector.auditCount }}</span>
                             <span class="label">Total Logs</span>
                         </div>
+                        <div class="metric">
+                            <span class="value">{{ collector.aiAuditCount }}</span>
+                            <span class="label">AI Enriched</span>
+                        </div>
                         {% for action, count in collector.actionBreakdown %}
                             <div class="metric">
                                 <span class="value">{{ count }}</span>
@@ -127,6 +160,26 @@
                             </div>
                         {% endfor %}
                     </div>
+
+                    {% if collector.aiSeverityBreakdown %}
+                        <h3 style="margin-top: 1.5rem;">AI Severity Breakdown</h3>
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>Severity</th>
+                                <th>Count</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for severity, count in collector.aiSeverityBreakdown %}
+                                <tr>
+                                    <td>{{ severity|upper }}</td>
+                                    <td>{{ count }}</td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    {% endif %}
                 </div>
             </div>
         </div>

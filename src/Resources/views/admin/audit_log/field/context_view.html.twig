@@ -1,10 +1,68 @@
 {# Structured Context View — renders context as key-value table + collapsible raw JSON #}
 {% set context = entity.instance.context ?? {} %}
+{% set ai_context = context.ai is defined and context.ai is iterable ? context.ai : {} %}
 
 {% if context|length > 0 %}
+{% if ai_context|length > 0 %}
+<div class="audit-ai-section">
+    <div class="audit-ai-header">
+        <i class="fa fa-sparkles"></i>
+        <span>AI Metadata</span>
+    </div>
+    <div class="audit-ai-grid">
+        {% for namespace, metadata in ai_context %}
+            {% if metadata is iterable %}
+                <div class="audit-ai-card">
+                    <div class="audit-ai-card-header">
+                        
+                        {% if metadata.severity is defined and metadata.severity %}
+                            <span class="audit-ai-severity audit-ai-severity-{{ metadata.severity|lower }}">{{ metadata.severity|upper }}</span>
+                        {% endif %}
+                    </div>
+
+                    {% if metadata.summary is defined and metadata.summary %}
+                        <div class="audit-ai-summary">{{ metadata.summary }}</div>
+                    {% endif %}
+
+                    {% if metadata.anomaly_score is defined and metadata.anomaly_score is not null %}
+                        <div class="audit-ai-meta-row">
+                            <span class="audit-ai-label">Anomaly Score</span>
+                            <span class="audit-ai-value">{{ metadata.anomaly_score }}</span>
+                        </div>
+                    {% endif %}
+
+                    {% if metadata.anomaly_hints is defined and metadata.anomaly_hints is iterable and metadata.anomaly_hints|length > 0 %}
+                        <div class="audit-ai-meta-row">
+                            <span class="audit-ai-label">Hints</span>
+                            <span class="audit-ai-chip-list">
+                                {% for hint in metadata.anomaly_hints %}
+                                    <span class="audit-ai-chip">{{ hint }}</span>
+                                {% endfor %}
+                            </span>
+                        </div>
+                    {% endif %}
+
+                    {% if metadata.tags is defined and metadata.tags is iterable and metadata.tags|length > 0 %}
+                        <div class="audit-ai-meta-row">
+                            <span class="audit-ai-label">Tags</span>
+                            <span class="audit-ai-chip-list">
+                                {% for tag in metadata.tags %}
+                                    <span class="audit-ai-chip audit-ai-chip-tag">{{ tag }}</span>
+                                {% endfor %}
+                            </span>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 <div class="audit-context-container">
     <table class="audit-context-table">
         {% for key, value in context %}
+            {% if key != 'ai' %}
             <tr>
                 <td>{{ key }}</td>
                 <td>
@@ -21,6 +79,7 @@
                     {% endif %}
                 </td>
             </tr>
+            {% endif %}
         {% endfor %}
     </table>
 </div>

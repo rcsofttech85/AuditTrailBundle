@@ -41,6 +41,10 @@ final class TraceableAuditCollectorTest extends TestCase
 
         $this->collector->onAuditLogCreated(new AuditLogCreatedEvent($audit));
 
+        self::assertSame([], $this->collector->collectedAudits);
+
+        $this->collector->refreshSnapshots();
+
         $collected = $this->collector->collectedAudits;
 
         self::assertCount(1, $collected);
@@ -50,6 +54,45 @@ final class TraceableAuditCollectorTest extends TestCase
         self::assertSame(['name', 'price'], $collected[0]['changed_fields']);
         self::assertSame('admin', $collected[0]['user']);
         self::assertSame('abc123def4567890', $collected[0]['transaction_hash']);
+        self::assertSame([], $collected[0]['ai_namespaces']);
+    }
+
+    public function testExtractsStructuredAiMetadataForProfiler(): void
+    {
+        $audit = new AuditLog(
+            entityClass: 'App\Entity\Product',
+            entityId: '42',
+            action: AuditAction::Update,
+            context: [
+                'ai' => [
+                    'symfony_ai' => [
+                        'summary' => 'Privileged product update detected.',
+                        'severity' => 'high',
+                        'anomaly_score' => 0.81,
+                        'anomaly_hints' => ['privileged action', 'bulk edit'],
+                        'tags' => ['catalog', 'admin'],
+                    ],
+                    'custom_ai' => [
+                        'tags' => ['catalog', 'review'],
+                    ],
+                ],
+            ],
+        );
+
+        $this->collector->onAuditLogCreated(new AuditLogCreatedEvent($audit));
+
+        self::assertSame([], $this->collector->collectedAudits);
+
+        $this->collector->refreshSnapshots();
+
+        $collected = $this->collector->collectedAudits[0];
+
+        self::assertSame(['symfony_ai', 'custom_ai'], $collected['ai_namespaces']);
+        self::assertSame('Privileged product update detected.', $collected['ai_summary']);
+        self::assertSame('high', $collected['ai_severity']);
+        self::assertSame(0.81, $collected['ai_anomaly_score']);
+        self::assertSame(['privileged action', 'bulk edit'], $collected['ai_hints']);
+        self::assertSame(['catalog', 'admin', 'review'], $collected['ai_tags']);
     }
 
     public function testCollectsMultipleEvents(): void
@@ -60,6 +103,10 @@ final class TraceableAuditCollectorTest extends TestCase
         $this->collector->onAuditLogCreated(new AuditLogCreatedEvent($audit1));
         $this->collector->onAuditLogCreated(new AuditLogCreatedEvent($audit2));
 
+        self::assertSame([], $this->collector->collectedAudits);
+
+        $this->collector->refreshSnapshots();
+
         self::assertCount(2, $this->collector->collectedAudits);
     }
 
@@ -67,6 +114,10 @@ final class TraceableAuditCollectorTest extends TestCase
     {
         $audit = new AuditLog(entityClass: 'App\Entity\Product', entityId: '1', action: AuditAction::Delete);
         $this->collector->onAuditLogCreated(new AuditLogCreatedEvent($audit));
+
+        self::assertSame([], $this->collector->collectedAudits);
+
+        $this->collector->refreshSnapshots();
 
         self::assertCount(1, $this->collector->collectedAudits);
 
@@ -85,6 +136,10 @@ final class TraceableAuditCollectorTest extends TestCase
         );
 
         $this->collector->onAuditLogCreated(new AuditLogCreatedEvent($audit));
+
+        self::assertSame([], $this->collector->collectedAudits);
+
+        $this->collector->refreshSnapshots();
 
         self::assertSame('user-uuid-123', $this->collector->collectedAudits[0]['user']);
     }
