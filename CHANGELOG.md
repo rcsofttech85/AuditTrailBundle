@@ -65,6 +65,9 @@ See `docs/upgrade-v4.md` for the full migration guide.
   identifiers are available.
 - **Scheduled-audit type safety**: internal scheduled-audit and pending-deletion
   queues now use dedicated value objects instead of raw associative arrays.
+- **Safer deferred retry defaults**: in-memory scheduled/deferred audit queues
+  now have configurable default limits so long-running processes fail loudly
+  instead of retaining failed work without bound.
 - **Contract separation**: queue-management and enable/disable responsibilities
   are easier to consume independently in custom integrations.
 

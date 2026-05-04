@@ -67,6 +67,11 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
          *   audited_methods: array<string>,
          *   collection_serialization_mode: string,
          *   max_collection_items: int,
+         *   queue_limits: array{
+         *     scheduled_audits: int,
+         *     pending_audit_plans: int,
+         *     pending_deletions: int
+         *   },
          *   transports: array{
          *     database: array{enabled: bool, async: bool},
          *     http: array{enabled: bool, endpoint: string, headers: array<string, string>, timeout: int},
@@ -98,6 +103,9 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
             'audit_trail.audited_methods' => $config['audited_methods'],
             'audit_trail.collection_serialization_mode' => $config['collection_serialization_mode'],
             'audit_trail.max_collection_items' => $config['max_collection_items'],
+            'audit_trail.queue_limits.scheduled_audits' => $config['queue_limits']['scheduled_audits'],
+            'audit_trail.queue_limits.pending_audit_plans' => $config['queue_limits']['pending_audit_plans'],
+            'audit_trail.queue_limits.pending_deletions' => $config['queue_limits']['pending_deletions'],
         ]);
 
         if ($config['cache_pool'] !== null) {

@@ -44,17 +44,20 @@ final class ScheduledAuditManagerTest extends TestCase
         $manager->schedule($entity, $log, true);
     }
 
-    public function testScheduleIsUnlimitedByDefault(): void
+    public function testScheduleUsesConfiguredQueueLimit(): void
     {
-        $manager = new ScheduledAuditManager();
+        $manager = new ScheduledAuditManager(maxScheduledAudits: 1000);
         $entity = new stdClass();
         $log = $this->createAuditLog();
 
-        for ($i = 0; $i < 1001; ++$i) {
+        for ($i = 0; $i < 1000; ++$i) {
             $manager->schedule($entity, $log, true);
         }
 
-        self::assertCount(1001, $manager->getScheduledAudits());
+        self::assertCount(1000, $manager->getScheduledAudits());
+
+        self::expectException(OverflowException::class);
+        $manager->schedule($entity, $log, true);
     }
 
     public function testScheduleDoesNotDispatchEvent(): void

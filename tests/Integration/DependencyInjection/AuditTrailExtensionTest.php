@@ -5,10 +5,15 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Integration\DependencyInjection;
 
 use LogicException;
+use OverflowException;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\DependencyInjection\AuditTrailExtension;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Transport\NullAuditTransport;
+use stdClass;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
@@ -17,6 +22,17 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class AuditTrailExtensionTest extends TestCase
 {
+    private function buildScheduledAuditManagerFromContainer(ContainerBuilder $container): ScheduledAuditManager
+    {
+        $container->getDefinition(ScheduledAuditManager::class)->setPublic(true);
+        $container->compile();
+
+        /** @var ScheduledAuditManager $manager */
+        $manager = $container->get(ScheduledAuditManager::class);
+
+        return $manager;
+    }
+
     public function testDefaultConfigurationLoadsDoctrineTransport(): void
     {
         $container = new ContainerBuilder();
@@ -32,6 +48,9 @@ final class AuditTrailExtensionTest extends TestCase
             (string) $container->getAlias(AuditTransportInterface::class)
         );
         self::assertSame('ROLE_ADMIN', $container->getParameter('audit_trail.admin_permission'));
+        self::assertSame(1000, $container->getParameter('audit_trail.queue_limits.scheduled_audits'));
+        self::assertSame(1000, $container->getParameter('audit_trail.queue_limits.pending_audit_plans'));
+        self::assertSame(1000, $container->getParameter('audit_trail.queue_limits.pending_deletions'));
         self::assertFalse($container->hasParameter('audit_trail.integrity.secret'));
         self::assertFalse($container->hasDefinition('rcsofttech_audit_trail.handler.persist_audit_log'));
 
@@ -52,6 +71,67 @@ final class AuditTrailExtensionTest extends TestCase
         ]], $container);
 
         self::assertSame('ROLE_AUDIT_ADMIN', $container->getParameter('audit_trail.admin_permission'));
+    }
+
+    public function testCustomQueueLimitsAreStored(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([[
+            'queue_limits' => [
+                'scheduled_audits' => 250,
+                'pending_audit_plans' => 300,
+                'pending_deletions' => 150,
+            ],
+        ]], $container);
+
+        self::assertSame(250, $container->getParameter('audit_trail.queue_limits.scheduled_audits'));
+        self::assertSame(300, $container->getParameter('audit_trail.queue_limits.pending_audit_plans'));
+        self::assertSame(150, $container->getParameter('audit_trail.queue_limits.pending_deletions'));
+    }
+
+    public function testScheduledAuditManagerReceivesDefaultQueueLimitFromContainer(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([], $container);
+
+        $manager = $this->buildScheduledAuditManagerFromContainer($container);
+        $entity = new stdClass();
+        $log = new AuditLog(stdClass::class, '1', AuditAction::Create);
+
+        for ($i = 0; $i < 1000; ++$i) {
+            $manager->schedule($entity, $log, true);
+        }
+
+        $this->expectException(OverflowException::class);
+        $manager->schedule($entity, $log, true);
+    }
+
+    public function testScheduledAuditManagerReceivesCustomQueueLimitFromContainer(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([[
+            'queue_limits' => [
+                'scheduled_audits' => 2,
+                'pending_audit_plans' => 300,
+                'pending_deletions' => 150,
+            ],
+        ]], $container);
+
+        $manager = $this->buildScheduledAuditManagerFromContainer($container);
+        $entity = new stdClass();
+        $log = new AuditLog(stdClass::class, '1', AuditAction::Create);
+
+        $manager->schedule($entity, $log, true);
+        $manager->schedule($entity, $log, true);
+
+        $this->expectException(OverflowException::class);
+        $manager->schedule($entity, $log, true);
     }
 
     public function testEasyAdminControllerIsNotRegisteredWhenBundleIsMissing(): void
