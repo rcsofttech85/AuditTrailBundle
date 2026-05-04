@@ -369,6 +369,7 @@ final class AuditTrailFunctionalTest extends AbstractFunctionalTestCase
         $collectionLog = $updateLogs[array_key_last($updateLogs)];
         self::assertNotNull($collectionLog->newValues, 'newValues should contain collection changes');
         self::assertArrayHasKey('tags', $collectionLog->newValues, 'tags field should be tracked');
+        self::assertSame([(string) $tag1->getId(), (string) $tag2->getId()], $collectionLog->newValues['tags']);
     }
 
     public function testF8CreateWithManyToManyDoesNotProduceRedundantUpdateLog(): void
@@ -394,7 +395,31 @@ final class AuditTrailFunctionalTest extends AbstractFunctionalTestCase
         self::assertSame(AuditAction::Create, $logs[0]->action);
         self::assertNotNull($logs[0]->newValues);
         self::assertArrayHasKey('tags', $logs[0]->newValues);
-        self::assertCount(2, $logs[0]->newValues['tags']);
+        self::assertSame([(string) $tag1->getId(), (string) $tag2->getId()], $logs[0]->newValues['tags']);
+    }
+
+    public function testF8ExistingOwnerAddNewManyToManyTargetInSameFlushUsesFinalIds(): void
+    {
+        self::bootKernel();
+        $em = $this->getEntityManager();
+
+        $author = new Author('Existing Owner');
+        $em->persist($author);
+        $em->flush();
+
+        $newTag = new Tag('new-same-flush-tag');
+        $author->addTag($newTag);
+        $em->flush();
+
+        /** @var AuditLog[] $updateLogs */
+        $updateLogs = $em->getRepository(AuditLog::class)->findBy([
+            'entityClass' => Author::class,
+            'action' => AuditAction::Update,
+        ], ['id' => 'ASC']);
+
+        self::assertCount(1, $updateLogs, 'Adding a new related entity to an existing owner should produce one update log');
+        self::assertSame([], $updateLogs[0]->oldValues['tags'] ?? null);
+        self::assertSame([(string) $newTag->getId()], $updateLogs[0]->newValues['tags'] ?? null);
     }
 
     public function testF8ManyToManyRemoveIsTracked(): void

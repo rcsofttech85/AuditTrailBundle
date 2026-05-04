@@ -7,15 +7,17 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
 use Override;
+use Rcsofttech\AuditTrailBundle\Contract\AuditQueueManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
-use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\ValueObject\AssociationImpact;
+use Rcsofttech\AuditTrailBundle\ValueObject\PendingAuditPlan;
 
 use function array_key_exists;
+use function array_keys;
 use function is_array;
 
 final readonly class EntityProcessor implements EntityProcessorInterface
@@ -23,9 +25,10 @@ final readonly class EntityProcessor implements EntityProcessorInterface
     public function __construct(
         private AuditServiceInterface $auditService,
         private ChangeProcessorInterface $changeProcessor,
-        private ScheduledAuditManagerInterface $auditManager,
+        private AuditQueueManagerInterface $auditManager,
         private AssociationImpactAnalyzer $associationImpactAnalyzer,
         private CollectionChangeResolver $collectionChangeResolver,
+        private DeferredCollectionDetector $deferredCollectionDetector,
         private EntityAuditDispatchManager $dispatchManager,
         private bool $enableHardDelete = true,
         ?EntityUpdateTransitionResolver $updateTransitionResolver = null,
@@ -51,15 +54,21 @@ final readonly class EntityProcessor implements EntityProcessorInterface
                 continue;
             }
 
-            $audit = $this->auditService->createAuditLog(
-                $entity,
-                AuditAction::Create,
-                null,
-                $data,
-                [],
-                $em,
-            );
-            $this->dispatchManager->dispatchOrSchedule($audit, $entity, $em, $uow, true);
+            if (!$this->deferredCollectionDetector->entityHasDeferredCollectionAssociations($entity, $em)) {
+                $audit = $this->auditService->createAuditLog(
+                    $entity,
+                    AuditAction::Create,
+                    null,
+                    $data,
+                    [],
+                    $em,
+                );
+                $this->dispatchManager->dispatchOrSchedule($audit, $entity, $em, $uow, true);
+
+                continue;
+            }
+
+            $this->auditManager->schedulePendingAuditPlan(PendingAuditPlan::forEntityRefresh($entity, AuditAction::Create));
         }
     }
 
@@ -88,13 +97,33 @@ final readonly class EntityProcessor implements EntityProcessorInterface
             }
 
             $action = $transition['action'];
-
             if (!$this->auditService->shouldAudit($entity, $action, $new)) {
                 continue;
             }
 
-            $audit = $this->auditService->createAuditLog($entity, $action, $old, $new, [], $em);
-            $this->dispatchManager->dispatchOrSchedule($audit, $entity, $em, $uow, false);
+            $deferredCollectionFields = [];
+            foreach (array_keys($new) as $field) {
+                if (!is_array($new[$field]) || !$this->deferredCollectionDetector->shouldDeferCollectionFieldMaterialization($entity, $field, $em)) {
+                    continue;
+                }
+
+                $deferredCollectionFields[] = $field;
+            }
+
+            if ($deferredCollectionFields === []) {
+                $audit = $this->auditService->createAuditLog($entity, $action, $old, $new, [], $em);
+                $this->dispatchManager->dispatchOrSchedule($audit, $entity, $em, $uow, false);
+
+                continue;
+            }
+
+            foreach ($deferredCollectionFields as $field) {
+                unset($new[$field]);
+            }
+
+            $this->auditManager->schedulePendingAuditPlan(
+                PendingAuditPlan::forDeferredCollections($entity, $action, $old, $new, $deferredCollectionFields),
+            );
         }
     }
 
@@ -121,27 +150,40 @@ final readonly class EntityProcessor implements EntityProcessorInterface
                 continue;
             }
 
+            $fieldName = $collection->getMapping()->fieldName;
+
             $transition = $this->collectionChangeResolver->buildCollectionTransition($collection, $em);
             if ($transition === null) {
                 continue;
             }
 
-            $oldValues = [$transition['field'] => $transition['old']];
-            $newValues = [$transition['field'] => $transition['new']];
+            $newValues = [$fieldName => $transition['new']];
 
             if (!$this->auditService->shouldAudit($owner, AuditAction::Update, $newValues)) {
                 continue;
             }
 
-            $audit = $this->auditService->createAuditLog(
+            if (!$this->deferredCollectionDetector->shouldDeferCollectionFieldMaterialization($owner, $fieldName, $em)) {
+                $audit = $this->auditService->createAuditLog(
+                    $owner,
+                    AuditAction::Update,
+                    [$fieldName => $transition['old']],
+                    $newValues,
+                    [],
+                    $em,
+                );
+                $this->dispatchManager->dispatchOrSchedule($audit, $owner, $em, $uow, false);
+
+                continue;
+            }
+
+            $this->auditManager->schedulePendingAuditPlan(PendingAuditPlan::forDeferredCollections(
                 $owner,
                 AuditAction::Update,
-                $oldValues,
-                $newValues,
+                [$fieldName => $transition['old']],
                 [],
-                $em,
-            );
-            $this->dispatchManager->dispatchOrSchedule($audit, $owner, $em, $uow, false);
+                [$fieldName],
+            ));
         }
     }
 

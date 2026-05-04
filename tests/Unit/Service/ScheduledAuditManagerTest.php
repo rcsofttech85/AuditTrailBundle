@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
+use Rcsofttech\AuditTrailBundle\ValueObject\PendingAuditPlan;
 use stdClass;
 
 final class ScheduledAuditManagerTest extends TestCase
@@ -24,9 +25,9 @@ final class ScheduledAuditManagerTest extends TestCase
         $audits = $manager->getScheduledAudits();
 
         self::assertCount(1, $audits);
-        self::assertSame($entity, $audits[0]['entity']);
-        self::assertSame($log, $audits[0]['audit']);
-        self::assertTrue($audits[0]['is_insert']);
+        self::assertSame($entity, $audits[0]->entity);
+        self::assertSame($log, $audits[0]->audit);
+        self::assertTrue($audits[0]->isInsert);
     }
 
     public function testScheduleOverflow(): void
@@ -62,7 +63,7 @@ final class ScheduledAuditManagerTest extends TestCase
         $manager->schedule(new stdClass(), $this->createAuditLog(), false);
 
         self::assertCount(1, $manager->getScheduledAudits());
-        self::assertFalse($manager->getScheduledAudits()[0]['is_insert']);
+        self::assertFalse($manager->getScheduledAudits()[0]->isInsert);
     }
 
     public function testPendingDeletions(): void
@@ -75,10 +76,10 @@ final class ScheduledAuditManagerTest extends TestCase
 
         $deletions = $manager->getPendingDeletions();
         self::assertCount(1, $deletions);
-        self::assertSame($entity, $deletions[0]['entity']);
-        self::assertSame($data, $deletions[0]['data']);
-        self::assertTrue($deletions[0]['is_managed']);
-        self::assertSame(AuditAction::Delete, $deletions[0]['action']);
+        self::assertSame($entity, $deletions[0]->entity);
+        self::assertSame($data, $deletions[0]->data);
+        self::assertTrue($deletions[0]->isManaged);
+        self::assertSame(AuditAction::Delete, $deletions[0]->action);
     }
 
     public function testPendingDeletionOverflow(): void
@@ -88,6 +89,15 @@ final class ScheduledAuditManagerTest extends TestCase
 
         self::expectException(OverflowException::class);
         $manager->addPendingDeletion(new stdClass(), ['id' => 2], true, AuditAction::Delete);
+    }
+
+    public function testPendingAuditPlanOverflow(): void
+    {
+        $manager = new ScheduledAuditManager(maxPendingAuditPlans: 1);
+        $manager->schedulePendingAuditPlan(PendingAuditPlan::forEntityRefresh(new stdClass(), AuditAction::Create));
+
+        self::expectException(OverflowException::class);
+        $manager->schedulePendingAuditPlan(PendingAuditPlan::forEntityRefresh(new stdClass(), AuditAction::Create));
     }
 
     public function testClear(): void

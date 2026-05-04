@@ -32,6 +32,7 @@ use Rcsofttech\AuditTrailBundle\Service\CollectionChangeIndexBuilder;
 use Rcsofttech\AuditTrailBundle\Service\CollectionChangeResolver;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
+use Rcsofttech\AuditTrailBundle\Service\DeferredCollectionDetector;
 use Rcsofttech\AuditTrailBundle\Service\DeletedAssociationImpactResolver;
 use Rcsofttech\AuditTrailBundle\Service\EntityAuditDispatchManager;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
@@ -88,6 +89,7 @@ final class EntityProcessorTest extends TestCase
             $this->auditManager,
             new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger()),
             $collectionChangeResolver,
+            new DeferredCollectionDetector($collectionChangeResolver),
             new EntityAuditDispatchManager(
                 $dispatcher ?? $this->dispatcher,
                 $this->auditManager,
@@ -128,19 +130,17 @@ final class EntityProcessorTest extends TestCase
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
         // Entity ID is already resolved (UUID case) — should dispatch immediately
-        $audit = new AuditLog(stdClass::class, '550e8400-e29b-41d4-a716-446655440000', AuditAction::Create);
-
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
             ->with($entity, AuditAction::Create, [])
             ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
-        $this->auditService->method('createAuditLog')->willReturn($audit);
+        $audit = new AuditLog(stdClass::class, '550e8400-e29b-41d4-a716-446655440000', AuditAction::Create);
+        $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($audit);
 
-        // UUID path: dispatch during onFlush (single flush), NOT scheduled
         $dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
-        $this->auditManager->expects($this->never())->method('schedule');
+        $this->auditManager->expects($this->never())->method('schedulePendingAuditPlan');
 
         $processor->processInsertions($em, $uow);
     }
@@ -153,17 +153,14 @@ final class EntityProcessorTest extends TestCase
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
         // Entity ID is PENDING (auto-increment) — must defer to postFlush
-        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
-
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
             ->with($entity, AuditAction::Create, [])
             ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
-        $this->auditService->method('createAuditLog')->willReturn($audit);
-
-        // Auto-increment path: scheduled for postFlush, NOT dispatched
+        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
+        $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($audit);
         $dispatcher->expects($this->never())->method('dispatch');
         $this->auditManager->expects($this->once())->method('schedule')->with($entity, $audit, true);
 
@@ -192,8 +189,6 @@ final class EntityProcessorTest extends TestCase
         $em = self::createStub(EntityManagerInterface::class);
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
-
         $uow->method('getScheduledEntityUpdates')->willReturn([$entity]);
         $uow->method('getScheduledCollectionUpdates')->willReturn([]);
         $uow->method('getScheduledCollectionDeletions')->willReturn([]);
@@ -205,11 +200,8 @@ final class EntityProcessorTest extends TestCase
             ->willReturn(true);
         $this->changeProcessor->method('extractChanges')->willReturn([['field' => 'old'], ['field' => 'new']]);
         $this->changeProcessor->method('determineUpdateAction')->willReturn(AuditAction::Update);
-        $this->auditService->expects($this->once())
-            ->method('createAuditLog')
-            ->with($entity, AuditAction::Update, ['field' => 'old'], ['field' => 'new'])
-            ->willReturn($audit);
-
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
+        $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($audit);
         $this->auditManager->expects($this->once())->method('schedule')->with($entity, $audit, false);
 
         $this->processor->processUpdates($em, $uow);
@@ -251,8 +243,6 @@ final class EntityProcessorTest extends TestCase
                 return 2;
             }
         };
-        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
-
         $uow->method('getScheduledEntityUpdates')->willReturn([$entity]);
         $uow->method('getScheduledCollectionDeletions')->willReturn([]);
         $uow->method('getEntityChangeSet')->willReturn(['title' => ['old', 'new']]);
@@ -270,16 +260,11 @@ final class EntityProcessorTest extends TestCase
             ->method('shouldAudit')
             ->with($entity, AuditAction::Update, ['title' => 'new', 'tags' => ['1', '2']])
             ->willReturn(true);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $this->auditService->expects($this->once())
             ->method('createAuditLog')
-            ->with(
-                $entity,
-                AuditAction::Update,
-                ['title' => 'old', 'tags' => ['1']],
-                ['title' => 'new', 'tags' => ['1', '2']]
-            )
+            ->with($entity, AuditAction::Update, ['title' => 'old', 'tags' => ['1']], ['title' => 'new', 'tags' => ['1', '2']])
             ->willReturn($audit);
-
         $this->auditManager->expects($this->once())->method('schedule')->with($entity, $audit, false);
 
         $this->processor->processUpdates($em, $uow);
@@ -325,8 +310,6 @@ final class EntityProcessorTest extends TestCase
                 return 2;
             }
         };
-        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
-
         $collection = new StubCollection(
             $owner,
             [$item2],
@@ -335,12 +318,16 @@ final class EntityProcessorTest extends TestCase
             [$item1]
         );
 
+        $this->idResolver->method('resolveFromEntity')->willReturnMap([
+            [$item1, $em, '1'],
+            [$item2, $em, '2'],
+        ]);
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
-            ->with($owner)
+            ->with($owner, AuditAction::Update, ['items' => ['1', '2']])
             ->willReturn(true);
-        $this->auditService->method('createAuditLog')->willReturn($audit);
-
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
+        $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($audit);
         $this->auditManager->expects($this->once())->method('schedule')->with($owner, $audit, false);
 
         $this->processor->processCollectionUpdates($em, $uow, [$collection]);
@@ -396,8 +383,6 @@ final class EntityProcessorTest extends TestCase
                 return 2;
             }
         };
-        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
-
         $collection = new StubCollection(
             $owner,
             [],
@@ -414,16 +399,11 @@ final class EntityProcessorTest extends TestCase
             [$item1, $em, '1'],
             [$item2, $em, '2'],
         ]);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $this->auditService->expects($this->once())
             ->method('createAuditLog')
-            ->with(
-                $owner,
-                AuditAction::Update,
-                ['items' => ['1', '2']],
-                ['items' => ['2']]
-            )
+            ->with($owner, AuditAction::Update, ['items' => ['1', '2']], ['items' => ['2']])
             ->willReturn($audit);
-
         $this->auditManager->expects($this->once())->method('schedule')->with($owner, $audit, false);
 
         $this->processor->processCollectionUpdates($em, $uow, [$collection]);
@@ -509,8 +489,6 @@ final class EntityProcessorTest extends TestCase
                 return 1;
             }
         };
-        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
-
         $collection = new StubCollection(
             $owner,
             [],
@@ -526,14 +504,10 @@ final class EntityProcessorTest extends TestCase
             ->method('shouldAudit')
             ->with($owner, AuditAction::Update, ['items' => []])
             ->willReturn(true);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $this->auditService->expects($this->once())
             ->method('createAuditLog')
-            ->with(
-                $owner,
-                AuditAction::Update,
-                ['items' => ['1']],
-                ['items' => []]
-            )
+            ->with($owner, AuditAction::Update, ['items' => ['1']], ['items' => []])
             ->willReturn($audit);
         $this->auditManager->expects($this->once())->method('schedule')->with($owner, $audit, false);
 
@@ -547,17 +521,16 @@ final class EntityProcessorTest extends TestCase
         $em = self::createStub(EntityManagerInterface::class);
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, '1', AuditAction::Create);
-
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
             ->with($entity)
             ->willReturn(true);
-        $this->auditService->method('createAuditLog')->willReturn($audit);
-
+        $this->auditService->method('getEntityData')->willReturn([]);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Create);
+        $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($audit);
         $dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
-        $this->auditManager->expects($this->never())->method('schedule');
+        $this->auditManager->expects($this->never())->method('schedulePendingAuditPlan');
 
         $processor->processInsertions($em, $uow);
     }
@@ -569,16 +542,14 @@ final class EntityProcessorTest extends TestCase
         $em = self::createStub(EntityManagerInterface::class);
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
-
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
             ->with($entity)
             ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
-        $this->auditService->method('createAuditLog')->willReturn($audit);
-
+        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
+        $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($audit);
         $dispatcher->expects($this->never())->method('dispatch');
         $this->auditManager->expects($this->once())->method('schedule')->with($entity, $audit, true);
 
@@ -592,16 +563,14 @@ final class EntityProcessorTest extends TestCase
         $em = self::createStub(EntityManagerInterface::class);
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
-        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
-
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
             ->with($entity)
             ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
-        $this->auditService->method('createAuditLog')->willReturn($audit);
-
+        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
+        $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($audit);
         $dispatcher->expects($this->once())
             ->method('dispatch')
             ->with($audit, $em, AuditPhase::OnFlush, $uow, $entity)
@@ -672,7 +641,6 @@ final class EntityProcessorTest extends TestCase
         $em = self::createStub(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
         $owner = new stdClass();
-        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $currentCollection = new StubCollection(
             $owner,
             [],
@@ -725,7 +693,7 @@ final class EntityProcessorTest extends TestCase
             ->method('isCollectionValuedAssociation')
             ->with('tags')
             ->willReturn(true);
-        $ownerMetadata->expects($this->once())
+        $ownerMetadata->expects($this->exactly(2))
             ->method('getFieldValue')
             ->with($owner, 'tags')
             ->willReturn($currentCollection);
@@ -768,6 +736,7 @@ final class EntityProcessorTest extends TestCase
             ->method('shouldAudit')
             ->with($owner, AuditAction::Update, ['tags' => []])
             ->willReturn(true);
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
         $this->auditService->expects($this->once())
             ->method('createAuditLog')
             ->with($owner, AuditAction::Update, ['tags' => [5, 7]], ['tags' => []])

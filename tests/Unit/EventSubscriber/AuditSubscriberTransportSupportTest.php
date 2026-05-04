@@ -26,6 +26,7 @@ use Rcsofttech\AuditTrailBundle\Service\AuditPostFlushProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
+use Rcsofttech\AuditTrailBundle\Service\PendingAuditPlanMaterializer;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
@@ -114,6 +115,10 @@ final class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
                 $auditService,
                 $dispatcher,
                 $auditManager,
+                new PendingAuditPlanMaterializer(
+                    $auditService,
+                    new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)),
+                ),
                 new TransactionIdGenerator(),
                 new AuditedEntityMarker(
                     self::createStub(AuditAccessHandlerInterface::class),

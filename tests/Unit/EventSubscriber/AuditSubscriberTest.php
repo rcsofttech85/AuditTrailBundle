@@ -31,6 +31,7 @@ use Rcsofttech\AuditTrailBundle\Service\AuditOnFlushProcessor;
 use Rcsofttech\AuditTrailBundle\Service\AuditPostFlushProcessor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
+use Rcsofttech\AuditTrailBundle\Service\PendingAuditPlanMaterializer;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use ReflectionAttribute;
 use ReflectionClass;
@@ -217,7 +218,7 @@ final class AuditSubscriberTest extends TestCase
         $subscriber->postFlush($args);
 
         self::assertNotEmpty($this->auditManager->getScheduledAudits());
-        self::assertSame($audit, $this->auditManager->getScheduledAudits()[0]['audit']);
+        self::assertSame($audit, $this->auditManager->getScheduledAudits()[0]->audit);
     }
 
     public function testPostFlushRetriesRetainedScheduledAuditOnNextFlushWithoutDuplication(): void
@@ -420,7 +421,7 @@ final class AuditSubscriberTest extends TestCase
         $subscriber->postFlush($args);
 
         self::assertNotEmpty($this->auditManager->getPendingDeletions());
-        self::assertSame($entity, $this->auditManager->getPendingDeletions()[0]['entity']);
+        self::assertSame($entity, $this->auditManager->getPendingDeletions()[0]->entity);
     }
 
     public function testPostFlushRetriesRetainedPendingDeletionOnNextFlushWithoutDuplication(): void
@@ -664,6 +665,10 @@ final class AuditSubscriberTest extends TestCase
                 $auditService ?? $this->auditService,
                 $dispatcher ?? $this->dispatcher,
                 $this->auditManager,
+                new PendingAuditPlanMaterializer(
+                    $auditService ?? $this->auditService,
+                    new CollectionIdExtractor($resolvedIdResolver),
+                ),
                 $this->transactionIdGenerator,
                 new AuditedEntityMarker($resolvedAccessHandler, $resolvedIdResolver),
                 $logger ?? $this->logger,

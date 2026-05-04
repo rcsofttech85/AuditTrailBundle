@@ -7,8 +7,8 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditToggleInterface;
 use Rcsofttech\AuditTrailBundle\Contract\RevertActionHandlerInterface;
-use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\ValueObject\RevertPlan;
@@ -30,7 +30,7 @@ final readonly class AuditReverter implements AuditReverterInterface
         private ValidatorInterface $validator,
         private RevertValueDenormalizer $denormalizer,
         private SoftDeleteHandlerInterface $softDeleteHandler,
-        private ScheduledAuditManagerInterface $auditManager,
+        private AuditToggleInterface $auditManager,
         private RevertGuard $revertGuard,
         private RevertEntityStateApplier $revertStateApplier,
         private RevertAuditLogCreator $revertAuditLogCreator,

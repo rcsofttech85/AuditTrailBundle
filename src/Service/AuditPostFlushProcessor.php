@@ -8,10 +8,13 @@ use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditQueueManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
-use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
+use Rcsofttech\AuditTrailBundle\ValueObject\PendingAuditPlan;
+use Rcsofttech\AuditTrailBundle\ValueObject\PendingDeletionEntry;
+use Rcsofttech\AuditTrailBundle\ValueObject\ScheduledAuditEntry;
 
 use function count;
 
@@ -20,7 +23,8 @@ final readonly class AuditPostFlushProcessor
     public function __construct(
         private AuditServiceInterface $auditService,
         private AuditDispatcherInterface $dispatcher,
-        private ScheduledAuditManagerInterface $auditManager,
+        private AuditQueueManagerInterface $auditManager,
+        private PendingAuditPlanMaterializer $pendingAuditPlanMaterializer,
         private TransactionIdGenerator $transactionIdGenerator,
         private AuditedEntityMarker $auditedEntityMarker,
         private ?LoggerInterface $logger = null,
@@ -29,14 +33,19 @@ final readonly class AuditPostFlushProcessor
 
     public function process(EntityManagerInterface $entityManager): void
     {
+        // Keep deletion, deferred-plan, and scheduled-audit processing in this
+        // order so post-flush delivery preserves the bundle's historical event
+        // sequencing while generated identifiers are already available.
         $failedPendingDeletions = $this->processPendingDeletions($entityManager);
+        $failedPendingAuditPlans = $this->processPendingAuditPlans($entityManager);
         $failedScheduledAudits = $this->processScheduledAudits($entityManager);
 
         $this->auditManager->clear();
-        $this->retainFailedDispatches($failedPendingDeletions, $failedScheduledAudits);
-        if ($failedPendingDeletions !== [] || $failedScheduledAudits !== []) {
+        $this->retainFailedDispatches($failedPendingDeletions, $failedPendingAuditPlans, $failedScheduledAudits);
+        if ($failedPendingDeletions !== [] || $failedPendingAuditPlans !== [] || $failedScheduledAudits !== []) {
             $this->logger?->warning('Audit delivery deferred until a later flush.', [
                 'pending_deletions' => count($failedPendingDeletions),
+                'pending_audit_plans' => count($failedPendingAuditPlans),
                 'scheduled_audits' => count($failedScheduledAudits),
             ]);
         }
@@ -45,17 +54,17 @@ final readonly class AuditPostFlushProcessor
     }
 
     /**
-     * @return list<array{entity: object, data: array<string, mixed>, is_managed: bool, action: AuditAction}>
+     * @return list<PendingDeletionEntry>
      */
     private function processPendingDeletions(EntityManagerInterface $entityManager): array
     {
-        /** @var list<array{entity: object, data: array<string, mixed>, is_managed: bool, action: AuditAction}> $failedPendingDeletions */
+        /** @var list<PendingDeletionEntry> $failedPendingDeletions */
         $failedPendingDeletions = [];
 
         foreach ($this->auditManager->getPendingDeletions() as $pendingDeletion) {
-            $entity = $pendingDeletion['entity'];
-            $oldData = $pendingDeletion['data'];
-            $action = $pendingDeletion['action'];
+            $entity = $pendingDeletion->entity;
+            $oldData = $pendingDeletion->data;
+            $action = $pendingDeletion->action;
 
             $newData = $action === AuditAction::SoftDelete
                 ? $this->auditService->getEntityData($entity, [], $entityManager)
@@ -74,18 +83,39 @@ final readonly class AuditPostFlushProcessor
     }
 
     /**
-     * @return array<int, array{entity: object, audit: \Rcsofttech\AuditTrailBundle\Entity\AuditLog, is_insert: bool}>
+     * @return list<PendingAuditPlan>
+     */
+    private function processPendingAuditPlans(EntityManagerInterface $entityManager): array
+    {
+        $failedPlans = [];
+
+        foreach ($this->auditManager->getPendingAuditPlans() as $plan) {
+            $audit = $this->pendingAuditPlanMaterializer->materialize($plan, $entityManager);
+
+            if (!$this->dispatcher->dispatch($audit, $entityManager, AuditPhase::PostFlush, null, $plan->entity)) {
+                $failedPlans[] = $plan;
+                continue;
+            }
+
+            $this->auditedEntityMarker->mark($plan->entity, $entityManager);
+        }
+
+        return $failedPlans;
+    }
+
+    /**
+     * @return list<ScheduledAuditEntry>
      */
     private function processScheduledAudits(EntityManagerInterface $entityManager): array
     {
-        /** @var array<int, array{entity: object, audit: \Rcsofttech\AuditTrailBundle\Entity\AuditLog, is_insert: bool}> $failedScheduledAudits */
+        /** @var list<ScheduledAuditEntry> $failedScheduledAudits */
         $failedScheduledAudits = [];
 
         foreach ($this->auditManager->getScheduledAudits() as $scheduledAudit) {
-            $entity = $scheduledAudit['entity'];
-            $audit = $scheduledAudit['audit'];
+            $entity = $scheduledAudit->entity;
+            $audit = $scheduledAudit->audit;
 
-            if ($scheduledAudit['is_insert']) {
+            if ($scheduledAudit->isInsert) {
                 $id = $this->auditedEntityMarker->resolveEntityId($entity, $entityManager);
                 if ($id !== AuditLogInterface::PENDING_ID) {
                     $audit->entityId = $id;
@@ -104,13 +134,21 @@ final readonly class AuditPostFlushProcessor
     }
 
     /**
-     * @param list<array{entity: object, data: array<string, mixed>, is_managed: bool, action: AuditAction}>          $failedPendingDeletions
-     * @param array<int, array{entity: object, audit: \Rcsofttech\AuditTrailBundle\Entity\AuditLog, is_insert: bool}> $failedScheduledAudits
+     * @param list<PendingDeletionEntry> $failedPendingDeletions
+     * @param list<PendingAuditPlan>     $failedPendingAuditPlans
+     * @param list<ScheduledAuditEntry>  $failedScheduledAudits
      */
-    private function retainFailedDispatches(array $failedPendingDeletions, array $failedScheduledAudits): void
-    {
+    private function retainFailedDispatches(
+        array $failedPendingDeletions,
+        array $failedPendingAuditPlans,
+        array $failedScheduledAudits,
+    ): void {
         if ($failedPendingDeletions !== []) {
             $this->auditManager->replacePendingDeletions($failedPendingDeletions);
+        }
+
+        if ($failedPendingAuditPlans !== []) {
+            $this->auditManager->replacePendingAuditPlans($failedPendingAuditPlans);
         }
 
         if ($failedScheduledAudits !== []) {

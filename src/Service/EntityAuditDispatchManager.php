@@ -8,7 +8,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
-use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditQueueManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 
@@ -16,7 +16,7 @@ final readonly class EntityAuditDispatchManager
 {
     public function __construct(
         private AuditDispatcherInterface $dispatcher,
-        private ScheduledAuditManagerInterface $auditManager,
+        private AuditQueueManagerInterface $auditManager,
         private bool $deferTransportUntilCommit = true,
         private bool $failOnTransportError = false,
     ) {

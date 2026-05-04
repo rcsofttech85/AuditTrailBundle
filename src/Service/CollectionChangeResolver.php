@@ -110,6 +110,21 @@ final readonly class CollectionChangeResolver
     }
 
     /**
+     * @param iterable<mixed> $items
+     *
+     * @return array<int, int|string>
+     */
+    public function extractCollectionIdsFromIterable(iterable $items, EntityManagerInterface $em): array
+    {
+        return $this->collectionIdExtractor->extractFromIterable($items, $em);
+    }
+
+    public function collectionContainsPendingIds(mixed $items, EntityManagerInterface $em): bool
+    {
+        return $this->collectionIdExtractor->hasPendingIds($items, $em);
+    }
+
+    /**
      * @param TrackableCollection $collection
      *
      * @return array<int, object>

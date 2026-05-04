@@ -36,6 +36,7 @@ use Rcsofttech\AuditTrailBundle\Service\CollectionChangeResolver;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
 use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
+use Rcsofttech\AuditTrailBundle\Service\DeferredCollectionDetector;
 use Rcsofttech\AuditTrailBundle\Service\DeletedAssociationImpactResolver;
 use Rcsofttech\AuditTrailBundle\Service\EntityAuditDispatchManager;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
@@ -130,6 +131,7 @@ abstract class AbstractAuditTestCase extends TestCase
             $auditManager,
             new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger()),
             $collectionChangeResolver,
+            new DeferredCollectionDetector($collectionChangeResolver),
             new EntityAuditDispatchManager($dispatcher, $auditManager, $deferTransportUntilCommit, false),
             true,
             new EntityUpdateTransitionResolver(
