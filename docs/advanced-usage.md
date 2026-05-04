@@ -62,13 +62,14 @@ For complex logic, implement the `AuditVoterInterface`. Your voter will be autom
 declare(strict_types=1);
 
 use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 class MyCustomVoter implements AuditVoterInterface
 {
-    public function vote(object $entity, string $action, array $changeSet): bool
+    public function vote(object $entity, AuditAction $action, array $changeSet): bool
     {
         // Return false to skip auditing
-        return $action !== 'delete' || $this->isAdmin();
+        return $action !== AuditAction::Delete || $this->isAdmin();
     }
 }
 ```
@@ -198,10 +199,11 @@ declare(strict_types=1);
 namespace App\Audit;
 
 use Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 class SystemInfoContributor implements AuditContextContributorInterface
 {
-    public function contribute(object $entity, string $action, array $changeSet): array
+    public function contribute(object $entity, AuditAction $action, array $changeSet): array
     {
         return [
             'app_version' => 'v2.4.1',

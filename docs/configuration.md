@@ -93,7 +93,7 @@ audit_trail:
     # Enable cryptographic signing of audit logs to prevent tampering.
     integrity:
         enabled: false
-        secret: '%env(AUDIT_INTEGRITY_SECRET)%'
+        secret: '%env(string:AUDIT_INTEGRITY_SECRET)%'
         algorithm: 'sha256'
 
     # Transaction Safety & Performance

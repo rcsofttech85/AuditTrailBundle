@@ -25,6 +25,12 @@ Notes:
 php bin/console audit:export --format=json --output=audits.json
 ```
 
+Notes:
+
+- The CLI export command is the right tool for large or full-history exports.
+- EasyAdmin export respects the active admin filters, but is intentionally
+  capped by `admin_export_limit` to keep browser-triggered downloads bounded.
+
 ## View Diff
 
 ```bash
