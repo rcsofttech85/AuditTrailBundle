@@ -73,6 +73,14 @@
         "symfony/messenger": "Required to enable the queue transport and async database transport."
     },
     "scripts": {
+        "test": "vendor/bin/phpunit",
+        "stan": "vendor/bin/phpstan analyse",
+        "cs": "vendor/bin/php-cs-fixer fix --dry-run --diff --format=txt",
+        "check": [
+            "@test",
+            "@stan",
+            "@cs"
+        ],
         "lint:md": "npx -y markdownlint-cli2 \"**/*.md\" \"#vendor\""
     },
     "config": {

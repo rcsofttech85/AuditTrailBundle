@@ -9,29 +9,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.0.0]
 
-This release is mostly about cleaning up the public API.
+This release includes API cleanup, stronger typing, and a fix for same-flush
+collection auditing.
 
-### 3.3.0 Changed
+### 4.0.0 Upgrade Notes
 
-- Audit actions now use `Rcsofttech\AuditTrailBundle\Enum\AuditAction`.
-- `AuditLog::$action` is now an `AuditAction` enum, not a string.
-- `AuditServiceInterface`, `AuditVoterInterface`, and `ChangeProcessorInterface` now use `AuditAction`.
-- `TrackableCollectionInterface` moved from `Service` to `Contract`.
-- Bundle event name constants were removed. Use the event class when subscribing.
+- **`AuditAction` is introduced in v4**: `Rcsofttech\AuditTrailBundle\Enum\AuditAction`
+  is new in this major release. `AuditLog::$action` is now an enum-backed field,
+  and several contracts and service paths now use `AuditAction` instead of raw
+  strings.
+- **AI-related admin and insight work expands**: the underlying
+  `AuditLogAiProcessorInterface` hook already existed before v4, and v4 adds
+  more admin-side support around it.
+- **`TrackableCollectionInterface` moved**: import it from
+  `Rcsofttech\AuditTrailBundle\Contract\TrackableCollectionInterface`.
+- **Event usage is class-based**: if custom listeners relied on older event
+  name constants, switch to the event classes directly.
+- **Same-flush collection adds are now finalized later**: when a brand-new
+  related entity is added to a to-many association in the same flush, v4
+  materializes the final collection identifiers after flush completion instead
+  of persisting unresolved placeholders.
+- **Pending audit plans are now part of the scheduled-audit contract**: custom
+  `ScheduledAuditManagerInterface` implementations must support
+  `schedulePendingAuditPlan()`, `getPendingAuditPlans()`, and
+  `replacePendingAuditPlans()`.
+- **Queue and toggle responsibilities are now split internally**: the bundle
+  introduces `AuditQueueManagerInterface` and `AuditToggleInterface`. Stock
+  applications can continue using `ScheduledAuditManagerInterface`, but custom
+  integrations should prefer the narrower contracts when possible.
 
-Most apps using only the built-in features should not need much more than a
-normal dependency update and test run.
+See `docs/upgrade-v4.md` for the full migration guide.
 
-If you have custom integrations, check any code that reads `AuditLog::$action`,
-implements the audit contracts above, imports
-`TrackableCollectionInterface`, or subscribes to bundle events by the old name
-constants.
+### 4.0.0 Fixed
+
+- **Same-flush to-many relation auditing**: parent `create` and `update` logs
+  now store the final identifiers when a newly created related entity is added
+  to a collection in the same flush.
+- **Placeholder relation payloads**: unresolved collection values no longer
+  persist entity class names such as `App\Entity\Category` as stand-ins for
+  final related identifiers.
+- **Collection update correctness across generated ID strategies**: collection
+  diffs now behave consistently for integer-generated identifiers as well as
+  UUID/ULID-backed relations.
+
+### 4.0.0 Improved
+
+- **Action typing across the bundle**: audit actions are now modeled explicitly
+  through `AuditAction`, improving consistency across entities, contracts,
+  commands, queries, and transports.
+- **AI-related admin and insight capabilities**: the existing AI-ready audit
+  context processing hook is complemented by broader admin-side AI audit
+  insight support.
+- **Deferred collection materialization pipeline**: collection-sensitive audit
+  flows are now planned during flush processing and materialized after generated
+  identifiers are available.
+- **Scheduled-audit type safety**: internal scheduled-audit and pending-deletion
+  queues now use dedicated value objects instead of raw associative arrays.
+- **Contract separation**: queue-management and enable/disable responsibilities
+  are easier to consume independently in custom integrations.
 
 ### Added
 
 - `AuditDeliveryFailedEvent` for transport or fallback delivery failures.
 - `RevertActionHandlerInterface` for custom revert handling.
 - Helper methods on `AuditAction` for labels, badges, icons, and state checks.
+- A CI workflow that checks backward compatibility for public API changes.
 
 ## [3.3.0]
 

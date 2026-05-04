@@ -95,6 +95,7 @@ Track not just what changed, but who did it and where they were.
 | **[Installation & Setup](README.md#quick-start)** | Getting started guide. |
 | **[Configuration](docs/configuration.md)** | Full configuration reference (`enabled`, `transports`, `integrity`, access auditing, collection serialization). |
 | **[Advanced Usage](docs/advanced-usage.md)** | Attributes, Conditional Auditing, Impersonation, Custom Context. |
+| **[Architecture](docs/architecture.md)** | Contributor-oriented map of the flush pipeline, transports, admin layer, revert flow, and extension points. |
 | **[Transports](docs/symfony-audit-transports.md)** | Doctrine, HTTP, and Queue (Messenger) transport details. |
 | **[Audit Reader](docs/symfony-audit-reader.md)** | Querying audit logs programmatically. |
 | **[Revert & Recovery](docs/revert-feature.md)** | Point-in-time restoration of entities. |
