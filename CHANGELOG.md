@@ -60,6 +60,8 @@ See `docs/upgrade-v4.md` for the full migration guide.
 - **AI-related admin and insight capabilities**: the existing AI-ready audit
   context processing hook is complemented by broader admin-side AI audit
   insight support.
+- **Safer admin export defaults**: EasyAdmin export now applies a configurable
+  `admin_export_limit` so browser-triggered exports stay bounded by default.
 - **Deferred collection materialization pipeline**: collection-sensitive audit
   flows are now planned during flush processing and materialized after generated
   identifiers are available.

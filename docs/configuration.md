@@ -48,6 +48,11 @@ audit_trail:
     # Required role/permission for EasyAdmin audit actions
     admin_permission: 'ROLE_ADMIN'
 
+    # Maximum number of rows a single EasyAdmin export request will stream.
+    # This keeps browser-triggered exports bounded. Use the CLI export command
+    # for larger or full-history exports.
+    admin_export_limit: 50000
+
     # HTTP methods eligible for access auditing
     audited_methods: ['GET']
 
@@ -122,6 +127,7 @@ audit_trail:
 - `http.endpoint` must start with `http://` or `https://` when HTTP transport is enabled
 - `table_prefix` and `table_suffix` must be strings; non-empty values may contain only letters, numbers, and underscores and must not start with a digit
 - `max_collection_items` must be at least `1`
+- `admin_export_limit` must be at least `1`
 - each `queue_limits` value must be at least `1`
 - If `cache_pool` is `null`, access-audit cooldowns are request-local only; cross-request cooldown persistence is disabled
 
@@ -163,6 +169,7 @@ These three options control the bundle's failure boundary:
 - Because deferred database writes use a dedicated writer, Doctrine ORM lifecycle callbacks/listeners on `AuditLog` are not involved in that deferred path.
 - When `fallback_to_database` is enabled, the dispatcher uses the bundle's own phase-aware fallback persistence path. On `onFlush` it joins the current `UnitOfWork`; on deferred and manual phases it writes through the dedicated database writer; and on failure it logs the fallback failure explicitly.
 - If transport delivery keeps failing in a long-running process, the bundle retains failed work for a later flush. The `queue_limits` settings cap that in-memory retention so workers fail loudly instead of growing without bound.
+- EasyAdmin exports respect the active admin filters first, then apply `admin_export_limit`. If you need a larger export, prefer the CLI command.
 
 ## Collection Serialization Guide
 

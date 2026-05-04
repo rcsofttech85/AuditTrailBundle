@@ -48,6 +48,7 @@ final class AuditTrailExtensionTest extends TestCase
             (string) $container->getAlias(AuditTransportInterface::class)
         );
         self::assertSame('ROLE_ADMIN', $container->getParameter('audit_trail.admin_permission'));
+        self::assertSame(50000, $container->getParameter('audit_trail.admin_export_limit'));
         self::assertSame(1000, $container->getParameter('audit_trail.queue_limits.scheduled_audits'));
         self::assertSame(1000, $container->getParameter('audit_trail.queue_limits.pending_audit_plans'));
         self::assertSame(1000, $container->getParameter('audit_trail.queue_limits.pending_deletions'));
@@ -71,6 +72,18 @@ final class AuditTrailExtensionTest extends TestCase
         ]], $container);
 
         self::assertSame('ROLE_AUDIT_ADMIN', $container->getParameter('audit_trail.admin_permission'));
+    }
+
+    public function testCustomAdminExportLimitIsStored(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([[
+            'admin_export_limit' => 2500,
+        ]], $container);
+
+        self::assertSame(2500, $container->getParameter('audit_trail.admin_export_limit'));
     }
 
     public function testCustomQueueLimitsAreStored(): void

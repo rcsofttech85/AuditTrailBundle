@@ -21,6 +21,7 @@ final readonly class AuditLogAdminOperations
         private RevertPreviewFormatter $formatter,
         private TransactionDrilldownService $drilldownService,
         private AuditLogAdminRequestMapper $requestMapper,
+        private int $adminExportLimit,
     ) {
     }
 
@@ -86,6 +87,29 @@ final readonly class AuditLogAdminOperations
             throw new RuntimeException('Expected a writable stream resource for export.');
         }
 
-        $this->exporter->exportToStream($this->repository->findAllWithFilters($filters), $format, $output);
+        $this->exporter->exportToStream(
+            $this->takeAudits($this->repository->findAllWithFilters($filters), $this->adminExportLimit),
+            $format,
+            $output
+        );
+    }
+
+    /**
+     * @param iterable<AuditLog> $audits
+     *
+     * @return iterable<AuditLog>
+     */
+    private function takeAudits(iterable $audits, int $limit): iterable
+    {
+        $yielded = 0;
+
+        foreach ($audits as $audit) {
+            if ($yielded >= $limit) {
+                break;
+            }
+
+            ++$yielded;
+            yield $audit;
+        }
     }
 }

@@ -26,6 +26,7 @@ services:
       $trackIpAddress: '%audit_trail.track_ip_address%'
       $trackUserAgent: '%audit_trail.track_user_agent%'
       $adminPermission: '%audit_trail.admin_permission%'
+      $adminExportLimit: '%audit_trail.admin_export_limit%'
 
   Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService:
     ~
