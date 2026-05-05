@@ -10,6 +10,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditChangedFieldMatcher;
+use Rcsofttech\AuditTrailBundle\Query\AuditQueryExecutor;
 use Rcsofttech\AuditTrailBundle\Query\AuditQueryFilterFactory;
 use Rcsofttech\AuditTrailBundle\Query\AuditReader;
 use stdClass;
@@ -20,11 +21,15 @@ final class AuditReaderTest extends TestCase
         ?AuditLogRepositoryInterface $repository = null,
         ?EntityIdResolverInterface $idResolver = null,
     ): AuditReader {
+        $repo = $repository ?? self::createStub(AuditLogRepositoryInterface::class);
+
         return new AuditReader(
-            $repository ?? self::createStub(AuditLogRepositoryInterface::class),
+            new AuditQueryExecutor(
+                $repo,
+                new AuditQueryFilterFactory(),
+                new AuditChangedFieldMatcher(),
+            ),
             $idResolver ?? self::createStub(EntityIdResolverInterface::class),
-            new AuditQueryFilterFactory(),
-            new AuditChangedFieldMatcher(),
         );
     }
 

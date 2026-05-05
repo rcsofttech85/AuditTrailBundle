@@ -45,10 +45,9 @@ Before deploying v4:
 7. If you subscribed to old event-name constants, switch to event classes.
 8. If you manually instantiate `EntityProcessor`, update that wiring to match
    the new concrete constructor or prefer DI / `EntityProcessorInterface`.
-9. Manually verify:
-   - create/update/delete auditing
-   - one same-flush relation add with a generated identifier
-   - export, revert, and integrity verification
+9. If you manually instantiate `AuditQuery` or `AuditReader`, update that
+   wiring to match the new concrete constructors or prefer DI /
+   `AuditReaderInterface`.
 
 ## 1. `AuditAction` Is New in v4
 
@@ -104,6 +103,8 @@ Important examples:
   preserving the `EntityProcessorInterface` entry point
 - transport and repository/query internals were modernized around typed
   services and value objects
+- the query layer now separates immutable fluent state from execution and page
+  materialization
 
 If your application extends the bundle, review the current interfaces in
 `src/Contract` directly.
@@ -228,7 +229,28 @@ What this means in practice:
 - this is a source-level BC change on the concrete class, not a contract
   change to `EntityProcessorInterface`
 
-## 8. What Probably Does Not Need Changing
+## 8. `AuditQuery` and `AuditReader` Construction Changed
+
+v4 keeps the fluent `AuditQuery` API and `AuditReaderInterface` behavior, but
+the concrete construction path changed:
+
+- `AuditQuery` is now a thin immutable facade over dedicated query state and
+  execution services
+- `AuditReader` now depends on a query executor service instead of assembling
+  query collaborators itself
+- `AuditQuery::getPage()` is available when callers want entries and the next
+  cursor from one materialized query
+
+What this means in practice:
+
+- if your application only uses Symfony DI/autowiring, nothing special is
+  usually required
+- if custom code or tests call `new AuditQuery(...)` or `new AuditReader(...)`
+  directly, that wiring must be updated for v4
+- this is a source-level BC change on the concrete classes, not a contract
+  change to `AuditReaderInterface`
+
+## 9. What Probably Does Not Need Changing
 
 Most regular bundle consumers do not need code changes for:
 
@@ -251,13 +273,15 @@ Use this order in a real application:
 4. Review any custom AI enrichment around audit context.
 5. Update any custom `ScheduledAuditManagerInterface` implementation.
 6. Update any direct `EntityProcessor` construction in custom code or tests.
-7. Review code that parses collection payloads and assumes unresolved relation
+7. Update any direct `AuditQuery` or `AuditReader` construction in custom code
+   or tests.
+8. Review code that parses collection payloads and assumes unresolved relation
    placeholders.
-8. Run your test suite.
-9. Manually verify one same-flush relation add with a generated identifier.
-10. Manually verify collection removal/replacement, export, revert, and
+9. Run your test suite.
+10. Manually verify one same-flush relation add with a generated identifier.
+11. Manually verify collection removal/replacement, export, revert, and
    integrity verification.
-11. Only then deploy the upgrade.
+12. Only then deploy the upgrade.
 
 ## Verification Checklist
 

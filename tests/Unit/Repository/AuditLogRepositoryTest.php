@@ -260,6 +260,27 @@ final class AuditLogRepositoryTest extends TestCase
         $repository->findWithFilters([]);
     }
 
+    public function testCountWithFiltersUsesDatabaseCountQuery(): void
+    {
+        [$repository, $qb, $query] = $this->createQueryHarness();
+
+        $qb->expects($this->exactly(2))
+            ->method('select')
+            ->willReturnCallback(static function (string $select) use ($qb): QueryBuilder {
+                static $expected = ['a', 'COUNT(a.id)'];
+                static $index = 0;
+
+                TestCase::assertSame($expected[$index], $select);
+                ++$index;
+
+                return $qb;
+            });
+        $qb->expects($this->once())->method('andWhere')->with('a.userId = :userId')->willReturnSelf();
+        $query->method('getSingleScalarResult')->willReturn(12);
+
+        self::assertSame(12, $repository->countWithFilters(['userId' => '1']));
+    }
+
     public function testFindByUserRejectsNonPositiveLimit(): void
     {
         $this->expectException(InvalidArgumentException::class);

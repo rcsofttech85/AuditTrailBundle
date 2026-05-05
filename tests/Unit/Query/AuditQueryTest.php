@@ -14,6 +14,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Query\AuditChangedFieldMatcher;
 use Rcsofttech\AuditTrailBundle\Query\AuditQuery;
+use Rcsofttech\AuditTrailBundle\Query\AuditQueryExecutor;
 use Rcsofttech\AuditTrailBundle\Query\AuditQueryFilterFactory;
 use ReflectionClass;
 use Symfony\Component\Uid\Uuid;
@@ -32,10 +33,14 @@ final class AuditQueryTest extends TestCase
 
     private function createQuery(?AuditLogRepositoryInterface $repository = null): AuditQuery
     {
+        $repo = $repository ?? $this->repository;
+
         return new AuditQuery(
-            $repository ?? $this->repository,
-            new AuditQueryFilterFactory(),
-            new AuditChangedFieldMatcher(),
+            new AuditQueryExecutor(
+                $repo,
+                new AuditQueryFilterFactory(),
+                new AuditChangedFieldMatcher(),
+            ),
         );
     }
 
@@ -245,6 +250,19 @@ final class AuditQueryTest extends TestCase
         self::assertCount(2, $results);
     }
 
+    public function testCountUsesDatabaseCountWhenChangedFieldFilterIsNotActive(): void
+    {
+        $repository = $this->useRepositoryMock();
+
+        $repository->expects($this->once())
+            ->method('countWithFilters')
+            ->with(self::callback(static fn (array $filters): bool => !isset($filters['afterId']) && !isset($filters['beforeId'])))
+            ->willReturn(42);
+        $repository->expects($this->never())->method('findWithFilters');
+
+        self::assertSame(42, $this->query->count());
+    }
+
     public function testChangedFieldAppliesFilterBeforeLimit(): void
     {
         $repository = $this->useRepositoryMock();
@@ -338,6 +356,46 @@ final class AuditQueryTest extends TestCase
         self::assertNotNull($result);
         self::assertNotNull($result->id);
         self::assertSame($uuid1, $result->id->toString());
+    }
+
+    public function testGetPageReturnsEntriesAndNextCursorFromSingleFetch(): void
+    {
+        $repository = $this->useRepositoryMock();
+
+        $first = new AuditLog('Class', '1', 'create');
+        $secondId = Uuid::v7()->toString();
+        $second = new AuditLog('Class', '2', 'create');
+        $this->setLogId($second, $secondId);
+
+        $repository->expects($this->once())
+            ->method('findWithFilters')
+            ->with(self::anything(), 30)
+            ->willReturn([$first, $second]);
+
+        $page = $this->query->getPage();
+
+        self::assertCount(2, $page->entries);
+        self::assertSame($secondId, $page->nextCursor);
+    }
+
+    public function testGetResultsAndNextCursorReuseOneMaterializedPage(): void
+    {
+        $repository = $this->useRepositoryMock();
+
+        $log = new AuditLog('Class', '1', 'create');
+        $logId = Uuid::v7()->toString();
+        $this->setLogId($log, $logId);
+
+        $repository->expects($this->once())
+            ->method('findWithFilters')
+            ->with(self::anything(), 30)
+            ->willReturn([$log]);
+
+        $results = $this->query->getResults();
+        $cursor = $this->query->getNextCursor();
+
+        self::assertCount(1, $results);
+        self::assertSame($logId, $cursor);
     }
 
     public function testExists(): void

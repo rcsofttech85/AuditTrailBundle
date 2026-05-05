@@ -7,7 +7,6 @@ namespace Rcsofttech\AuditTrailBundle\Query;
 use Override;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReaderInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Throwable;
@@ -26,10 +25,8 @@ use Throwable;
 final readonly class AuditReader implements AuditReaderInterface
 {
     public function __construct(
-        private AuditLogRepositoryInterface $repository,
+        private AuditQueryExecutor $queryExecutor,
         private EntityIdResolverInterface $idResolver,
-        private AuditQueryFilterFactory $filterFactory,
-        private AuditChangedFieldMatcher $changedFieldMatcher,
         private ?LoggerInterface $logger = null,
     ) {
     }
@@ -40,7 +37,7 @@ final readonly class AuditReader implements AuditReaderInterface
     #[Override]
     public function createQuery(): AuditQuery
     {
-        return new AuditQuery($this->repository, $this->filterFactory, $this->changedFieldMatcher);
+        return new AuditQuery($this->queryExecutor);
     }
 
     /**

@@ -7,14 +7,10 @@ namespace Rcsofttech\AuditTrailBundle\Query;
 use DateTimeInterface;
 use InvalidArgumentException;
 use LogicException;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Symfony\Component\Uid\Uuid;
 
-use function array_key_exists;
-use function array_slice;
-use function count;
+use function array_values;
 use function sprintf;
 
 /**
@@ -25,40 +21,22 @@ use function sprintf;
  *
  * Uses keyset (cursor) pagination for efficient large dataset traversal.
  */
-readonly class AuditQuery
+final class AuditQuery
 {
-    private const int DEFAULT_LIMIT = 30;
-
-    private const int FILTER_BATCH_SIZE = 250;
-
-    /**
-     * @param list<AuditAction> $actions
-     * @param array<string>     $changedFields
-     */
     public function __construct(
-        private AuditLogRepositoryInterface $repository,
-        private AuditQueryFilterFactory $filterFactory,
-        private AuditChangedFieldMatcher $changedFieldMatcher,
-        private ?string $entityClass = null,
-        private ?string $entityId = null,
-        private array $actions = [],
-        private ?string $userId = null,
-        private ?string $transactionHash = null,
-        private ?DateTimeInterface $since = null,
-        private ?DateTimeInterface $until = null,
-        private array $changedFields = [],
-        private int $limit = self::DEFAULT_LIMIT,
-        private ?string $afterId = null,
-        private ?string $beforeId = null,
+        private readonly AuditQueryExecutor $executor,
+        private readonly AuditQueryState $state = new AuditQueryState(),
     ) {
     }
+
+    private ?AuditQueryPage $page = null;
 
     /**
      * Filter by entity class and optional ID.
      */
     public function entity(string $class, ?string $id = null): self
     {
-        return $this->with(['entityClass' => $class, 'entityId' => $id]);
+        return new self($this->executor, $this->state->withEntity($class, $id));
     }
 
     /**
@@ -66,7 +44,7 @@ readonly class AuditQuery
      */
     public function entityId(string $id): self
     {
-        return $this->with(['entityId' => $id]);
+        return new self($this->executor, $this->state->withEntityId($id));
     }
 
     /**
@@ -74,9 +52,10 @@ readonly class AuditQuery
      */
     public function action(AuditAction|string ...$actions): self
     {
-        return $this->with([
-            'actions' => array_map(AuditAction::fromScalar(...), $actions),
-        ]);
+        return new self(
+            $this->executor,
+            $this->state->withActions(array_values(array_map(AuditAction::fromScalar(...), $actions))),
+        );
     }
 
     /**
@@ -108,7 +87,7 @@ readonly class AuditQuery
      */
     public function user(string $userId): self
     {
-        return $this->with(['userId' => $userId]);
+        return new self($this->executor, $this->state->withUserId($userId));
     }
 
     /**
@@ -116,7 +95,7 @@ readonly class AuditQuery
      */
     public function transaction(string $hash): self
     {
-        return $this->with(['transactionHash' => $hash]);
+        return new self($this->executor, $this->state->withTransactionHash($hash));
     }
 
     /**
@@ -124,7 +103,7 @@ readonly class AuditQuery
      */
     public function since(DateTimeInterface $from): self
     {
-        return $this->with(['since' => $from]);
+        return new self($this->executor, $this->state->withSince($from));
     }
 
     /**
@@ -132,7 +111,7 @@ readonly class AuditQuery
      */
     public function until(DateTimeInterface $to): self
     {
-        return $this->with(['until' => $to]);
+        return new self($this->executor, $this->state->withUntil($to));
     }
 
     /**
@@ -148,11 +127,11 @@ readonly class AuditQuery
      */
     public function changedField(string ...$fields): self
     {
-        if ($fields !== [] && $this->beforeId !== null) {
+        if ($fields !== [] && $this->state->beforeId !== null) {
             throw new LogicException('Reverse pagination with changedField() is not supported.');
         }
 
-        return $this->with(['changedFields' => $fields]);
+        return new self($this->executor, $this->state->withChangedFields(array_values($fields)));
     }
 
     /**
@@ -164,7 +143,7 @@ readonly class AuditQuery
             throw new InvalidArgumentException('Limit must be greater than zero.');
         }
 
-        return $this->with(['limit' => $limit]);
+        return new self($this->executor, $this->state->withLimit($limit));
     }
 
     /**
@@ -174,7 +153,7 @@ readonly class AuditQuery
     {
         $this->assertValidCursor($id);
 
-        return $this->with(['afterId' => $id, 'beforeId' => null]);
+        return new self($this->executor, $this->state->withAfterId($id));
     }
 
     /**
@@ -182,13 +161,13 @@ readonly class AuditQuery
      */
     public function before(string $id): self
     {
-        if ($this->changedFields !== []) {
+        if ($this->state->changedFields !== []) {
             throw new LogicException('Reverse pagination with changedField() is not supported.');
         }
 
         $this->assertValidCursor($id);
 
-        return $this->with(['afterId' => null, 'beforeId' => $id]);
+        return new self($this->executor, $this->state->withBeforeId($id));
     }
 
     private function assertValidCursor(string $id): void
@@ -199,61 +178,19 @@ readonly class AuditQuery
     }
 
     /**
-     * @param array<string, mixed> $params
-     */
-    private function with(array $params): self
-    {
-        $state = [
-            'repository' => $this->repository,
-            'filterFactory' => $this->filterFactory,
-            'changedFieldMatcher' => $this->changedFieldMatcher,
-            'entityClass' => $this->entityClass,
-            'entityId' => $this->entityId,
-            'actions' => $this->actions,
-            'userId' => $this->userId,
-            'transactionHash' => $this->transactionHash,
-            'since' => $this->since,
-            'until' => $this->until,
-            'changedFields' => $this->changedFields,
-            'limit' => $this->limit,
-            'afterId' => $this->afterId,
-            'beforeId' => $this->beforeId,
-        ];
-
-        foreach ($params as $key => $value) {
-            if (array_key_exists($key, $state)) {
-                $state[$key] = $value;
-            }
-        }
-
-        /** @var array{
-         *     repository: AuditLogRepositoryInterface,
-         *     filterFactory: AuditQueryFilterFactory,
-         *     changedFieldMatcher: AuditChangedFieldMatcher,
-         *     entityClass: ?string,
-         *     entityId: ?string,
-         *     actions: list<AuditAction>,
-         *     userId: ?string,
-         *     transactionHash: ?string,
-         *     since: ?DateTimeInterface,
-         *     until: ?DateTimeInterface,
-         *     changedFields: array<string>,
-         *     limit: int,
-         *     afterId: ?string,
-         *     beforeId: ?string,
-         * } $state */
-        return new self(...$state);
-    }
-
-    /**
      * Execute the query and return results.
      */
     public function getResults(): AuditEntryCollection
     {
-        $logs = $this->fetchLogs($this->limit);
-        $entries = array_map(static fn (AuditLog $log) => new AuditEntry($log), $logs);
+        return $this->getPage()->entries;
+    }
 
-        return new AuditEntryCollection(array_values($entries));
+    /**
+     * Execute the query and return a materialized page with its next cursor.
+     */
+    public function getPage(): AuditQueryPage
+    {
+        return $this->page ??= $this->executor->getPage($this->state);
     }
 
     /**
@@ -261,22 +198,7 @@ readonly class AuditQuery
      */
     public function count(): int
     {
-        $filters = $this->buildFilters();
-        unset($filters['afterId'], $filters['beforeId']);
-
-        return $this->countMatchingResults($filters);
-    }
-
-    /**
-     * @return array<AuditLog>
-     */
-    private function fetchLogs(int $limit): array
-    {
-        if ($this->changedFields !== []) {
-            return $this->fetchLogsWithChangedFieldFilter($limit);
-        }
-
-        return $this->repository->findWithFilters($this->buildFilters(), $limit);
+        return $this->executor->count($this->state);
     }
 
     /**
@@ -284,7 +206,7 @@ readonly class AuditQuery
      */
     public function getFirstResult(): ?AuditEntry
     {
-        return $this->limit(1)->getResults()->first();
+        return $this->executor->getFirstResult($this->state);
     }
 
     /**
@@ -292,7 +214,7 @@ readonly class AuditQuery
      */
     public function exists(): bool
     {
-        return null !== $this->getFirstResult();
+        return $this->executor->exists($this->state);
     }
 
     /**
@@ -300,112 +222,6 @@ readonly class AuditQuery
      */
     public function getNextCursor(): ?string
     {
-        return $this->getResults()->last()?->id?->toRfc4122();
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function buildFilters(): array
-    {
-        return $this->filterFactory->build(
-            $this->entityClass,
-            $this->entityId,
-            $this->actions,
-            $this->userId,
-            $this->transactionHash,
-            $this->since,
-            $this->until,
-            $this->afterId,
-            $this->beforeId,
-        );
-    }
-
-    /**
-     * @param array<string, mixed> $filters
-     */
-    private function countMatchingResults(array $filters): int
-    {
-        $count = 0;
-        $cursor = null;
-
-        do {
-            $batch = $this->fetchFilterBatch($filters, $cursor);
-            $count += $this->countBatchMatches($batch);
-            $cursor = $this->resolveBatchCursor($batch);
-        } while ($this->shouldContinueFilteredBatchLoop($batch, $cursor));
-
-        return $count;
-    }
-
-    /**
-     * @return array<AuditLog>
-     */
-    private function fetchLogsWithChangedFieldFilter(int $limit): array
-    {
-        $results = [];
-        $filters = $this->buildFilters();
-        $cursor = $this->afterId;
-
-        do {
-            $batch = $this->fetchFilterBatch($filters, $cursor);
-            foreach ($this->filterByChangedFields($batch) as $log) {
-                $results[] = $log;
-            }
-            $cursor = $this->resolveBatchCursor($batch);
-        } while ($limit > count($results) && $this->shouldContinueFilteredBatchLoop($batch, $cursor));
-
-        return array_slice($results, 0, $limit);
-    }
-
-    /**
-     * @param array<string, mixed> $filters
-     *
-     * @return array<AuditLog>
-     */
-    private function fetchFilterBatch(array $filters, ?string $cursor): array
-    {
-        $batchFilters = $filters;
-        $batchFilters['afterId'] = $cursor;
-
-        return $this->repository->findWithFilters($batchFilters, self::FILTER_BATCH_SIZE);
-    }
-
-    /**
-     * @param array<AuditLog> $batch
-     */
-    private function countBatchMatches(array $batch): int
-    {
-        return $this->changedFields !== []
-            ? $this->changedFieldMatcher->countMatches($batch, $this->changedFields)
-            : count($batch);
-    }
-
-    /**
-     * @param array<AuditLog> $batch
-     */
-    private function resolveBatchCursor(array $batch): ?string
-    {
-        $lastLog = $batch[array_key_last($batch)] ?? null;
-
-        return $lastLog?->id?->toRfc4122();
-    }
-
-    /**
-     * @param array<AuditLog> $batch
-     */
-    private function shouldContinueFilteredBatchLoop(array $batch, ?string $cursor): bool
-    {
-        return $batch !== [] && $cursor !== null && count($batch) === self::FILTER_BATCH_SIZE;
-    }
-
-    /**
-     * @param array<AuditLog> $logs
-     *
-     * @return array<AuditLog>
-     */
-    private function filterByChangedFields(array $logs): array
-    {
-        return $this->changedFieldMatcher->filter($logs, $this->changedFields);
+        return $this->getPage()->nextCursor;
     }
 }

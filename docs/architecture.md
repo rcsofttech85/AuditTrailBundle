@@ -63,6 +63,27 @@ They are responsible for:
 - dispatching to transports
 - handling fallback and delivery result paths
 
+### Querying Audit Logs
+
+The query layer is intentionally split in v4:
+
+- `AuditReader`
+- `AuditQuery`
+- `AuditQueryState`
+- `AuditQueryExecutor`
+- `AuditQueryPage`
+
+Their responsibilities are roughly:
+
+- `AuditReader` is the bundle-facing query entry point
+- `AuditQuery` is the fluent immutable API callers chain against
+- `AuditQueryState` holds filter and cursor state
+- `AuditQueryExecutor` performs repository access and changed-field batch scans
+- `AuditQueryPage` materializes entries with the next cursor from one query
+
+This keeps the fluent API small while moving repository execution and paging
+rules out of the query builder itself.
+
 ### Transports
 
 Transport code lives in `src/Transport`.

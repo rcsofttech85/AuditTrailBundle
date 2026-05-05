@@ -128,6 +128,25 @@ final class AuditLogRepository extends ServiceEntityRepository implements AuditL
     }
 
     /**
+     * @param array<string, mixed> $filters
+     */
+    #[Override]
+    public function countWithFilters(array $filters = []): int
+    {
+        $qb = $this->createQueryBuilder('a')
+            ->select('COUNT(a.id)');
+
+        $this->filterApplier->apply($qb, $filters, false);
+
+        /** @var int $count */
+        $count = $qb
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        return $count;
+    }
+
+    /**
      * Find audit logs with optional filters using keyset pagination.
      *
      * @param array<string, mixed> $filters

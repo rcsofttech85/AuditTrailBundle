@@ -42,6 +42,10 @@ collection auditing.
   dedicated services. The `EntityProcessorInterface` contract is unchanged, but
   the concrete `EntityProcessor` constructor changed, so direct manual
   instantiation in custom code or tests must be updated.
+- **`AuditQuery` and `AuditReader` now compose through dedicated query services**:
+  the fluent `AuditQuery` API and `AuditReaderInterface` behavior stay the
+  same, but direct manual construction of the concrete `AuditQuery` or
+  `AuditReader` classes must be updated for v4.
 
 See `docs/upgrade-v4.md` for the full migration guide.
 
@@ -77,6 +81,11 @@ See `docs/upgrade-v4.md` for the full migration guide.
   instead of retaining failed work without bound.
 - **Contract separation**: queue-management and enable/disable responsibilities
   are easier to consume independently in custom integrations.
+- **Query execution separation**: `AuditQuery` now keeps fluent state and
+  delegates repository execution, changed-field batch scanning, and page
+  materialization to focused query services.
+- **Page-oriented query API**: `AuditQuery::getPage()` now provides entries and
+  the next cursor from a single materialized query.
 
 ### Added
 
