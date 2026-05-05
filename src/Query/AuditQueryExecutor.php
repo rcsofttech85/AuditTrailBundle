@@ -85,9 +85,7 @@ final readonly class AuditQueryExecutor
 
         do {
             $batch = $this->fetchFilterBatch($filters, $cursor);
-            $count += $state->changedFields === []
-                ? count($batch)
-                : $this->changedFieldMatcher->countMatches($batch, $state->changedFields);
+            $count += $this->changedFieldMatcher->countMatches($batch, $state->changedFields);
             $cursor = $this->resolveBatchCursor($batch);
         } while ($this->shouldContinueFilteredBatchLoop($batch, $cursor));
 
