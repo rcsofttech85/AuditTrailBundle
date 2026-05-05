@@ -165,13 +165,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
     {
         try {
             return $em->getClassMetadata($entity::class);
-        } catch (Throwable $exception) {
-            $this->logger?->debug('Metadata lookup for entity identifier resolution failed.', [
-                'entity_class' => $entity::class,
-                'strategy' => 'metadata',
-                'exception' => $this->normalizeExceptionContext($exception),
-            ]);
-
+        } catch (Throwable) {
             return null;
         }
     }
@@ -186,13 +180,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
             $id = $entity->getId();
 
             return $this->formatId($id);
-        } catch (Throwable $exception) {
-            $this->logger?->debug('Method-based identifier resolution failed.', [
-                'entity_class' => $entity::class,
-                'strategy' => 'method',
-                'exception' => $this->normalizeExceptionContext($exception),
-            ]);
-
+        } catch (Throwable) {
             return null;
         }
     }

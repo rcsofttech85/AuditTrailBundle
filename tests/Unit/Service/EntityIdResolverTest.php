@@ -197,37 +197,6 @@ final class EntityIdResolverTest extends TestCase
         self::assertSame('pending', $resolver->resolveFromEntity($entity));
     }
 
-    public function testResolveFromEntityLogsMetadataFailureBeforeMethodFallback(): void
-    {
-        $entity = new class {
-            public function getId(): int
-            {
-                return 77;
-            }
-        };
-        $em = self::createMock(EntityManagerInterface::class);
-        $logger = self::createMock(LoggerInterface::class);
-
-        $em->expects($this->once())
-            ->method('getClassMetadata')
-            ->with($entity::class)
-            ->willThrowException(new LogicException('metadata failed'));
-
-        $logger->expects($this->once())
-            ->method('debug')
-            ->with(
-                'Metadata lookup for entity identifier resolution failed.',
-                self::callback(static fn (array $context): bool => ($context['entity_class'] ?? null) === $entity::class
-                    && ($context['strategy'] ?? null) === 'metadata'
-                    && ($context['exception']['type'] ?? null) === LogicException::class),
-            );
-        $logger->expects($this->never())->method('warning');
-
-        $resolver = new EntityIdResolver($em, $logger);
-
-        self::assertSame('77', $resolver->resolveFromEntity($entity));
-    }
-
     public function testResolveFromValuesLogsWarningWhenIdentifierValuesCannotBeNormalized(): void
     {
         $entity = new stdClass();
