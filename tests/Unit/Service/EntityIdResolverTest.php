@@ -9,12 +9,12 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
 use LogicException;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
-use ReflectionProperty;
 use stdClass;
 
 final class EntityIdResolverTest extends TestCase
@@ -155,16 +155,9 @@ final class EntityIdResolverTest extends TestCase
         self::assertSame('["42","789"]', $this->resolver->resolveFromValues($entity, ['user' => $user, 'id2' => 789], $em));
     }
 
-    public function testResolveFromEntityReusesMetadataForReflectionFallback(): void
+    public function testResolveFromEntityReturnsPendingWhenMetadataAndIdentityMapDoNotResolveId(): void
     {
-        $entity = new class {
-            private int $id = 123;
-
-            public function hasIdentifier(): bool
-            {
-                return $this->id > 0;
-            }
-        };
+        $entity = new class {};
         $uow = self::createStub(UnitOfWork::class);
         $uow->method('isInIdentityMap')->willReturn(false);
 
@@ -173,11 +166,6 @@ final class EntityIdResolverTest extends TestCase
             ->method('getIdentifierValues')
             ->with($entity)
             ->willReturn([]);
-        $metadata->method('getIdentifierFieldNames')->willReturn(['id']);
-        $metadata->expects($this->once())
-            ->method('getReflectionProperty')
-            ->with('id')
-            ->willReturn(new ReflectionProperty($entity, 'id'));
 
         $em = self::createMock(EntityManagerInterface::class);
         $em->expects($this->once())
@@ -188,8 +176,88 @@ final class EntityIdResolverTest extends TestCase
 
         $resolver = new EntityIdResolver($em);
 
-        self::assertTrue($entity->hasIdentifier());
-        self::assertSame('123', $resolver->resolveFromEntity($entity));
+        self::assertSame('pending', $resolver->resolveFromEntity($entity));
+    }
+
+    public function testResolveFromEntityReturnsPendingWhenAllStrategiesFail(): void
+    {
+        $entity = new stdClass();
+        $em = self::createStub(EntityManagerInterface::class);
+        $metadata = self::createStub(ClassMetadata::class);
+        $uow = self::createStub(UnitOfWork::class);
+
+        $em->method('getClassMetadata')->willReturn($metadata);
+        $em->method('getUnitOfWork')->willReturn($uow);
+        $metadata->method('getIdentifierValues')->willReturn([]);
+        $metadata->method('getIdentifierFieldNames')->willReturn([]);
+        $uow->method('isInIdentityMap')->willReturn(false);
+
+        $resolver = new EntityIdResolver($em);
+
+        self::assertSame('pending', $resolver->resolveFromEntity($entity));
+    }
+
+    public function testResolveFromEntityLogsMetadataFailureBeforeMethodFallback(): void
+    {
+        $entity = new class {
+            public function getId(): int
+            {
+                return 77;
+            }
+        };
+        $em = self::createMock(EntityManagerInterface::class);
+        $logger = self::createMock(LoggerInterface::class);
+
+        $em->expects($this->once())
+            ->method('getClassMetadata')
+            ->with($entity::class)
+            ->willThrowException(new LogicException('metadata failed'));
+
+        $logger->expects($this->once())
+            ->method('debug')
+            ->with(
+                'Metadata lookup for entity identifier resolution failed.',
+                self::callback(static fn (array $context): bool => ($context['entity_class'] ?? null) === $entity::class
+                    && ($context['strategy'] ?? null) === 'metadata'
+                    && ($context['exception']['type'] ?? null) === LogicException::class),
+            );
+        $logger->expects($this->never())->method('warning');
+
+        $resolver = new EntityIdResolver($em, $logger);
+
+        self::assertSame('77', $resolver->resolveFromEntity($entity));
+    }
+
+    public function testResolveFromValuesLogsWarningWhenIdentifierValuesCannotBeNormalized(): void
+    {
+        $entity = new stdClass();
+        $em = self::createStub(EntityManagerInterface::class);
+        $metadata = self::createStub(ClassMetadata::class);
+        $logger = self::createMock(LoggerInterface::class);
+        $messages = [];
+
+        $em->method('getClassMetadata')->willReturn($metadata);
+        $metadata->method('getIdentifierFieldNames')->willReturn(['id']);
+
+        $logger->expects($this->atLeastOnce())
+            ->method('debug')
+            ->willReturnCallback(static function (string $message, array $context) use (&$messages): void {
+                $messages[] = [$message, $context];
+            });
+
+        $resolver = new EntityIdResolver(null, $logger);
+
+        self::assertNull($resolver->resolveFromValues($entity, ['id' => new stdClass()], $em));
+        self::assertContains(
+            [
+                'Unable to resolve identifier values from audit payload.',
+                [
+                    'entity_class' => stdClass::class,
+                    'identifier_fields' => ['id'],
+                ],
+            ],
+            $messages,
+        );
     }
 
     private function createContext(

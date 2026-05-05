@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Override;
+use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
@@ -26,6 +27,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
 {
     public function __construct(
         private readonly ?EntityManagerInterface $entityManager = null,
+        private readonly ?LoggerInterface $logger = null,
     ) {
     }
 
@@ -52,11 +54,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
         $em ??= $this->entityManager;
 
         if ($em !== null) {
-            try {
-                $resolvedId = $this->resolveFromMetadata($entity, $em);
-            } catch (Throwable) {
-                // fallback
-            }
+            $resolvedId = $this->resolveFromMetadata($entity, $em);
         }
 
         if ($resolvedId !== null) {
@@ -77,25 +75,23 @@ final class EntityIdResolver implements EntityIdResolverInterface
     #[Override]
     public function resolveFromValues(object $entity, array $values, EntityManagerInterface $em): ?string
     {
-        try {
-            $meta = $this->tryGetClassMetadata($entity, $em);
-            if ($meta === null) {
-                return null;
-            }
-
-            $idFields = $meta->getIdentifierFieldNames();
-
-            $ids = $this->collectIdsFromValues($idFields, $values, $em);
-            if ($ids === null) {
-                return null;
-            }
-
-            return 1 < count($ids)
-                ? json_encode($ids, JSON_THROW_ON_ERROR)
-                : ($ids[0] ?? null);
-        } catch (Throwable) {
+        $meta = $this->tryGetClassMetadata($entity, $em);
+        if ($meta === null) {
             return null;
         }
+
+        $idFields = $meta->getIdentifierFieldNames();
+        $ids = $this->collectIdsFromValues($entity, $idFields, $values, $em);
+        if ($ids === null) {
+            $this->logger?->debug('Unable to resolve identifier values from audit payload.', [
+                'entity_class' => $entity::class,
+                'identifier_fields' => $idFields,
+            ]);
+
+            return null;
+        }
+
+        return $this->formatResolvedIds(array_values($ids), $entity);
     }
 
     private function resolveFromMetadata(object $entity, EntityManagerInterface $em): ?string
@@ -112,11 +108,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
             return null;
         }
 
-        if (count($idValues) === 1) {
-            return $idValues[0];
-        }
-
-        return json_encode($idValues, JSON_THROW_ON_ERROR);
+        return $this->formatResolvedIds($idValues, $entity);
     }
 
     /**
@@ -163,28 +155,6 @@ final class EntityIdResolver implements EntityIdResolverInterface
             }
         }
 
-        // Final fallback: Reflection
-        if ($meta === null) {
-            return [];
-        }
-
-        try {
-            $idFields = $meta->getIdentifierFieldNames();
-            $idValues = [];
-            foreach ($idFields as $field) {
-                $reflProp = $meta->getReflectionProperty($field);
-                $val = $reflProp?->getValue($entity);
-                if ($val !== null) {
-                    $idValues[$field] = $val;
-                }
-            }
-            if ($idValues !== []) {
-                return $idValues;
-            }
-        } catch (Throwable) {
-            // Reflection fallback failed; the caller will treat this entity as unresolved.
-        }
-
         return [];
     }
 
@@ -195,8 +165,13 @@ final class EntityIdResolver implements EntityIdResolverInterface
     {
         try {
             return $em->getClassMetadata($entity::class);
-        } catch (Throwable) {
-            // Metadata extraction is best-effort here; callers have additional fallbacks.
+        } catch (Throwable $exception) {
+            $this->logger?->debug('Metadata lookup for entity identifier resolution failed.', [
+                'entity_class' => $entity::class,
+                'strategy' => 'metadata',
+                'exception' => $this->normalizeExceptionContext($exception),
+            ]);
+
             return null;
         }
     }
@@ -211,7 +186,13 @@ final class EntityIdResolver implements EntityIdResolverInterface
             $id = $entity->getId();
 
             return $this->formatId($id);
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            $this->logger?->debug('Method-based identifier resolution failed.', [
+                'entity_class' => $entity::class,
+                'strategy' => 'method',
+                'exception' => $this->normalizeExceptionContext($exception),
+            ]);
+
             return null;
         }
     }
@@ -239,12 +220,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
             return null;
         }
 
-        try {
-            $nestedIds = $this->extractEntityIds($value, $em);
-        } catch (Throwable) {
-            return null;
-        }
-
+        $nestedIds = $this->extractEntityIds($value, $em);
         if ($nestedIds === []) {
             return null;
         }
@@ -254,9 +230,7 @@ final class EntityIdResolver implements EntityIdResolverInterface
             return null;
         }
 
-        return 1 < count($normalizedNestedIds)
-            ? json_encode($normalizedNestedIds, JSON_THROW_ON_ERROR)
-            : $normalizedNestedIds[0];
+        return $this->formatResolvedIds($normalizedNestedIds, $value);
     }
 
     /**
@@ -265,16 +239,26 @@ final class EntityIdResolver implements EntityIdResolverInterface
      *
      * @return array<string>|null
      */
-    private function collectIdsFromValues(array $idFields, array $values, EntityManagerInterface $em): ?array
+    private function collectIdsFromValues(object $entity, array $idFields, array $values, EntityManagerInterface $em): ?array
     {
         $ids = [];
         foreach ($idFields as $idField) {
             if (!isset($values[$idField])) {
+                $this->logger?->debug('Identifier field is missing from audit payload values.', [
+                    'entity_class' => $entity::class,
+                    'identifier_field' => $idField,
+                ]);
+
                 return null;
             }
             $val = $values[$idField];
             $formatted = $this->normalizeIdentifierValue($val, $em);
             if ($formatted === null) {
+                $this->logger?->debug('Identifier field value could not be normalized.', [
+                    'entity_class' => $entity::class,
+                    'identifier_field' => $idField,
+                ]);
+
                 return null;
             }
 
@@ -294,5 +278,37 @@ final class EntityIdResolver implements EntityIdResolverInterface
         }
 
         return $this->resolveFromEntity($entity, $em);
+    }
+
+    /**
+     * @param list<string> $ids
+     */
+    private function formatResolvedIds(array $ids, object $entity): ?string
+    {
+        if (count($ids) === 1) {
+            return $ids[0];
+        }
+
+        try {
+            return json_encode($ids, JSON_THROW_ON_ERROR);
+        } catch (Throwable $exception) {
+            $this->logger?->warning('Failed to encode composite identifier values.', [
+                'entity_class' => $entity::class,
+                'exception' => $this->normalizeExceptionContext($exception),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @return array{type: class-string<Throwable>, message: string}
+     */
+    private function normalizeExceptionContext(Throwable $exception): array
+    {
+        return [
+            'type' => $exception::class,
+            'message' => $exception->getMessage(),
+        ];
     }
 }
