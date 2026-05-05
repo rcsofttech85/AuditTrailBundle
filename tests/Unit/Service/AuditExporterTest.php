@@ -165,7 +165,7 @@ final class AuditExporterTest extends TestCase
         $stream = fopen('php://temp', 'r+');
         self::assertIsResource($stream);
 
-        $this->exporter->exportToStream([$log1, $log2], 'json', $stream);
+        $count = $this->exporter->exportToStream([$log1, $log2], 'json', $stream);
 
         rewind($stream);
         $streamOutput = stream_get_contents($stream);
@@ -173,6 +173,7 @@ final class AuditExporterTest extends TestCase
 
         $stringOutput = $this->exporter->formatAsJson([$log1, $log2]);
 
+        self::assertSame(2, $count);
         self::assertSame($stringOutput, $streamOutput);
     }
 
@@ -184,7 +185,7 @@ final class AuditExporterTest extends TestCase
         $stream = fopen('php://temp', 'r+');
         self::assertIsResource($stream);
 
-        $this->exporter->exportToStream([$log1, $log2], 'csv', $stream);
+        $count = $this->exporter->exportToStream([$log1, $log2], 'csv', $stream);
 
         rewind($stream);
         $streamOutput = stream_get_contents($stream);
@@ -192,6 +193,7 @@ final class AuditExporterTest extends TestCase
 
         $stringOutput = $this->exporter->formatAsCsv([$log1, $log2]);
 
+        self::assertSame(2, $count);
         self::assertSame($stringOutput, $streamOutput);
     }
 

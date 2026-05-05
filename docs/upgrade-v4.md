@@ -48,6 +48,8 @@ Before deploying v4:
 9. If you manually instantiate `AuditQuery` or `AuditReader`, update that
    wiring to match the new concrete constructors or prefer DI /
    `AuditReaderInterface`.
+10. If you implement `AuditExporterInterface`, update `exportToStream()` to
+    return the exported record count as `int`.
 
 ## 1. `AuditAction` Is New in v4
 
@@ -105,9 +107,24 @@ Important examples:
   services and value objects
 - the query layer now separates immutable fluent state from execution and page
   materialization
+- `AuditExporterInterface::exportToStream()` now returns `int` instead of
+  `void`
 
 If your application extends the bundle, review the current interfaces in
 `src/Contract` directly.
+
+### Audit export contract change
+
+v4 keeps the `audit:export` command behavior the same at the user level, but
+the export pipeline was restructured internally around streaming services.
+
+The relevant upgrade point for custom integrations is:
+
+- `AuditExporterInterface::exportToStream()` now returns the number of
+  exported records as `int`
+
+If you provide a custom `AuditExporterInterface` implementation, update that
+method signature accordingly.
 
 ## 3. AI Support
 

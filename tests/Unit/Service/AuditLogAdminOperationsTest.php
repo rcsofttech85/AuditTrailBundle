@@ -80,7 +80,8 @@ final class AuditLogAdminOperationsTest extends TestCase
                 }),
                 'json',
                 $stream,
-            );
+            )
+            ->willReturn(2);
 
         try {
             $operations->exportToStream(['username' => 'admin'], 'json', $stream);

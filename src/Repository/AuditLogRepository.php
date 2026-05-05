@@ -14,20 +14,14 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 use function array_any;
+use function array_filter;
+use function array_values;
 
 /**
  * @extends ServiceEntityRepository<AuditLog>
  */
 final class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepositoryInterface
 {
-    private const array STATE_CHANGING_ACTIONS = [
-        AuditAction::Create,
-        AuditAction::Update,
-        AuditAction::Delete,
-        AuditAction::SoftDelete,
-        AuditAction::Restore,
-    ];
-
     public function __construct(
         ManagerRegistry $registry,
         private readonly AuditLogQueryFilterApplier $filterApplier,
@@ -258,7 +252,7 @@ final class AuditLogRepository extends ServiceEntityRepository implements AuditL
             ->andWhere('(a.createdAt > :createdAt OR (a.createdAt = :createdAt AND a.id > :id))')
             ->setParameter('entityClass', $log->entityClass)
             ->setParameter('entityId', $log->entityId)
-            ->setParameter('actions', self::STATE_CHANGING_ACTIONS)
+            ->setParameter('actions', self::stateChangingActions())
             ->setParameter('createdAt', $log->createdAt)
             ->setParameter('id', $log->id->toRfc4122(), 'uuid')
             ->getQuery()
@@ -270,5 +264,16 @@ final class AuditLogRepository extends ServiceEntityRepository implements AuditL
     private function isStateChangingAction(AuditAction $action): bool
     {
         return $action->isStateChanging();
+    }
+
+    /**
+     * @return list<AuditAction>
+     */
+    private static function stateChangingActions(): array
+    {
+        return array_values(array_filter(
+            AuditAction::cases(),
+            static fn (AuditAction $action): bool => $action->isStateChanging(),
+        ));
     }
 }

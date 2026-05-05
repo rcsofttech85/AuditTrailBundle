@@ -46,6 +46,10 @@ collection auditing.
   the fluent `AuditQuery` API and `AuditReaderInterface` behavior stay the
   same, but direct manual construction of the concrete `AuditQuery` or
   `AuditReader` classes must be updated for v4.
+- **Audit export now uses one streaming pipeline**: file and non-file exports
+  now share the same streaming path. Custom `AuditExporterInterface`
+  implementations must update `exportToStream()` to return the exported record
+  count as `int` instead of `void`.
 
 See `docs/upgrade-v4.md` for the full migration guide.
 
@@ -86,6 +90,9 @@ See `docs/upgrade-v4.md` for the full migration guide.
   materialization to focused query services.
 - **Page-oriented query API**: `AuditQuery::getPage()` now provides entries and
   the next cursor from a single materialized query.
+- **Export pipeline separation**: audit export input parsing and execution now
+  run through dedicated services, and stdout export no longer hydrates large
+  result sets into memory before formatting.
 
 ### Added
 

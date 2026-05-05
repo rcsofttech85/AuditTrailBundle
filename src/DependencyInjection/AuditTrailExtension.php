@@ -20,24 +20,12 @@ use function sprintf;
 
 final class AuditTrailExtension extends Extension implements PrependExtensionInterface
 {
-    private readonly AuditParameterRegistrar $parameterRegistrar;
-
-    private readonly AuditIntegrityConfigurator $integrityConfigurator;
-
-    private readonly AuditProfilerRegistrar $profilerRegistrar;
-
-    private readonly AuditTransportRegistrar $transportRegistrar;
-
     public function __construct(
-        ?AuditParameterRegistrar $parameterRegistrar = null,
-        ?AuditIntegrityConfigurator $integrityConfigurator = null,
-        ?AuditProfilerRegistrar $profilerRegistrar = null,
-        ?AuditTransportRegistrar $transportRegistrar = null,
+        private readonly AuditParameterRegistrar $parameterRegistrar = new AuditParameterRegistrar(),
+        private readonly AuditIntegrityConfigurator $integrityConfigurator = new AuditIntegrityConfigurator(),
+        private readonly AuditProfilerRegistrar $profilerRegistrar = new AuditProfilerRegistrar(),
+        private readonly AuditTransportRegistrar $transportRegistrar = new AuditTransportRegistrar(),
     ) {
-        $this->parameterRegistrar = $parameterRegistrar ?? new AuditParameterRegistrar();
-        $this->integrityConfigurator = $integrityConfigurator ?? new AuditIntegrityConfigurator();
-        $this->profilerRegistrar = $profilerRegistrar ?? new AuditProfilerRegistrar();
-        $this->transportRegistrar = $transportRegistrar ?? new AuditTransportRegistrar();
     }
 
     #[Override]
