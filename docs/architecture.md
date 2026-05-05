@@ -31,6 +31,10 @@ These services are the heart of flush-time auditing:
 - `AuditOnFlushProcessor`
 - `AuditPostFlushProcessor`
 - `EntityProcessor`
+- `EntityInsertionProcessor`
+- `EntityUpdateProcessor`
+- `EntityCollectionUpdateProcessor`
+- `EntityDeletionProcessor`
 
 Their responsibilities are roughly:
 
@@ -38,6 +42,10 @@ Their responsibilities are roughly:
 - decide whether something should be audited
 - create immediate audit work or defer it
 - finalize post-flush work and dispatch it
+
+`EntityProcessor` is intentionally thin in v4. It preserves the
+`EntityProcessorInterface` entry point while delegating each flush-time
+lifecycle concern to a focused processor service.
 
 ### Audit Creation and Dispatch
 

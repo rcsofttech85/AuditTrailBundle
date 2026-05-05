@@ -37,6 +37,11 @@ collection auditing.
   introduces `AuditQueueManagerInterface` and `AuditToggleInterface`. Stock
   applications can continue using `ScheduledAuditManagerInterface`, but custom
   integrations should prefer the narrower contracts when possible.
+- **`EntityProcessor` is now a thin façade over focused lifecycle processors**:
+  insertion, update, collection-update, and deletion handling were split into
+  dedicated services. The `EntityProcessorInterface` contract is unchanged, but
+  the concrete `EntityProcessor` constructor changed, so direct manual
+  instantiation in custom code or tests must be updated.
 
 See `docs/upgrade-v4.md` for the full migration guide.
 

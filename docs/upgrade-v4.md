@@ -43,7 +43,9 @@ Before deploying v4:
    `AuditLogAiProcessorInterface`, the `context['ai']` payload shape, and any
    admin-side AI insight integrations you expose.
 7. If you subscribed to old event-name constants, switch to event classes.
-8. Manually verify:
+8. If you manually instantiate `EntityProcessor`, update that wiring to match
+   the new concrete constructor or prefer DI / `EntityProcessorInterface`.
+9. Manually verify:
    - create/update/delete auditing
    - one same-flush relation add with a generated identifier
    - export, revert, and integrity verification
@@ -98,6 +100,8 @@ Important examples:
 - the project now includes a CI workflow that checks backward compatibility for
   public API changes
 - scheduled-audit state handling is more explicit
+- flush-time entity lifecycle handling is split across focused processors while
+  preserving the `EntityProcessorInterface` entry point
 - transport and repository/query internals were modernized around typed
   services and value objects
 
@@ -204,7 +208,27 @@ Examples:
 - queue scheduling/delivery code should prefer `AuditQueueManagerInterface`
 - enable/disable guards should prefer `AuditToggleInterface`
 
-## 7. What Probably Does Not Need Changing
+## 7. `EntityProcessor` Construction Changed
+
+v4 keeps `EntityProcessorInterface` intact, but the concrete
+`Rcsofttech\AuditTrailBundle\Service\EntityProcessor` class is now a thin
+façade over dedicated lifecycle processors:
+
+- `EntityInsertionProcessor`
+- `EntityUpdateProcessor`
+- `EntityCollectionUpdateProcessor`
+- `EntityDeletionProcessor`
+
+What this means in practice:
+
+- if your application only uses Symfony DI/autowiring, nothing special is
+  usually required
+- if custom code or tests call `new EntityProcessor(...)` directly, that
+  wiring must be updated for v4
+- this is a source-level BC change on the concrete class, not a contract
+  change to `EntityProcessorInterface`
+
+## 8. What Probably Does Not Need Changing
 
 Most regular bundle consumers do not need code changes for:
 
@@ -226,13 +250,14 @@ Use this order in a real application:
 3. Update any custom code that reads audit actions as strings.
 4. Review any custom AI enrichment around audit context.
 5. Update any custom `ScheduledAuditManagerInterface` implementation.
-6. Review code that parses collection payloads and assumes unresolved relation
+6. Update any direct `EntityProcessor` construction in custom code or tests.
+7. Review code that parses collection payloads and assumes unresolved relation
    placeholders.
-7. Run your test suite.
-8. Manually verify one same-flush relation add with a generated identifier.
-9. Manually verify collection removal/replacement, export, revert, and
+8. Run your test suite.
+9. Manually verify one same-flush relation add with a generated identifier.
+10. Manually verify collection removal/replacement, export, revert, and
    integrity verification.
-10. Only then deploy the upgrade.
+11. Only then deploy the upgrade.
 
 ## Verification Checklist
 

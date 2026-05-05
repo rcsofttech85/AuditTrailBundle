@@ -35,7 +35,11 @@ use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
 use Rcsofttech\AuditTrailBundle\Service\DeferredCollectionDetector;
 use Rcsofttech\AuditTrailBundle\Service\DeletedAssociationImpactResolver;
 use Rcsofttech\AuditTrailBundle\Service\EntityAuditDispatchManager;
+use Rcsofttech\AuditTrailBundle\Service\EntityCollectionUpdateProcessor;
+use Rcsofttech\AuditTrailBundle\Service\EntityDeletionProcessor;
+use Rcsofttech\AuditTrailBundle\Service\EntityInsertionProcessor;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
+use Rcsofttech\AuditTrailBundle\Service\EntityUpdateProcessor;
 use Rcsofttech\AuditTrailBundle\Service\EntityUpdateTransitionResolver;
 use Rcsofttech\AuditTrailBundle\Service\JoinTableCollectionIdLoader;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubCollection;
@@ -84,27 +88,60 @@ final class EntityProcessorTest extends TestCase
         );
 
         return new EntityProcessor(
-            $this->auditService,
-            $changeProcessor ?? $this->changeProcessor,
-            $this->auditManager,
-            new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger()),
-            $collectionChangeResolver,
-            new DeferredCollectionDetector($collectionChangeResolver),
-            new EntityAuditDispatchManager(
-                $dispatcher ?? $this->dispatcher,
+            new EntityInsertionProcessor(
+                $this->auditService,
                 $this->auditManager,
-                $deferTransportUntilCommit,
-                $failOnTransportError,
+                new DeferredCollectionDetector($collectionChangeResolver),
+                new EntityAuditDispatchManager(
+                    $dispatcher ?? $this->dispatcher,
+                    $this->auditManager,
+                    $deferTransportUntilCommit,
+                    $failOnTransportError,
+                ),
             ),
-            true,
-            new EntityUpdateTransitionResolver(
-                $changeProcessor ?? $this->changeProcessor,
-                $deletedAssociationImpactResolver,
+            new EntityUpdateProcessor(
+                $this->auditService,
+                $this->auditManager,
+                new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger()),
+                new DeferredCollectionDetector($collectionChangeResolver),
+                new EntityUpdateTransitionResolver(
+                    $changeProcessor ?? $this->changeProcessor,
+                    $deletedAssociationImpactResolver,
+                    $collectionChangeResolver,
+                    $collectionTransitionMerger,
+                ),
+                new EntityAuditDispatchManager(
+                    $dispatcher ?? $this->dispatcher,
+                    $this->auditManager,
+                    $deferTransportUntilCommit,
+                    $failOnTransportError,
+                ),
+            ),
+            new EntityCollectionUpdateProcessor(
+                $this->auditService,
+                $this->auditManager,
                 $collectionChangeResolver,
-                $collectionTransitionMerger,
+                new DeferredCollectionDetector($collectionChangeResolver),
+                new EntityAuditDispatchManager(
+                    $dispatcher ?? $this->dispatcher,
+                    $this->auditManager,
+                    $deferTransportUntilCommit,
+                    $failOnTransportError,
+                ),
             ),
-            $deletedAssociationImpactResolver,
-            $collectionTransitionMerger,
+            new EntityDeletionProcessor(
+                $this->auditService,
+                $changeProcessor ?? $this->changeProcessor,
+                $this->auditManager,
+                new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger()),
+                new EntityAuditDispatchManager(
+                    $dispatcher ?? $this->dispatcher,
+                    $this->auditManager,
+                    $deferTransportUntilCommit,
+                    $failOnTransportError,
+                ),
+                true,
+            ),
         );
     }
 
