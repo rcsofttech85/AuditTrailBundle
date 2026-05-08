@@ -16,7 +16,7 @@ use Rcsofttech\AuditTrailBundle\ValueObject\ScheduledAuditEntry;
 use function count;
 use function sprintf;
 
-final class ScheduledAuditManager implements ScheduledAuditManagerInterface
+final class ScheduledAuditManager implements ScheduledAuditManagerInterface, FailedAuditDispatchRetainerInterface
 {
     /** @var list<ScheduledAuditEntry> */
     private array $scheduledAudits = [];
@@ -84,13 +84,13 @@ final class ScheduledAuditManager implements ScheduledAuditManagerInterface
      * @param array<string, mixed> $data
      */
     #[Override]
-    public function addPendingDeletion(object $entity, array $data, bool $isManaged, AuditAction $action): void
+    public function addPendingDeletion(object $entity, array $data, AuditAction $action): void
     {
         if ($this->maxPendingDeletions !== null && $this->maxPendingDeletions <= count($this->pendingDeletions)) {
             throw new OverflowException(sprintf('Maximum pending deletion queue size exceeded (%d). Consider batch processing.', $this->maxPendingDeletions));
         }
 
-        $this->pendingDeletions[] = new PendingDeletionEntry($entity, $data, $isManaged, $action);
+        $this->pendingDeletions[] = new PendingDeletionEntry($entity, $data, $action);
     }
 
     #[Override]

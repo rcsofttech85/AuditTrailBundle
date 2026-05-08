@@ -8,6 +8,7 @@ use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use LogicException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Symfony\Component\Uid\Uuid;
@@ -25,6 +26,10 @@ final class AuditLogWriter implements AuditLogWriterInterface
 {
     public function insert(AuditLog $audit, EntityManagerInterface $em): void
     {
+        if (!$audit->hasResolvedEntityId()) {
+            throw new LogicException('Cannot insert an audit log before the entity ID has been resolved.');
+        }
+
         $metadata = $em->getClassMetadata(AuditLog::class);
         $connection = $em->getConnection();
         $this->assignIdentifierIfMissing($audit, $metadata);

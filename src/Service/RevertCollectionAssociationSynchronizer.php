@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\Common\Collections\Collection;
-use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\AssociationMapping;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\InverseSideMapping;
@@ -18,7 +17,7 @@ use function sprintf;
 final readonly class RevertCollectionAssociationSynchronizer
 {
     public function __construct(
-        private EntityManagerInterface $em,
+        private EntityManagerResolver $entityManagerResolver,
         private AssociationMutatorInvoker $mutatorInvoker,
     ) {
     }
@@ -99,7 +98,7 @@ final readonly class RevertCollectionAssociationSynchronizer
      */
     private function normalizeEntityIdentifier(object $entity, array &$metadataByClass): string
     {
-        $metadata = $metadataByClass[$entity::class] ??= $this->em->getClassMetadata($entity::class);
+        $metadata = $metadataByClass[$entity::class] ??= $this->getClassMetadata($entity::class);
         $identifierValues = $metadata->getIdentifierValues($entity);
 
         if ($identifierValues === []) {
@@ -176,7 +175,7 @@ final readonly class RevertCollectionAssociationSynchronizer
             return;
         }
 
-        $targetMetadata = $this->em->getClassMetadata($item::class);
+        $targetMetadata = $this->getClassMetadata($item::class);
         if (!$this->targetMetadataContainsField($targetMetadata, $counterpartField)) {
             return;
         }
@@ -248,6 +247,16 @@ final readonly class RevertCollectionAssociationSynchronizer
         if ($adding || $counterpartValue === $entity) {
             $targetMetadata->setFieldValue($item, $counterpartField, $adding ? $entity : null);
         }
+    }
+
+    /**
+     * @param class-string<object> $class
+     *
+     * @return ClassMetadata<object>
+     */
+    private function getClassMetadata(string $class): ClassMetadata
+    {
+        return $this->entityManagerResolver->requireForClass($class)->getClassMetadata($class);
     }
 
     /**

@@ -17,7 +17,7 @@ use function count;
  *
  * @implements IteratorAggregate<int, AuditEntry>
  */
-readonly class AuditEntryCollection implements IteratorAggregate, Countable
+final readonly class AuditEntryCollection implements IteratorAggregate, Countable
 {
     /**
      * @param list<AuditEntry> $entries

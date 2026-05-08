@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
-use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Symfony\Component\Uid\Ulid;
 use Symfony\Component\Uid\Uuid;
@@ -23,7 +22,7 @@ use const JSON_THROW_ON_ERROR;
 final readonly class EntityIdentifierNormalizer
 {
     public function __construct(
-        private EntityManagerInterface $em,
+        private EntityManagerResolver $entityManagerResolver,
     ) {
     }
 
@@ -32,8 +31,13 @@ final readonly class EntityIdentifierNormalizer
      */
     public function normalize(string $class, mixed $identifier): mixed
     {
+        $entityManager = $this->entityManagerResolver->resolveForClass($class);
+        if ($entityManager === null) {
+            return $identifier;
+        }
+
         try {
-            $targetMetadata = $this->em->getClassMetadata($class);
+            $targetMetadata = $entityManager->getClassMetadata($class);
         } catch (Throwable) {
             return $identifier;
         }

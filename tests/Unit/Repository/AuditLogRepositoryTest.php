@@ -5,15 +5,28 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Repository;
 
 use DateTimeImmutable;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\MySQL80Platform;
+use Doctrine\DBAL\Query\QueryBuilder as DbalQueryBuilder;
+use Doctrine\DBAL\Result;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
 use InvalidArgumentException;
+use LogicException;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Repository\AuditLogChangedFieldConstraintBuilder;
+use Rcsofttech\AuditTrailBundle\Repository\AuditLogChangedFieldQueryExecutor;
+use Rcsofttech\AuditTrailBundle\Repository\AuditLogDbalFilterApplier;
+use Rcsofttech\AuditTrailBundle\Repository\AuditLogEntityFetcher;
+use Rcsofttech\AuditTrailBundle\Repository\AuditLogMetadataResolver;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogQueryFilterApplier;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use ReflectionClass;
@@ -32,7 +45,138 @@ final class AuditLogRepositoryTest extends TestCase
         $entityManager->method('getClassMetadata')->willReturn($classMetadata);
         $classMetadata->name = AuditLog::class;
 
-        return new AuditLogRepository($registry, new AuditLogQueryFilterApplier());
+        return $this->createRepositoryInstance($registry);
+    }
+
+    /**
+     * @return array{
+     *     0: AuditLogRepository,
+     *     1: DbalQueryBuilder&MockObject,
+     *     2: Result&Stub,
+     *     3: QueryBuilder&Stub,
+     *     4: Query<mixed>&Stub
+     * }
+     */
+    private function createChangedFieldQueryHarness(AbstractPlatform $platform): array
+    {
+        $entityManager = self::createStub(EntityManagerInterface::class);
+        $classMetadata = self::createStub(ClassMetadata::class);
+        $registry = self::createStub(ManagerRegistry::class);
+        $connection = self::createStub(Connection::class);
+        $dbalQueryBuilder = self::createMock(DbalQueryBuilder::class);
+        $result = self::createStub(Result::class);
+        $ormQueryBuilder = self::createStub(QueryBuilder::class);
+        $ormQuery = self::createStub(Query::class);
+
+        $registry->method('getManagerForClass')->willReturn($entityManager);
+        $entityManager->method('getClassMetadata')->willReturn($classMetadata);
+        $entityManager->method('getConnection')->willReturn($connection);
+        $entityManager->method('createQueryBuilder')->willReturn($ormQueryBuilder);
+
+        $classMetadata->name = AuditLog::class;
+        $classMetadata->method('getTableName')->willReturn('audit_log');
+        $classMetadata->method('getTypeOfField')->willReturnCallback(
+            static fn (string $field): ?string => $field === 'id' ? 'uuid' : null
+        );
+        $classMetadata->method('getColumnName')->willReturnCallback(
+            static fn (string $field): string => match ($field) {
+                'id' => 'id',
+                'entityClass' => 'entity_class',
+                'entityId' => 'entity_id',
+                'userId' => 'user_id',
+                'username' => 'username',
+                'transactionHash' => 'transaction_hash',
+                'action' => 'action',
+                'createdAt' => 'created_at',
+                'changedFields' => 'changed_fields',
+                default => throw new InvalidArgumentException('Unexpected field "'.$field.'".'),
+            }
+        );
+
+        $connection->method('createQueryBuilder')->willReturn($dbalQueryBuilder);
+        $connection->method('getDatabasePlatform')->willReturn($platform);
+        $connection->method('quoteSingleIdentifier')->willReturnCallback(static fn (string $identifier): string => $identifier);
+
+        $dbalQueryBuilder->method('from')->willReturnSelf();
+        $dbalQueryBuilder->method('andWhere')->willReturnSelf();
+        $dbalQueryBuilder->method('setParameter')->willReturnSelf();
+        $dbalQueryBuilder->method('select')->willReturnSelf();
+        $dbalQueryBuilder->method('orderBy')->willReturnSelf();
+        $dbalQueryBuilder->method('setMaxResults')->willReturnSelf();
+        $dbalQueryBuilder->method('executeQuery')->willReturn($result);
+
+        $ormQueryBuilder->method('select')->willReturnSelf();
+        $ormQueryBuilder->method('from')->willReturnSelf();
+        $ormQueryBuilder->method('andWhere')->willReturnSelf();
+        $ormQueryBuilder->method('setParameter')->willReturnSelf();
+        $ormQueryBuilder->method('getQuery')->willReturn($ormQuery);
+        $ormQuery->method('getResult')->willReturn([]);
+
+        return [$this->createRepositoryInstance($registry), $dbalQueryBuilder, $result, $ormQueryBuilder, $ormQuery];
+    }
+
+    /**
+     * @return array{
+     *     0: AuditLogRepository,
+     *     1: Result&Stub,
+     *     2: Query<mixed>&MockObject
+     * }
+     */
+    private function createChangedFieldFindHarness(AbstractPlatform $platform): array
+    {
+        $entityManager = self::createStub(EntityManagerInterface::class);
+        $classMetadata = self::createStub(ClassMetadata::class);
+        $registry = self::createStub(ManagerRegistry::class);
+        $connection = self::createStub(Connection::class);
+        $dbalQueryBuilder = self::createStub(DbalQueryBuilder::class);
+        $result = self::createStub(Result::class);
+        $ormQueryBuilder = self::createStub(QueryBuilder::class);
+        $ormQuery = self::createMock(Query::class);
+
+        $registry->method('getManagerForClass')->willReturn($entityManager);
+        $entityManager->method('getClassMetadata')->willReturn($classMetadata);
+        $entityManager->method('getConnection')->willReturn($connection);
+        $entityManager->method('createQueryBuilder')->willReturn($ormQueryBuilder);
+
+        $classMetadata->name = AuditLog::class;
+        $classMetadata->method('getTableName')->willReturn('audit_log');
+        $classMetadata->method('getTypeOfField')->willReturnCallback(
+            static fn (string $field): ?string => $field === 'id' ? 'uuid' : null
+        );
+        $classMetadata->method('getColumnName')->willReturnCallback(
+            static fn (string $field): string => match ($field) {
+                'id' => 'id',
+                'entityClass' => 'entity_class',
+                'entityId' => 'entity_id',
+                'userId' => 'user_id',
+                'username' => 'username',
+                'transactionHash' => 'transaction_hash',
+                'action' => 'action',
+                'createdAt' => 'created_at',
+                'changedFields' => 'changed_fields',
+                default => throw new InvalidArgumentException('Unexpected field "'.$field.'".'),
+            }
+        );
+
+        $connection->method('createQueryBuilder')->willReturn($dbalQueryBuilder);
+        $connection->method('getDatabasePlatform')->willReturn($platform);
+        $connection->method('quoteSingleIdentifier')->willReturnCallback(static fn (string $identifier): string => $identifier);
+
+        $dbalQueryBuilder->method('from')->willReturnSelf();
+        $dbalQueryBuilder->method('andWhere')->willReturnSelf();
+        $dbalQueryBuilder->method('setParameter')->willReturnSelf();
+        $dbalQueryBuilder->method('select')->willReturnSelf();
+        $dbalQueryBuilder->method('orderBy')->willReturnSelf();
+        $dbalQueryBuilder->method('setMaxResults')->willReturnSelf();
+        $dbalQueryBuilder->method('executeQuery')->willReturn($result);
+
+        $ormQueryBuilder->method('select')->willReturnSelf();
+        $ormQueryBuilder->method('from')->willReturnSelf();
+        $ormQueryBuilder->method('andWhere')->willReturnSelf();
+        $ormQueryBuilder->method('setParameter')->willReturnSelf();
+        $ormQueryBuilder->method('getQuery')->willReturn($ormQuery);
+
+        return [$this->createRepositoryInstance($registry), $result, $ormQuery];
     }
 
     /**
@@ -70,7 +214,7 @@ final class AuditLogRepositoryTest extends TestCase
         }
         $query->method('toIterable')->willReturn([]);
 
-        return [new AuditLogRepository($registry, new AuditLogQueryFilterApplier()), $qb, $query];
+        return [$this->createRepositoryInstance($registry), $qb, $query];
     }
 
     /**
@@ -103,7 +247,21 @@ final class AuditLogRepositoryTest extends TestCase
         $qb->method('setMaxResults')->willReturnSelf();
         $qb->method('getQuery')->willReturn($query);
 
-        return [new AuditLogRepository($registry, new AuditLogQueryFilterApplier()), $qb, $query];
+        return [$this->createRepositoryInstance($registry), $qb, $query];
+    }
+
+    private function createRepositoryInstance(ManagerRegistry $registry): AuditLogRepository
+    {
+        return new AuditLogRepository(
+            $registry,
+            new AuditLogQueryFilterApplier(),
+            new AuditLogChangedFieldQueryExecutor(
+                new AuditLogDbalFilterApplier(),
+                new AuditLogChangedFieldConstraintBuilder(),
+                new AuditLogMetadataResolver(),
+                new AuditLogEntityFetcher(),
+            ),
+        );
     }
 
     public function testFindByEntity(): void
@@ -353,35 +511,108 @@ final class AuditLogRepositoryTest extends TestCase
         self::assertSame(10, $repository->countOlderThan(new DateTimeImmutable()));
     }
 
+    public function testCountWithChangedFieldsBindsDateFiltersAsDateTimeImmutable(): void
+    {
+        [$repository, $dbalQueryBuilder, $result] = $this->createChangedFieldQueryHarness(new MySQL80Platform());
+        $from = new DateTimeImmutable('2024-01-01 00:00:00');
+        $to = new DateTimeImmutable('2024-01-31 23:59:59');
+        $parameters = [];
+
+        $dbalQueryBuilder->expects($this->exactly(3))
+            ->method('setParameter')
+            ->willReturnCallback(static function (string $name, mixed $value, mixed $type = null) use (&$parameters, $dbalQueryBuilder): DbalQueryBuilder {
+                $parameters[$name] = [$value, $type];
+
+                return $dbalQueryBuilder;
+            });
+        $result->method('fetchOne')->willReturn('0');
+
+        self::assertSame(0, $repository->countWithChangedFields([
+            'from' => $from,
+            'to' => $to,
+        ], ['status']));
+        self::assertSame([$from, Types::DATETIME_IMMUTABLE], $parameters['from']);
+        self::assertSame([$to, Types::DATETIME_IMMUTABLE], $parameters['to']);
+    }
+
+    public function testCountWithChangedFieldsBindsCursorFiltersAsUuidType(): void
+    {
+        foreach (['afterId', 'beforeId'] as $filterKey) {
+            [$repository, $dbalQueryBuilder, $result] = $this->createChangedFieldQueryHarness(new MySQL80Platform());
+            $cursorId = Uuid::v7()->toRfc4122();
+            $parameters = [];
+
+            $dbalQueryBuilder->expects($this->exactly(2))
+                ->method('setParameter')
+                ->willReturnCallback(static function (string $name, mixed $value, mixed $type = null) use (&$parameters, $dbalQueryBuilder): DbalQueryBuilder {
+                    $parameters[$name] = [$value, $type];
+
+                    return $dbalQueryBuilder;
+                });
+            $result->method('fetchOne')->willReturn('0');
+
+            self::assertSame(0, $repository->countWithChangedFields([$filterKey => $cursorId], ['status']));
+            self::assertSame([$cursorId, 'uuid'], $parameters[$filterKey]);
+        }
+    }
+
+    public function testCountWithChangedFieldsRejectsUnsupportedPlatforms(): void
+    {
+        [$repository, $dbalQueryBuilder] = $this->createChangedFieldQueryHarness(self::createStub(AbstractPlatform::class));
+
+        $dbalQueryBuilder->expects($this->never())->method('executeQuery');
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Changed-field queries are only supported on MySQL, PostgreSQL, and SQLite.');
+
+        $repository->countWithChangedFields([], ['status']);
+    }
+
+    public function testFindWithChangedFieldsMatchesBinaryUuidResultsAgainstHydratedLogs(): void
+    {
+        [$repository, $result, $ormQuery] = $this->createChangedFieldFindHarness(new MySQL80Platform());
+        $uuid = Uuid::v7();
+        $log = new AuditLog('Class', '1', 'update');
+        $this->setLogId($log, $uuid->toRfc4122());
+
+        $result->method('fetchFirstColumn')->willReturn([$uuid->toBinary()]);
+        $ormQuery->expects($this->once())->method('getResult')->willReturn([$log]);
+
+        self::assertSame([$log], $repository->findWithChangedFields([], ['status'], 10));
+    }
+
+    public function testFindWithChangedFieldsRejectsUnsupportedPlatforms(): void
+    {
+        [$repository, , $ormQuery] = $this->createChangedFieldFindHarness(self::createStub(AbstractPlatform::class));
+
+        $ormQuery->expects($this->never())->method('getResult');
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Changed-field queries are only supported on MySQL, PostgreSQL, and SQLite.');
+
+        $repository->findWithChangedFields([], ['status'], 10);
+    }
+
     public function testIsReverted(): void
     {
         [$repository, $qb, $query] = $this->createQueryHarnessWithQueryMock();
 
         $log = new AuditLog('Class', '1', 'update');
         $this->setLogId($log, Uuid::v7()->toString());
+        $qb->expects($this->exactly(2))
+            ->method('select')
+            ->willReturnCallback(static function (string $select) use ($qb): QueryBuilder {
+                static $expected = ['a', 'COUNT(a.id)'];
+                static $index = 0;
 
-        $matchingRevertLog = new AuditLog(
-            'Class',
-            '1',
-            'revert',
-            context: ['reverted_log_id' => $log->id?->toRfc4122()]
-        );
+                TestCase::assertSame($expected[$index], $select);
+                ++$index;
 
-        $qb->expects($this->once())->method('where')->with('a.entityClass = :entityClass')->willReturnSelf();
-        $qb->expects($this->exactly(2))->method('andWhere')->willReturnCallback(static function (string $clause) use ($qb) {
-            static $expected = [
-                'a.entityId = :entityId',
-                'a.action = :action',
-            ];
-            static $index = 0;
-
-            TestCase::assertSame($expected[$index], $clause);
-            ++$index;
-
-            return $qb;
-        });
-        $qb->expects($this->once())->method('setMaxResults')->with(25)->willReturnSelf();
-        $query->expects($this->once())->method('getResult')->willReturn([$matchingRevertLog]);
+                return $qb;
+            });
+        $qb->expects($this->once())->method('where')->with('a.revertedLogId = :revertedLogId')->willReturnSelf();
+        $qb->expects($this->once())->method('setParameter')->with('revertedLogId', $log->id?->toRfc4122())->willReturnSelf();
+        $query->expects($this->once())->method('getSingleScalarResult')->willReturn(1);
 
         self::assertTrue($repository->isReverted($log));
     }
@@ -392,20 +623,212 @@ final class AuditLogRepositoryTest extends TestCase
 
         $log = new AuditLog('Class', '1', 'update');
         $this->setLogId($log, Uuid::v7()->toString());
+        $qb->expects($this->exactly(3))
+            ->method('select')
+            ->willReturnCallback(static function (string $select) use ($qb): QueryBuilder {
+                static $expected = ['a', 'COUNT(a.id)', 'a'];
+                static $index = 0;
 
-        $nonMatchingRevertLog = new AuditLog(
-            'Class',
-            '1',
-            'revert',
-            context: ['reverted_log_id' => Uuid::v7()->toRfc4122()]
-        );
+                TestCase::assertSame($expected[$index], $select);
+                ++$index;
 
-        $qb->expects($this->once())->method('where')->with('a.entityClass = :entityClass')->willReturnSelf();
-        $qb->expects($this->exactly(2))->method('andWhere')->willReturnSelf();
-        $qb->expects($this->once())->method('setMaxResults')->with(25)->willReturnSelf();
-        $query->expects($this->once())->method('getResult')->willReturn([$nonMatchingRevertLog]);
+                return $qb;
+            });
+        $qb->expects($this->exactly(2))
+            ->method('where')
+            ->willReturnCallback(static function (string $where) use ($qb): QueryBuilder {
+                static $expected = ['a.revertedLogId = :revertedLogId', 'a.entityClass = :entityClass'];
+                static $index = 0;
+
+                TestCase::assertSame($expected[$index], $where);
+                ++$index;
+
+                return $qb;
+            });
+        $qb->expects($this->exactly(2))
+            ->method('andWhere')
+            ->willReturnCallback(static function (string $where) use ($qb): QueryBuilder {
+                static $expected = ['a.entityId = :entityId', 'a.action = :action'];
+                static $index = 0;
+
+                TestCase::assertSame($expected[$index], $where);
+                ++$index;
+
+                return $qb;
+            });
+        $qb->expects($this->exactly(4))
+            ->method('setParameter')
+            ->willReturnCallback(static function (string $name, mixed $value) use ($qb, $log): QueryBuilder {
+                static $expected = null;
+                static $index = 0;
+
+                $expected ??= [
+                    ['revertedLogId', $log->id?->toRfc4122()],
+                    ['entityClass', $log->entityClass],
+                    ['entityId', $log->requireEntityId()],
+                    ['action', AuditAction::Revert],
+                ];
+
+                TestCase::assertSame($expected[$index][0], $name);
+                TestCase::assertSame($expected[$index][1], $value);
+                ++$index;
+
+                return $qb;
+            });
+        $qb->expects($this->once())->method('orderBy')->with('a.createdAt', 'DESC')->willReturnSelf();
+        $qb->expects($this->once())->method('addOrderBy')->with('a.id', 'DESC')->willReturnSelf();
+        $query->expects($this->once())->method('getSingleScalarResult')->willReturn(0);
+        $query->expects($this->once())->method('toIterable')->willReturn([]);
 
         self::assertFalse($repository->isReverted($log));
+    }
+
+    public function testIsRevertedFallsBackToLegacyContextReference(): void
+    {
+        [$repository, $qb, $query] = $this->createQueryHarnessWithQueryMock();
+
+        $log = new AuditLog('Class', '1', 'update');
+        $this->setLogId($log, Uuid::v7()->toString());
+
+        $legacyRevertLog = new AuditLog('Class', '1', AuditAction::Revert);
+        $legacyRevertLog->context = ['reverted_log_id' => $log->id?->toRfc4122()];
+
+        $qb->expects($this->exactly(3))
+            ->method('select')
+            ->willReturnCallback(static function (string $select) use ($qb): QueryBuilder {
+                static $expected = ['a', 'COUNT(a.id)', 'a'];
+                static $index = 0;
+
+                TestCase::assertSame($expected[$index], $select);
+                ++$index;
+
+                return $qb;
+            });
+        $qb->expects($this->exactly(2))
+            ->method('where')
+            ->willReturnCallback(static function (string $where) use ($qb): QueryBuilder {
+                static $expected = ['a.revertedLogId = :revertedLogId', 'a.entityClass = :entityClass'];
+                static $index = 0;
+
+                TestCase::assertSame($expected[$index], $where);
+                ++$index;
+
+                return $qb;
+            });
+        $qb->expects($this->exactly(2))
+            ->method('andWhere')
+            ->willReturnCallback(static function (string $where) use ($qb): QueryBuilder {
+                static $expected = ['a.entityId = :entityId', 'a.action = :action'];
+                static $index = 0;
+
+                TestCase::assertSame($expected[$index], $where);
+                ++$index;
+
+                return $qb;
+            });
+        $qb->expects($this->exactly(4))
+            ->method('setParameter')
+            ->willReturnCallback(static function (string $name, mixed $value) use ($qb, $log): QueryBuilder {
+                static $expected = null;
+                static $index = 0;
+
+                $expected ??= [
+                    ['revertedLogId', $log->id?->toRfc4122()],
+                    ['entityClass', $log->entityClass],
+                    ['entityId', $log->requireEntityId()],
+                    ['action', AuditAction::Revert],
+                ];
+
+                TestCase::assertSame($expected[$index][0], $name);
+                TestCase::assertSame($expected[$index][1], $value);
+                ++$index;
+
+                return $qb;
+            });
+        $qb->expects($this->once())->method('orderBy')->with('a.createdAt', 'DESC')->willReturnSelf();
+        $qb->expects($this->once())->method('addOrderBy')->with('a.id', 'DESC')->willReturnSelf();
+        $query->expects($this->once())->method('getSingleScalarResult')->willReturn(0);
+        $query->expects($this->once())->method('toIterable')->willReturn([$legacyRevertLog]);
+
+        self::assertTrue($repository->isReverted($log));
+    }
+
+    public function testIsRevertedScansEntireLegacyRevertHistory(): void
+    {
+        [$repository, $qb, $query] = $this->createQueryHarnessWithQueryMock();
+
+        $log = new AuditLog('Class', '1', 'update');
+        $this->setLogId($log, Uuid::v7()->toString());
+
+        $legacyRevertLogs = [];
+        for ($i = 0; $i < 30; ++$i) {
+            $legacyRevertLog = new AuditLog('Class', '1', AuditAction::Revert);
+            if ($i === 29) {
+                $legacyRevertLog->context = ['reverted_log_id' => $log->id?->toRfc4122()];
+            }
+
+            $legacyRevertLogs[] = $legacyRevertLog;
+        }
+
+        $qb->expects($this->exactly(3))
+            ->method('select')
+            ->willReturnCallback(static function (string $select) use ($qb): QueryBuilder {
+                static $expected = ['a', 'COUNT(a.id)', 'a'];
+                static $index = 0;
+
+                TestCase::assertSame($expected[$index], $select);
+                ++$index;
+
+                return $qb;
+            });
+        $qb->expects($this->exactly(2))
+            ->method('where')
+            ->willReturnCallback(static function (string $where) use ($qb): QueryBuilder {
+                static $expected = ['a.revertedLogId = :revertedLogId', 'a.entityClass = :entityClass'];
+                static $index = 0;
+
+                TestCase::assertSame($expected[$index], $where);
+                ++$index;
+
+                return $qb;
+            });
+        $qb->expects($this->exactly(2))
+            ->method('andWhere')
+            ->willReturnCallback(static function (string $where) use ($qb): QueryBuilder {
+                static $expected = ['a.entityId = :entityId', 'a.action = :action'];
+                static $index = 0;
+
+                TestCase::assertSame($expected[$index], $where);
+                ++$index;
+
+                return $qb;
+            });
+        $qb->expects($this->exactly(4))
+            ->method('setParameter')
+            ->willReturnCallback(static function (string $name, mixed $value) use ($qb, $log): QueryBuilder {
+                static $expected = null;
+                static $index = 0;
+
+                $expected ??= [
+                    ['revertedLogId', $log->id?->toRfc4122()],
+                    ['entityClass', $log->entityClass],
+                    ['entityId', $log->requireEntityId()],
+                    ['action', AuditAction::Revert],
+                ];
+
+                TestCase::assertSame($expected[$index][0], $name);
+                TestCase::assertSame($expected[$index][1], $value);
+                ++$index;
+
+                return $qb;
+            });
+        $qb->expects($this->once())->method('orderBy')->with('a.createdAt', 'DESC')->willReturnSelf();
+        $qb->expects($this->once())->method('addOrderBy')->with('a.id', 'DESC')->willReturnSelf();
+        $qb->expects($this->never())->method('setMaxResults');
+        $query->expects($this->once())->method('getSingleScalarResult')->willReturn(0);
+        $query->expects($this->once())->method('toIterable')->willReturn($legacyRevertLogs);
+
+        self::assertTrue($repository->isReverted($log));
     }
 
     public function testHasNewerStateChangingLogsReturnsTrueWhenAStateChangeAppearsBeforeTargetLog(): void

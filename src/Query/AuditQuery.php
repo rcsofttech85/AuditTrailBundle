@@ -161,7 +161,7 @@ final class AuditQuery
      */
     public function before(string $id): self
     {
-        if ($this->state->changedFields !== []) {
+        if ($this->state->hasChangedFieldFilter()) {
             throw new LogicException('Reverse pagination with changedField() is not supported.');
         }
 

@@ -9,6 +9,7 @@ use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditKernelSubscriber;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\CooldownPost;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
@@ -19,6 +20,17 @@ use function assert;
 
 final class ConfigSafetyTest extends AbstractFunctionalTestCase
 {
+    public function testEmptySoftDeleteFieldIsRejectedAtContainerBuild(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+
+        self::bootKernel([
+            'audit_config' => [
+                'soft_delete_field' => '',
+            ],
+        ]);
+    }
+
     public function testDeferredFailureWithoutFallbackDoesNotCrashAndDoesNotRollbackEntity(): void
     {
         TestKernel::$useThrowingTransport = true;

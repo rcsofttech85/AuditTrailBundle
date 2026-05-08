@@ -38,6 +38,7 @@ readonly class AuditLogMessage implements JsonSerializable
         public array $context = [],
         public ?string $signature = null,
         public ?string $deliveryId = null,
+        public ?string $revertedLogId = null,
     ) {
     }
 
@@ -45,7 +46,7 @@ readonly class AuditLogMessage implements JsonSerializable
     {
         return new self(
             entityClass: $log->entityClass,
-            entityId: $resolvedEntityId ?? $log->entityId,
+            entityId: $resolvedEntityId ?? $log->requireEntityId(),
             action: $log->action->value,
             oldValues: $log->oldValues,
             newValues: $log->newValues,
@@ -59,6 +60,7 @@ readonly class AuditLogMessage implements JsonSerializable
             signature: $log->signature,
             deliveryId: $log->deliveryId,
             context: $log->context,
+            revertedLogId: $log->revertedLogId,
         );
     }
 
@@ -83,6 +85,7 @@ readonly class AuditLogMessage implements JsonSerializable
             'created_at' => $this->createdAt,
             'signature' => $this->signature,
             'delivery_id' => $this->deliveryId,
+            'reverted_log_id' => $this->revertedLogId,
             'context' => $this->context,
         ];
     }

@@ -15,6 +15,7 @@ use Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityDataExtractorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Service\AuditContextNormalizer;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogFactory;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
@@ -53,6 +54,7 @@ final class AuditServiceTimezoneTest extends TestCase
                 $contextResolver,
                 $idResolver,
                 new ContextSanitizer(),
+                new AuditContextNormalizer(new ContextSanitizer()),
                 timezone: 'Asia/Kolkata',
             ),
         );
@@ -65,6 +67,7 @@ final class AuditServiceTimezoneTest extends TestCase
         };
 
         $metadata = self::createStub(ClassMetadata::class);
+        $metadata->method('getName')->willReturn($entity::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $entityManager->method('getClassMetadata')->willReturn($metadata);
 
@@ -104,6 +107,7 @@ final class AuditServiceTimezoneTest extends TestCase
                 $contextResolver,
                 $idResolver,
                 new ContextSanitizer(),
+                new AuditContextNormalizer(new ContextSanitizer()),
             ),
         );
 
@@ -115,6 +119,7 @@ final class AuditServiceTimezoneTest extends TestCase
         };
 
         $metadata = self::createStub(ClassMetadata::class);
+        $metadata->method('getName')->willReturn($entity::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $entityManager->method('getClassMetadata')->willReturn($metadata);
 

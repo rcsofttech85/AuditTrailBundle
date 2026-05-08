@@ -51,6 +51,7 @@ final readonly class PersistAuditLogHandler
             context: $message->context,
             signature: $message->signature,
             deliveryId: $message->deliveryId,
+            revertedLogId: $message->revertedLogId,
         );
 
         try {

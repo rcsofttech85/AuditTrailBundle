@@ -9,6 +9,8 @@ use Rcsofttech\AuditTrailBundle\Transport\AuditDeliveryResult;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use RuntimeException;
 
+use function in_array;
+
 class ThrowingTransport implements AuditTransportInterface
 {
     public function send(AuditTransportContext $context): AuditDeliveryResult
@@ -18,6 +20,11 @@ class ThrowingTransport implements AuditTransportInterface
 
     public function supports(AuditTransportContext $context): bool
     {
+        $supportedPhases = TestKernel::$throwingTransportSupportedPhases;
+        if ($supportedPhases !== null && !in_array($context->phase->value, $supportedPhases, true)) {
+            return false;
+        }
+
         return true;
     }
 }

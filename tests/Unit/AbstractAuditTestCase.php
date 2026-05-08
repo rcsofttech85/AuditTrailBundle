@@ -25,6 +25,7 @@ use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
+use Rcsofttech\AuditTrailBundle\Service\AuditContextNormalizer;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\AuditFallbackPersister;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogContextProcessor;
@@ -86,6 +87,7 @@ abstract class AbstractAuditTestCase extends TestCase
                 $contextResolver,
                 $idResolver,
                 new ContextSanitizer(),
+                new AuditContextNormalizer(new ContextSanitizer()),
             ),
         );
     }
@@ -104,7 +106,7 @@ abstract class AbstractAuditTestCase extends TestCase
     ): AuditDispatcherInterface {
         return new AuditDispatcher(
             $transport,
-            new AuditLogContextProcessor(new ContextSanitizer()),
+            new AuditLogContextProcessor(new ContextSanitizer(), new AuditContextNormalizer(new ContextSanitizer())),
             new AuditFallbackPersister(new AuditLogWriter()),
             null, // eventDispatcher
             $integrityService ?? self::createStub(AuditIntegrityServiceInterface::class),
@@ -127,6 +129,7 @@ abstract class AbstractAuditTestCase extends TestCase
         $collectionChangeResolver = new CollectionChangeResolver(
             $collectionIdExtractor,
             new CollectionChangeIndexBuilder($collectionIdExtractor, $joinTableLoader),
+            $joinTableLoader,
         );
 
         return new EntityProcessor(
@@ -154,6 +157,7 @@ abstract class AbstractAuditTestCase extends TestCase
                 $auditManager,
                 $collectionChangeResolver,
                 new DeferredCollectionDetector($collectionChangeResolver),
+                $collectionTransitionMerger,
                 new EntityAuditDispatchManager($dispatcher, $auditManager, $deferTransportUntilCommit, false),
             ),
             new EntityDeletionProcessor(

@@ -218,15 +218,15 @@ final class AuditExportCommandTest extends TestCase
             self::assertSame(1, $this->commandTester->getStatusCode());
             self::assertStringContainsString('Failed to create directory', $this->normalizeOutput($this->commandTester));
         } finally {
-            @unlink($blockingFile);
-            @rmdir($parentDirectory);
+            $this->removeFileIfExists($blockingFile);
+            $this->removeDirectoryIfExists($parentDirectory);
         }
     }
 
     public function testExportToFileReturnsSuccessWhenStreamingFindsNoRows(): void
     {
         $tempFile = sys_get_temp_dir().'/audit_export_empty_preview.json';
-        @unlink($tempFile);
+        $this->removeFileIfExists($tempFile);
 
         $repository = self::createStub(AuditLogRepositoryInterface::class);
         $repository->method('findAllWithFilters')->willReturn([]);
@@ -248,7 +248,7 @@ final class AuditExportCommandTest extends TestCase
         $audit2 = $this->createAuditLog('018f3a3b-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'App\\Entity\\User', '43', 'create');
         $audit3 = $this->createAuditLog('018f3a3c-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'App\\Entity\\User', '44', 'create');
         $tempFile = sys_get_temp_dir().'/audit_export_limit_test.json';
-        @unlink($tempFile);
+        $this->removeFileIfExists($tempFile);
 
         $repository = $this->useRepositoryMock();
         $repository
@@ -282,7 +282,7 @@ final class AuditExportCommandTest extends TestCase
             self::assertSame('["42","43"]', (string) file_get_contents($tempFile));
             self::assertStringContainsString('Exported 2 audit logs', $this->normalizeOutput($this->commandTester));
         } finally {
-            @unlink($tempFile);
+            $this->removeFileIfExists($tempFile);
         }
     }
 
@@ -418,6 +418,24 @@ final class AuditExportCommandTest extends TestCase
         $property->setValue($log, Uuid::fromString($id));
 
         return $log;
+    }
+
+    private function removeFileIfExists(string $path): void
+    {
+        if (!file_exists($path)) {
+            return;
+        }
+
+        self::assertTrue(unlink($path));
+    }
+
+    private function removeDirectoryIfExists(string $path): void
+    {
+        if (!is_dir($path)) {
+            return;
+        }
+
+        self::assertTrue(rmdir($path));
     }
 
     /**

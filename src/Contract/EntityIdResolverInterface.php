@@ -9,12 +9,12 @@ use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 
 interface EntityIdResolverInterface
 {
-    public function resolveFromEntity(object $entity, ?EntityManagerInterface $em = null): string;
+    public function resolveFromEntity(object $entity, ?EntityManagerInterface $em = null): ?string;
 
     /**
      * @param array<string, mixed> $values
      */
-    public function resolveFromValues(object $entity, array $values, EntityManagerInterface $em): int|string|null;
+    public function resolveFromValues(object $entity, array $values, EntityManagerInterface $em): ?string;
 
     public function resolve(object $object, AuditTransportContext $context): ?string;
 }

@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
-use Doctrine\ORM\EntityManagerInterface;
 use Override;
+use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditToggleInterface;
 use Rcsofttech\AuditTrailBundle\Contract\RevertActionHandlerInterface;
-use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\ValueObject\RevertPlan;
 use RuntimeException;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
@@ -26,14 +26,15 @@ final readonly class AuditReverter implements AuditReverterInterface
      * @param iterable<RevertActionHandlerInterface> $actionHandlers
      */
     public function __construct(
-        private EntityManagerInterface $em,
+        private EntityManagerResolver $entityManagerResolver,
         private ValidatorInterface $validator,
         private RevertValueDenormalizer $denormalizer,
-        private SoftDeleteHandlerInterface $softDeleteHandler,
+        private SoftDeleteFilterManager $softDeleteFilterManager,
         private AuditToggleInterface $auditManager,
         private RevertGuard $revertGuard,
         private RevertEntityStateApplier $revertStateApplier,
         private RevertAuditLogCreator $revertAuditLogCreator,
+        private AuditDispatcherInterface $auditDispatcher,
         #[AutowireIterator('audit_trail.revert_action_handler')]
         private iterable $actionHandlers,
     ) {
@@ -60,9 +61,9 @@ final readonly class AuditReverter implements AuditReverterInterface
         }
 
         try {
-            $entity = $this->findEntity($log->entityClass, $log->entityId);
+            $entity = $this->findEntity($log->entityClass, $log->requireEntityId());
             if ($entity === null) {
-                throw new RuntimeException(sprintf('Entity %s:%s not found.', $log->entityClass, $log->entityId));
+                throw new RuntimeException(sprintf('Entity %s:%s not found.', $log->entityClass, $log->requireEntityId()));
             }
 
             $revertData = $this->determineChanges($log, $entity, $force, $dryRun);
@@ -101,35 +102,61 @@ final readonly class AuditReverter implements AuditReverterInterface
         RevertPlan $revertPlan,
         array $context,
     ): void {
+        $entityManager = $this->entityManagerResolver->requireForObject($entity);
         $changes = $revertPlan->changes;
         $isDelete = $revertPlan->isDeleteAction();
+        $dispatchedInTransaction = false;
 
-        $this->em->wrapInTransaction(function () use ($entity, $isDelete, $log, $changes, $context, $revertPlan) {
+        $revertAudit = $entityManager->wrapInTransaction(function () use ($entityManager, $entity, $isDelete, $log, $changes, $context, $revertPlan, &$dispatchedInTransaction): AuditLog {
             try {
                 if ($isDelete) {
-                    $this->em->remove($entity);
+                    $entityManager->remove($entity);
                 } else {
                     $this->revertStateApplier->apply($entity, $revertPlan);
                     $this->validateEntity($entity);
                 }
 
-                $this->revertAuditLogCreator->create(
+                $revertAudit = $this->revertAuditLogCreator->create(
                     $entity,
                     $log,
                     $changes,
                     $revertPlan->previousValues,
                     $isDelete,
                     $context,
-                    $this->em,
+                    $entityManager,
                 );
+
+                $dispatchedInTransaction = $this->auditDispatcher->dispatch(
+                    $revertAudit,
+                    $entityManager,
+                    AuditPhase::OnFlush,
+                    null,
+                    $entity,
+                );
+
+                return $revertAudit;
             } catch (Throwable $e) {
-                if (!$isDelete && $this->em->isOpen()) {
-                    $this->em->refresh($entity);
+                if (!$isDelete && $entityManager->isOpen()) {
+                    $entityManager->refresh($entity);
                 }
 
                 throw $e;
             }
         });
+
+        if ($dispatchedInTransaction) {
+            return;
+        }
+
+        try {
+            if ($this->auditDispatcher->dispatch($revertAudit, $entityManager, AuditPhase::PostFlush, null, $entity)) {
+                return;
+            }
+        } catch (Throwable $exception) {
+            throw new RuntimeException(sprintf('Revert committed for %s:%s, but audit dispatch failed after commit.', $log->entityClass, $log->requireEntityId()), previous: $exception);
+        }
+
+        throw new RuntimeException(sprintf('Revert committed for %s:%s, but no audit transport accepted the revert log after commit.', $log->entityClass, $log->requireEntityId()));
     }
 
     private function validateEntity(object $entity): void
@@ -146,13 +173,18 @@ final readonly class AuditReverter implements AuditReverterInterface
             return null;
         }
 
-        $disabledFilters = $this->softDeleteHandler->disableSoftDeleteFilters();
+        $entityManager = $this->entityManagerResolver->resolveForClass($class);
+        if ($entityManager === null) {
+            return null;
+        }
+
+        $disabledFilters = $this->softDeleteFilterManager->disable($entityManager);
 
         try {
             /** @var class-string<object> $class */
-            return $this->em->find($class, $this->denormalizer->normalizeEntityIdentifier($class, $id));
+            return $entityManager->find($class, $this->denormalizer->normalizeEntityIdentifier($class, $id));
         } finally {
-            $this->softDeleteHandler->enableFilters($disabledFilters);
+            $this->softDeleteFilterManager->enable($entityManager, $disabledFilters);
         }
     }
 }

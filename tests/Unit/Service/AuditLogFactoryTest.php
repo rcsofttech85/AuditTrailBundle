@@ -6,17 +6,19 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Service\AuditContextNormalizer;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogFactory;
 use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
+use Rcsofttech\AuditTrailBundle\Service\EntityClassResolver;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use RuntimeException;
 use stdClass;
@@ -38,6 +40,8 @@ final class AuditLogFactoryTest extends TestCase
     /** @var EntityManagerInterface&Stub */
     private EntityManagerInterface $entityManager;
 
+    private EntityClassResolver $entityClassResolver;
+
     private AuditLogFactory $factory;
 
     protected function setUp(): void
@@ -49,6 +53,8 @@ final class AuditLogFactoryTest extends TestCase
         $this->idResolver = self::createStub(EntityIdResolverInterface::class);
         $this->logger = self::createStub(LoggerInterface::class);
         $this->entityManager = self::createStub(EntityManagerInterface::class);
+        $this->entityManager->method('getClassMetadata')->willThrowException(new RuntimeException('No metadata configured for this test stub.'));
+        $this->entityClassResolver = new EntityClassResolver();
 
         $this->factory = $this->createFactory();
     }
@@ -61,7 +67,7 @@ final class AuditLogFactoryTest extends TestCase
         $idResolver->expects($this->once())
             ->method('resolveFromEntity')
             ->with($entity, $this->entityManager)
-            ->willReturn(AuditLogInterface::PENDING_ID);
+            ->willReturn(null);
         $idResolver->expects($this->once())
             ->method('resolveFromValues')
             ->with($entity, ['id' => 42], $this->entityManager)
@@ -158,9 +164,29 @@ final class AuditLogFactoryTest extends TestCase
         self::assertTrue($log->isContextNormalized());
     }
 
+    public function testCreateNormalizesProxyEntityClassBeforePersistingAuditLog(): void
+    {
+        $entity = new class extends stdClass {
+        };
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects($this->once())
+            ->method('getClassMetadata')
+            ->with($entity::class)
+            ->willReturn(new ClassMetadata(stdClass::class));
+
+        $this->idResolver->method('resolveFromEntity')->willReturn('9');
+        $this->contextResolver->method('resolve')->willReturn($this->resolvedContext());
+        $this->factory = $this->createFactory(entityClassResolver: new EntityClassResolver());
+
+        $log = $this->factory->create($entity, AuditAction::Update, ['name' => 'old'], ['name' => 'new'], [], $entityManager);
+
+        self::assertSame(stdClass::class, $log->entityClass);
+    }
+
     private function createFactory(
         ?LoggerInterface $logger = null,
         ?ContextResolverInterface $contextResolver = null,
+        ?EntityClassResolver $entityClassResolver = null,
     ): AuditLogFactory {
         return new AuditLogFactory(
             $this->clock,
@@ -168,7 +194,9 @@ final class AuditLogFactoryTest extends TestCase
             $contextResolver ?? $this->contextResolver,
             $this->idResolver,
             new ContextSanitizer(),
+            new AuditContextNormalizer(new ContextSanitizer(), null, $logger ?? $this->logger),
             $logger ?? $this->logger,
+            entityClassResolver: $entityClassResolver ?? $this->entityClassResolver,
         );
     }
 

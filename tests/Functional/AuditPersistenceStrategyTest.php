@@ -98,7 +98,7 @@ final class AuditPersistenceStrategyTest extends AbstractFunctionalTestCase
         self::assertNotEmpty($auditLogs, 'AuditLog should exist for auto-increment entity');
 
         $audit = $auditLogs[array_key_last($auditLogs)];
-        self::assertNotSame('pending', $audit->entityId, 'Entity ID should be resolved, not PENDING');
+        self::assertNotNull($audit->entityId, 'Entity ID should be resolved');
         self::assertIsNumeric($audit->entityId, 'Auto-increment entity ID should be numeric');
     }
 
@@ -128,7 +128,7 @@ final class AuditPersistenceStrategyTest extends AbstractFunctionalTestCase
         self::assertNotEmpty($auditLogs, 'AuditLog should exist for UUID entity');
 
         $audit = $auditLogs[array_key_last($auditLogs)];
-        self::assertNotSame('pending', $audit->entityId, 'Entity ID should be resolved, not PENDING');
+        self::assertNotNull($audit->entityId, 'Entity ID should be resolved');
         self::assertTrue(
             \Symfony\Component\Uid\Uuid::isValid($audit->entityId),
             sprintf('Entity ID should be a valid UUID, got: %s', $audit->entityId)
@@ -163,8 +163,8 @@ final class AuditPersistenceStrategyTest extends AbstractFunctionalTestCase
         self::assertSame('create', $autoAudit->action->value);
         self::assertSame('create', $uuidAudit->action->value);
 
-        self::assertNotSame('pending', $autoAudit->entityId, 'Auto-increment ID should be resolved');
-        self::assertNotSame('pending', $uuidAudit->entityId, 'UUID ID should be resolved');
+        self::assertNotNull($autoAudit->entityId, 'Auto-increment ID should be resolved');
+        self::assertNotNull($uuidAudit->entityId, 'UUID ID should be resolved');
 
         self::assertIsArray($autoAudit->newValues);
         self::assertIsArray($uuidAudit->newValues);

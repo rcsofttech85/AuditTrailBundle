@@ -23,6 +23,7 @@ final readonly class EntityDataExtractor implements EntityDataExtractorInterface
         private ValueSerializerInterface $serializer,
         private MetadataCacheInterface $metadataCache,
         private ?LoggerInterface $logger = null,
+        private ?EntityManagerResolver $entityManagerResolver = null,
     ) {
     }
 
@@ -38,7 +39,7 @@ final readonly class EntityDataExtractor implements EntityDataExtractorInterface
     public function extract(object $entity, array $ignored = [], ?EntityManagerInterface $entityManager = null): array
     {
         $class = $entity::class;
-        $entityManager ??= $this->entityManager;
+        $entityManager ??= $this->entityManagerResolver?->resolveForObject($entity) ?? $this->entityManager;
         $meta = $this->resolveMetadata($entityManager, $class);
         if ($meta === null) {
             return $this->buildFailurePayload($class);

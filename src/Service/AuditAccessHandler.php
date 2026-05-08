@@ -13,7 +13,6 @@ use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\ValueObject\PendingAccessAudit;
 use Symfony\Contracts\Service\ResetInterface;
-use Throwable;
 
 use function sprintf;
 
@@ -27,8 +26,7 @@ final class AuditAccessHandler implements AuditAccessHandlerInterface, ResetInte
     /** @var array<string, bool> */
     private array $skipAccessCheck = [];
 
-    /** @var array<string, string> */
-    private array $resolvedClassNames = [];
+    private readonly EntityClassResolver $entityClassResolver;
 
     public function __construct(
         private readonly AuditServiceInterface $auditService,
@@ -37,7 +35,9 @@ final class AuditAccessHandler implements AuditAccessHandlerInterface, ResetInte
         private readonly EntityIdResolverInterface $idResolver,
         private readonly AuditAccessCooldownManager $cooldownManager,
         private readonly AuditAccessContextProvider $contextProvider,
+        ?EntityClassResolver $entityClassResolver = null,
     ) {
+        $this->entityClassResolver = $entityClassResolver ?? new EntityClassResolver();
     }
 
     /**
@@ -89,13 +89,14 @@ final class AuditAccessHandler implements AuditAccessHandlerInterface, ResetInte
             return;
         }
 
+        $this->cooldownManager->persistForRequest($requestKey, $capturedContext, $accessAttr->cooldown);
         $this->pendingAccesses[$requestKey] = new PendingAccessAudit($requestKey, $entity, $om, $accessAttr, $capturedContext);
     }
 
     public function markAsAudited(string $requestKey): void
     {
         $this->cooldownManager->markAsAudited($requestKey);
-        unset($this->pendingAccesses[$requestKey]);
+        $this->discardPendingAccess($requestKey);
     }
 
     public function flushPendingAccesses(): void
@@ -103,7 +104,7 @@ final class AuditAccessHandler implements AuditAccessHandlerInterface, ResetInte
         foreach ($this->pendingAccesses as $requestKey => $pending) {
             $em = $pending->entityManager;
             if (!$em->isOpen()) {
-                unset($this->pendingAccesses[$requestKey]);
+                $this->discardPendingAccess($requestKey);
 
                 continue;
             }
@@ -121,32 +122,33 @@ final class AuditAccessHandler implements AuditAccessHandlerInterface, ResetInte
     #[Override]
     public function reset(): void
     {
-        $this->pendingAccesses = [];
+        foreach (array_keys($this->pendingAccesses) as $requestKey) {
+            $this->discardPendingAccess($requestKey);
+        }
+
         $this->skipAccessCheck = [];
-        $this->resolvedClassNames = [];
         $this->requestEvaluator->reset();
         $this->cooldownManager->reset();
     }
 
+    private function discardPendingAccess(string $requestKey): void
+    {
+        $pending = $this->pendingAccesses[$requestKey] ?? null;
+        if ($pending === null) {
+            return;
+        }
+
+        $this->cooldownManager->clearForRequest($pending->requestKey, $pending->context);
+        unset($this->pendingAccesses[$requestKey]);
+    }
+
     private function resolveEntityId(object $entity, EntityManagerInterface $om): ?string
     {
-        $id = $this->idResolver->resolveFromEntity($entity, $om);
-
-        return $id === AuditLogInterface::PENDING_ID ? null : $id;
+        return $this->idResolver->resolveFromEntity($entity, $om);
     }
 
     private function resolveEntityClass(object $entity, EntityManagerInterface $om): string
     {
-        $runtimeClass = $entity::class;
-
-        if (isset($this->resolvedClassNames[$runtimeClass])) {
-            return $this->resolvedClassNames[$runtimeClass];
-        }
-
-        try {
-            return $this->resolvedClassNames[$runtimeClass] = $om->getClassMetadata($runtimeClass)->getName();
-        } catch (Throwable) {
-            return $this->resolvedClassNames[$runtimeClass] = $runtimeClass;
-        }
+        return $this->entityClassResolver->resolve($entity, $om);
     }
 }

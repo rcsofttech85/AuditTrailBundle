@@ -37,6 +37,7 @@ readonly class PersistAuditLogMessage
         public string $createdAt,
         public ?string $signature = null,
         public ?string $deliveryId = null,
+        public ?string $revertedLogId = null,
         /** @var array<string, mixed> */
         public array $context = [],
     ) {
@@ -46,7 +47,7 @@ readonly class PersistAuditLogMessage
     {
         return new self(
             entityClass: $log->entityClass,
-            entityId: $resolvedEntityId ?? $log->entityId,
+            entityId: $resolvedEntityId ?? $log->requireEntityId(),
             action: $log->action->value,
             oldValues: $log->oldValues,
             newValues: $log->newValues,
@@ -59,6 +60,7 @@ readonly class PersistAuditLogMessage
             createdAt: $log->createdAt->format(DateTimeInterface::ATOM),
             signature: $log->signature,
             deliveryId: $log->deliveryId ?? Uuid::v7()->toRfc4122(),
+            revertedLogId: $log->revertedLogId,
             context: $log->context,
         );
     }

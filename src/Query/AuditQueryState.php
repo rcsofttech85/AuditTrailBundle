@@ -7,12 +7,14 @@ namespace Rcsofttech\AuditTrailBundle\Query;
 use DateTimeInterface;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
+use function array_key_exists;
+
 /**
  * Immutable filter state for AuditQuery.
  *
  * @internal
  */
-readonly class AuditQueryState
+final readonly class AuditQueryState
 {
     public const int DEFAULT_LIMIT = 30;
 
@@ -35,38 +37,24 @@ readonly class AuditQueryState
     ) {
     }
 
+    public function hasChangedFieldFilter(): bool
+    {
+        return $this->changedFields !== [];
+    }
+
     public function withEntity(string $class, ?string $id = null): self
     {
-        return new self(
-            entityClass: $class,
-            entityId: $id,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->copy([
+            'entityClass' => $class,
+            'entityId' => $id,
+        ]);
     }
 
     public function withEntityId(string $id): self
     {
-        return new self(
-            entityClass: $this->entityClass,
-            entityId: $id,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->copy([
+            'entityId' => $id,
+        ]);
     }
 
     /**
@@ -74,87 +62,37 @@ readonly class AuditQueryState
      */
     public function withActions(array $actions): self
     {
-        return new self(
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->copy([
+            'actions' => $actions,
+        ]);
     }
 
     public function withUserId(string $userId): self
     {
-        return new self(
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->copy([
+            'userId' => $userId,
+        ]);
     }
 
     public function withTransactionHash(string $transactionHash): self
     {
-        return new self(
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->copy([
+            'transactionHash' => $transactionHash,
+        ]);
     }
 
     public function withSince(DateTimeInterface $since): self
     {
-        return new self(
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->copy([
+            'since' => $since,
+        ]);
     }
 
     public function withUntil(DateTimeInterface $until): self
     {
-        return new self(
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->copy([
+            'until' => $until,
+        ]);
     }
 
     /**
@@ -162,69 +100,71 @@ readonly class AuditQueryState
      */
     public function withChangedFields(array $changedFields): self
     {
-        return new self(
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $changedFields,
-            limit: $this->limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->copy([
+            'changedFields' => $changedFields,
+        ]);
     }
 
     public function withLimit(int $limit): self
     {
-        return new self(
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $limit,
-            afterId: $this->afterId,
-            beforeId: $this->beforeId,
-        );
+        return $this->copy([
+            'limit' => $limit,
+        ]);
     }
 
     public function withAfterId(string $afterId): self
     {
-        return new self(
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: $afterId,
-            beforeId: null,
-        );
+        return $this->copy([
+            'afterId' => $afterId,
+            'beforeId' => null,
+        ]);
     }
 
     public function withBeforeId(string $beforeId): self
     {
+        return $this->copy([
+            'afterId' => null,
+            'beforeId' => $beforeId,
+        ]);
+    }
+
+    /**
+     * @param array{
+     *     entityClass?: ?string,
+     *     entityId?: ?string,
+     *     actions?: list<AuditAction>,
+     *     userId?: ?string,
+     *     transactionHash?: ?string,
+     *     since?: ?DateTimeInterface,
+     *     until?: ?DateTimeInterface,
+     *     changedFields?: list<string>,
+     *     limit?: int,
+     *     afterId?: ?string,
+     *     beforeId?: ?string
+     * } $overrides
+     */
+    private function copy(array $overrides): self
+    {
         return new self(
-            entityClass: $this->entityClass,
-            entityId: $this->entityId,
-            actions: $this->actions,
-            userId: $this->userId,
-            transactionHash: $this->transactionHash,
-            since: $this->since,
-            until: $this->until,
-            changedFields: $this->changedFields,
-            limit: $this->limit,
-            afterId: null,
-            beforeId: $beforeId,
+            entityClass: $this->value('entityClass', $this->entityClass, $overrides),
+            entityId: $this->value('entityId', $this->entityId, $overrides),
+            actions: $this->value('actions', $this->actions, $overrides),
+            userId: $this->value('userId', $this->userId, $overrides),
+            transactionHash: $this->value('transactionHash', $this->transactionHash, $overrides),
+            since: $this->value('since', $this->since, $overrides),
+            until: $this->value('until', $this->until, $overrides),
+            changedFields: $this->value('changedFields', $this->changedFields, $overrides),
+            limit: $this->value('limit', $this->limit, $overrides),
+            afterId: $this->value('afterId', $this->afterId, $overrides),
+            beforeId: $this->value('beforeId', $this->beforeId, $overrides),
         );
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     */
+    private function value(string $key, mixed $current, array $overrides): mixed
+    {
+        return array_key_exists($key, $overrides) ? $overrides[$key] : $current;
     }
 }

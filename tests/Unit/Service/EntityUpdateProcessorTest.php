@@ -104,7 +104,7 @@ final class EntityUpdateProcessorTest extends TestCase
             static fn (object $currentEntity, string $field): array => $field === 'tags' ? [$pendingTag] : []
         );
         $idResolver = $this->createMock(EntityIdResolverInterface::class);
-        $idResolver->expects($this->once())->method('resolveFromEntity')->with($pendingTag, $em)->willReturn(\Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface::PENDING_ID);
+        $idResolver->expects($this->once())->method('resolveFromEntity')->with($pendingTag, $em)->willReturn(null);
 
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
@@ -135,6 +135,7 @@ final class EntityUpdateProcessorTest extends TestCase
         $collectionChangeResolver = new CollectionChangeResolver(
             $collectionIdExtractor,
             new CollectionChangeIndexBuilder($collectionIdExtractor, new JoinTableCollectionIdLoader($resolver)),
+            new JoinTableCollectionIdLoader($resolver),
         );
         $deletedAssociationImpactResolver = new DeletedAssociationImpactResolver();
         $collectionTransitionMerger = new CollectionTransitionMerger();

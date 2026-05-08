@@ -20,7 +20,7 @@ interface AuditQueueManagerInterface extends ResetInterface
     /**
      * @param array<string, mixed> $data
      */
-    public function addPendingDeletion(object $entity, array $data, bool $isManaged, AuditAction $action): void;
+    public function addPendingDeletion(object $entity, array $data, AuditAction $action): void;
 
     public function clear(): void;
 
@@ -38,19 +38,4 @@ interface AuditQueueManagerInterface extends ResetInterface
      * @return list<PendingDeletionEntry>
      */
     public function getPendingDeletions(): array;
-
-    /**
-     * @param list<ScheduledAuditEntry> $scheduledAudits
-     */
-    public function replaceScheduledAudits(array $scheduledAudits): void;
-
-    /**
-     * @param list<PendingAuditPlan> $plans
-     */
-    public function replacePendingAuditPlans(array $plans): void;
-
-    /**
-     * @param list<PendingDeletionEntry> $pendingDeletions
-     */
-    public function replacePendingDeletions(array $pendingDeletions): void;
 }

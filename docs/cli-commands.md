@@ -17,7 +17,7 @@ php bin/console audit:purge --before="30 days ago" --force
 Notes:
 
 - If integrity signing is enabled, `audit:purge` verifies matching logs before deletion unless you pass `--skip-integrity`.
-- The purge verification path streams matching rows through the repository iterable API, which keeps large purge runs more memory-friendly than eager loading.
+- The purge verification path streams matching rows through the repository iterable API, which uses less memory than eager loading during large purge runs.
 
 ## Export Logs
 
@@ -28,8 +28,8 @@ php bin/console audit:export --format=json --output=audits.json
 Notes:
 
 - The CLI export command is the right tool for large or full-history exports.
-- EasyAdmin export respects the active admin filters, but is intentionally
-  capped by `admin_export_limit` to keep browser-triggered downloads bounded.
+- EasyAdmin export respects the active admin filters, but is capped by
+  `admin_export_limit` to keep browser-triggered downloads bounded.
 
 ## View Diff
 

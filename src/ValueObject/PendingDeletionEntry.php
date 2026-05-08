@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\ValueObject;
 
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 final readonly class PendingDeletionEntry
@@ -14,8 +15,18 @@ final readonly class PendingDeletionEntry
     public function __construct(
         public object $entity,
         public array $data,
-        public bool $isManaged,
         public AuditAction $action,
+        public ?AuditLog $audit = null,
     ) {
+    }
+
+    public function withAudit(AuditLog $audit): self
+    {
+        return new self(
+            $this->entity,
+            $this->data,
+            $this->action,
+            $audit,
+        );
     }
 }

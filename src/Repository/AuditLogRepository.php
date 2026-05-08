@@ -12,19 +12,19 @@ use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Query\ChangedFieldQueryableAuditLogRepositoryInterface;
 
-use function array_any;
-use function array_filter;
 use function array_values;
 
 /**
  * @extends ServiceEntityRepository<AuditLog>
  */
-final class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepositoryInterface
+final class AuditLogRepository extends ServiceEntityRepository implements AuditLogRepositoryInterface, ChangedFieldQueryableAuditLogRepositoryInterface
 {
     public function __construct(
         ManagerRegistry $registry,
         private readonly AuditLogQueryFilterApplier $filterApplier,
+        private readonly AuditLogChangedFieldQueryExecutor $changedFieldQueryExecutor,
     ) {
         parent::__construct($registry, AuditLog::class);
     }
@@ -160,12 +160,52 @@ final class AuditLogRepository extends ServiceEntityRepository implements AuditL
         /** @var array<int, AuditLog> $result */
         $result = $qb->getQuery()->getResult();
 
-        // Reverse results if paginating backwards to maintain DESC order
         if (isset($filters['beforeId'])) {
             $result = array_reverse($result);
         }
 
         return $result;
+    }
+
+    #[Override]
+    public function supportsChangedFieldQueries(): bool
+    {
+        return $this->changedFieldQueryExecutor->supports($this->getEntityManager()->getConnection());
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @param list<string>         $changedFields
+     */
+    #[Override]
+    public function countWithChangedFields(array $filters, array $changedFields): int
+    {
+        if ($changedFields === []) {
+            return $this->countWithFilters($filters);
+        }
+
+        return $this->changedFieldQueryExecutor->count($this->getEntityManager(), $filters, $changedFields);
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @param list<string>         $changedFields
+     *
+     * @return list<AuditLog>
+     */
+    #[Override]
+    public function findWithChangedFields(array $filters, array $changedFields, int $limit): array
+    {
+        $this->assertPositiveLimit($limit);
+
+        if ($changedFields === []) {
+            /** @var list<AuditLog> $logs */
+            $logs = $this->findWithFilters($filters, $limit);
+
+            return $logs;
+        }
+
+        return $this->changedFieldQueryExecutor->find($this->getEntityManager(), $filters, $changedFields, $limit);
     }
 
     private function assertPositiveLimit(int $limit): void
@@ -218,22 +258,39 @@ final class AuditLogRepository extends ServiceEntityRepository implements AuditL
 
         $revertedLogId = $log->id->toRfc4122();
 
-        /** @var list<AuditLog> $revertLogs */
+        /** @var int $count */
+        $count = $this->createQueryBuilder('a')
+            ->select('COUNT(a.id)')
+            ->where('a.revertedLogId = :revertedLogId')
+            ->setParameter('revertedLogId', $revertedLogId)
+            ->getQuery()
+            ->getSingleScalarResult();
+
+        if ($count > 0 || !$log->hasResolvedEntityId()) {
+            return $count > 0;
+        }
+
+        // Fallback for legacy 3.x rows that stored reverted_log_id only in context.
+        /** @var iterable<AuditLog> $revertLogs */
         $revertLogs = $this->createQueryBuilder('a')
             ->where('a.entityClass = :entityClass')
             ->andWhere('a.entityId = :entityId')
             ->andWhere('a.action = :action')
             ->setParameter('entityClass', $log->entityClass)
-            ->setParameter('entityId', $log->entityId)
+            ->setParameter('entityId', $log->requireEntityId())
             ->setParameter('action', AuditAction::Revert)
-            ->setMaxResults(25)
+            ->orderBy('a.createdAt', 'DESC')
+            ->addOrderBy('a.id', 'DESC')
             ->getQuery()
-            ->getResult();
+            ->toIterable();
 
-        return array_any(
-            $revertLogs,
-            static fn (AuditLog $revertLog): bool => ($revertLog->context['reverted_log_id'] ?? null) === $revertedLogId,
-        );
+        foreach ($revertLogs as $revertLog) {
+            if (($revertLog->context['reverted_log_id'] ?? null) === $revertedLogId) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     #[Override]
@@ -251,7 +308,7 @@ final class AuditLogRepository extends ServiceEntityRepository implements AuditL
             ->andWhere('a.action IN (:actions)')
             ->andWhere('(a.createdAt > :createdAt OR (a.createdAt = :createdAt AND a.id > :id))')
             ->setParameter('entityClass', $log->entityClass)
-            ->setParameter('entityId', $log->entityId)
+            ->setParameter('entityId', $log->requireEntityId())
             ->setParameter('actions', self::stateChangingActions())
             ->setParameter('createdAt', $log->createdAt)
             ->setParameter('id', $log->id->toRfc4122(), 'uuid')

@@ -6,9 +6,9 @@ namespace Rcsofttech\AuditTrailBundle\Query;
 
 use Override;
 use Psr\Log\LoggerInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReaderInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Service\EntityClassResolver;
 use Throwable;
 
 /**
@@ -24,11 +24,15 @@ use Throwable;
  */
 final readonly class AuditReader implements AuditReaderInterface
 {
+    private EntityClassResolver $entityClassResolver;
+
     public function __construct(
         private AuditQueryExecutor $queryExecutor,
         private EntityIdResolverInterface $idResolver,
         private ?LoggerInterface $logger = null,
+        ?EntityClassResolver $entityClassResolver = null,
     ) {
+        $this->entityClassResolver = $entityClassResolver ?? new EntityClassResolver();
     }
 
     /**
@@ -75,12 +79,13 @@ final readonly class AuditReader implements AuditReaderInterface
     public function getHistoryFor(object $entity): AuditEntryCollection
     {
         $entityId = $this->extractEntityId($entity);
+        $entityClass = $this->entityClassResolver->resolve($entity);
 
         if ($entityId === null) {
             return new AuditEntryCollection([]);
         }
 
-        return $this->forEntity($entity::class, $entityId)->getResults();
+        return $this->forEntity($entityClass, $entityId)->getResults();
     }
 
     /**
@@ -108,12 +113,13 @@ final readonly class AuditReader implements AuditReaderInterface
     public function getLatestFor(object $entity): ?AuditEntry
     {
         $entityId = $this->extractEntityId($entity);
+        $entityClass = $this->entityClassResolver->resolve($entity);
 
         if ($entityId === null) {
             return null;
         }
 
-        return $this->forEntity($entity::class, $entityId)->getFirstResult();
+        return $this->forEntity($entityClass, $entityId)->getFirstResult();
     }
 
     /**
@@ -122,12 +128,13 @@ final readonly class AuditReader implements AuditReaderInterface
     public function hasHistoryFor(object $entity): bool
     {
         $entityId = $this->extractEntityId($entity);
+        $entityClass = $this->entityClassResolver->resolve($entity);
 
         if ($entityId === null) {
             return false;
         }
 
-        return $this->forEntity($entity::class, $entityId)->exists();
+        return $this->forEntity($entityClass, $entityId)->exists();
     }
 
     /**
@@ -139,13 +146,13 @@ final readonly class AuditReader implements AuditReaderInterface
             $id = $this->idResolver->resolveFromEntity($entity);
         } catch (Throwable $exception) {
             $this->logger?->warning('Failed to resolve entity identifier for audit lookup.', [
-                'entity_class' => $entity::class,
+                'entity_class' => $this->entityClassResolver->resolve($entity),
                 'exception' => $exception,
             ]);
 
             return null;
         }
 
-        return $id === AuditLogInterface::PENDING_ID ? null : $id;
+        return $id;
     }
 }

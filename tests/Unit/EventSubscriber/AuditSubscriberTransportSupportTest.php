@@ -115,6 +115,7 @@ final class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
                 $auditService,
                 $dispatcher,
                 $auditManager,
+                $auditManager,
                 new PendingAuditPlanMaterializer(
                     $auditService,
                     new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)),

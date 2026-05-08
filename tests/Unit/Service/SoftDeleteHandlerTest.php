@@ -4,64 +4,73 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Query\Filter\SQLFilter;
-use Doctrine\ORM\Query\FilterCollection;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Service\EntityManagerResolver;
 use Rcsofttech\AuditTrailBundle\Service\SoftDeleteHandler;
-use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\DummySoftDeleteableFilter;
 
-#[AllowMockObjectsWithoutExpectations]
 final class SoftDeleteHandlerTest extends TestCase
 {
-    public function testDisableSoftDeleteFiltersDisablesConfiguredFilterNames(): void
+    public function testRestoreSoftDeletedUsesConfiguredFieldMetadata(): void
     {
-        $filters = $this->createMock(FilterCollection::class);
-        $em = $this->createMock(EntityManagerInterface::class);
-        $handler = new SoftDeleteHandler($em, ['custom_soft_delete']);
+        $entity = new SoftDeleteFieldEntity();
+        $entity->archivedAt = new DateTimeImmutable();
 
-        $em->method('getFilters')->willReturn($filters);
-        $filters->method('getEnabledFilters')->willReturn([
-            'custom_soft_delete' => new class {},
-            'tenant' => new class {},
+        $metadata = $this->createMock(ClassMetadata::class);
+        $metadata->method('hasField')->willReturnMap([
+            ['archivedAt', true],
         ]);
-        $filters->expects($this->once())->method('disable')->with('custom_soft_delete');
-
-        self::assertSame(['custom_soft_delete'], $handler->disableSoftDeleteFilters());
-    }
-
-    public function testDisableSoftDeleteFiltersRecognizesGedmoFilterClassExactly(): void
-    {
-        $filters = $this->createMock(FilterCollection::class);
-        $em = $this->createMock(EntityManagerInterface::class);
-        $handler = new SoftDeleteHandler($em, ['custom_soft_delete']);
-
-        $em->method('getFilters')->willReturn($filters);
-        $filters->method('getEnabledFilters')->willReturn([
-            'gedmo_alias' => self::createStub(DummySoftDeleteableFilter::class),
-            'tenant' => new class {},
-        ]);
-        $filters->expects($this->once())->method('disable')->with('gedmo_alias');
-
-        self::assertSame(['gedmo_alias'], $handler->disableSoftDeleteFilters());
-    }
-
-    public function testEnableFiltersReenablesEachProvidedName(): void
-    {
-        $filters = $this->createMock(FilterCollection::class);
-        $em = $this->createMock(EntityManagerInterface::class);
-        $handler = new SoftDeleteHandler($em);
-
-        $em->method('getFilters')->willReturn($filters);
-        $filters->expects($this->exactly(2))
-            ->method('enable')
-            ->willReturnCallback(static function (string $name): SQLFilter {
-                self::assertContains($name, ['softdeleteable', 'tenant']);
-
-                return self::createStub(SQLFilter::class);
+        $metadata->method('hasAssociation')->willReturn(false);
+        $metadata->expects($this->exactly(2))
+            ->method('getFieldValue')
+            ->with($entity, 'archivedAt')
+            ->willReturnCallback(static fn (SoftDeleteFieldEntity $resolvedEntity): mixed => $resolvedEntity->archivedAt);
+        $metadata->expects($this->once())
+            ->method('setFieldValue')
+            ->with($entity, 'archivedAt', null)
+            ->willReturnCallback(static function (SoftDeleteFieldEntity $resolvedEntity, string $field, mixed $value): void {
+                $resolvedEntity->archivedAt = $value;
             });
 
-        $handler->enableFilters(['softdeleteable', 'tenant']);
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects($this->exactly(3))
+            ->method('getClassMetadata')
+            ->with($entity::class)
+            ->willReturn($metadata);
+
+        $handler = $this->createHandler($this->createResolver($entityManager), 'archivedAt');
+
+        self::assertTrue($handler->isSoftDeleted($entity));
+
+        $handler->restoreSoftDeleted($entity);
+
+        self::assertNull($entity->archivedAt);
+        self::assertFalse($handler->isSoftDeleted($entity));
     }
+
+    private function createHandler(
+        ?EntityManagerResolver $resolver = null,
+        string $softDeleteField = 'deletedAt',
+    ): SoftDeleteHandler {
+        return new SoftDeleteHandler(
+            $resolver ?? $this->createResolver(),
+            $softDeleteField,
+        );
+    }
+
+    private function createResolver(?EntityManagerInterface $entityManager = null): EntityManagerResolver
+    {
+        $registry = self::createStub(ManagerRegistry::class);
+        $registry->method('getManagerForClass')->willReturn($entityManager);
+
+        return new EntityManagerResolver($registry);
+    }
+}
+
+final class SoftDeleteFieldEntity
+{
+    public ?DateTimeImmutable $archivedAt = null;
 }

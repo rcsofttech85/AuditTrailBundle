@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Factory;
 
+use LogicException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogMessageFactoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
@@ -45,6 +46,11 @@ final readonly class AuditLogMessageFactory implements AuditLogMessageFactoryInt
 
     private function resolveEntityId(AuditTransportContext $context): string
     {
-        return $this->idResolver->resolve($context->audit, $context) ?? $context->audit->entityId;
+        $entityId = $this->idResolver->resolve($context->audit, $context) ?? $context->audit->entityId;
+        if ($entityId !== null) {
+            return $entityId;
+        }
+
+        throw new LogicException('Cannot create an audit transport message before the entity ID has been resolved.');
     }
 }

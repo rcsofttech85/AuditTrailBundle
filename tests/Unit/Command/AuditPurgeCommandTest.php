@@ -40,7 +40,7 @@ final class AuditPurgeCommandTest extends TestCase
         $this->resetCommandTester();
     }
 
-    public function testPurgeRequiresBeforeOption(): void
+    public function testPurgeRequiresBeforeOptionWhenDeletionIsRequested(): void
     {
         $repository = $this->useRepositoryMock();
         $repository
@@ -55,8 +55,47 @@ final class AuditPurgeCommandTest extends TestCase
 
         self::assertSame(1, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput($this->commandTester);
-        self::assertStringContainsString('--before', $output);
-        self::assertStringContainsString('required', $output);
+        self::assertStringContainsString('The --before option is required unless you are running a dry run.', $output);
+    }
+
+    public function testPurgeUsesConfiguredRetentionWhenBeforeOptionIsOmittedForDryRun(): void
+    {
+        $repository = $this->useRepositoryMock();
+        $repository
+            ->expects($this->once())
+            ->method('countOlderThan');
+
+        $repository
+            ->expects($this->never())
+            ->method('deleteOldLogs');
+
+        $this->commandTester->execute(['--dry-run' => true]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
+        $output = $this->normalizeOutput($this->commandTester);
+        self::assertStringContainsString('configured retention window', $output);
+    }
+
+    public function testPurgeUsesCustomConfiguredRetentionWindowForDryRun(): void
+    {
+        $repository = $this->useRepositoryMock(retentionDays: 7);
+        $repository
+            ->expects($this->once())
+            ->method('countOlderThan')
+            ->with(self::callback(static function (DateTimeInterface $date): bool {
+                $expectedTimestamp = new DateTimeImmutable('-7 days')->getTimestamp();
+
+                return abs($date->getTimestamp() - $expectedTimestamp) < 5;
+            }))
+            ->willReturn(0);
+
+        $repository
+            ->expects($this->never())
+            ->method('deleteOldLogs');
+
+        $this->commandTester->execute(['--dry-run' => true]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
     }
 
     public function testPurgeWithInvalidDate(): void
@@ -328,18 +367,18 @@ final class AuditPurgeCommandTest extends TestCase
         self::assertStringContainsString('All logs passed integrity verification', $this->normalizeOutput($this->commandTester));
     }
 
-    private function useRepositoryMock(): AuditLogRepositoryInterface&MockObject
+    private function useRepositoryMock(int $retentionDays = 365): AuditLogRepositoryInterface&MockObject
     {
         $repository = $this->createMock(AuditLogRepositoryInterface::class);
         $this->repository = $repository;
-        $this->resetCommandTester();
+        $this->resetCommandTester($retentionDays);
 
         return $repository;
     }
 
-    private function resetCommandTester(): void
+    private function resetCommandTester(int $retentionDays = 365): void
     {
-        $command = new AuditPurgeCommand($this->repository, $this->integrityService, $this->managerRegistry);
+        $command = new AuditPurgeCommand($this->repository, $this->integrityService, $this->managerRegistry, $retentionDays);
         $this->commandTester = new CommandTester($command);
     }
 }

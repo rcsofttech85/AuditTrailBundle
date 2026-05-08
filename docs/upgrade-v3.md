@@ -2,9 +2,12 @@
 
 This guide is for applications upgrading from a 2.x release to `3.0`.
 
+If you are working with v4, use `docs/upgrade-v4.md` and the main docs
+instead. This file is only for the older v2 to v3 upgrade path.
+
 The changelog already lists the main release notes, but if your application has
 custom transports, custom scheduled-audit infrastructure, or custom event
-listeners, you should treat this document as the migration checklist.
+listeners, use this document as the migration checklist.
 
 If you only use the bundle with stock configuration and built-in services, the
 upgrade is usually small:
@@ -103,7 +106,7 @@ What changed in practice:
 
 Two important migration notes:
 
-- treat the received context as read-only input
+- do not mutate the context object you receive
 - if your old transport expected a plain array or a string phase, it must be rewritten rather than mechanically type-swapped
 
 This usually means your migration work is not just a signature update. Review
@@ -208,7 +211,7 @@ v3 tightened transport and retry behavior in a few places:
 - async database delivery is idempotency-aware
 - HTTP delivery failures are treated as real transport failures
 - failed post-flush deliveries are retained through explicit manager contracts
-- fallback persistence relies on phase-aware internal paths instead of older compatibility behavior
+- fallback persistence now uses the right internal path for each phase instead of older compatibility behavior
 
 What this means for integrators:
 
@@ -260,8 +263,8 @@ After the upgrade, verify these behaviors in the running app:
 ## Final Advice
 
 If your application has no custom implementations, the upgrade is usually
-straightforward, but still check the async database migration requirement if you
-use that transport mode.
+simple, but still check the async database migration requirement if you use
+that transport mode.
 
 If your application extends the bundle in any meaningful way, do not rely on
 the changelog alone. Review the current interfaces directly and treat this

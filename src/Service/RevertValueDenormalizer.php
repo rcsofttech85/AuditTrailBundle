@@ -6,7 +6,6 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use DateTimeInterface;
 use Doctrine\Common\Collections\ArrayCollection;
-use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 
 use function is_array;
@@ -16,7 +15,7 @@ use function is_scalar;
 final readonly class RevertValueDenormalizer
 {
     public function __construct(
-        private EntityManagerInterface $em,
+        private EntityManagerResolver $entityManagerResolver,
         private RevertDateTimeValueDenormalizer $dateTimeDenormalizer,
         private EntityIdentifierNormalizer $identifierNormalizer,
     ) {
@@ -131,9 +130,10 @@ final readonly class RevertValueDenormalizer
     private function resolveAssociatedEntity(string $targetClass, mixed $identifier, bool $dryRun): ?object
     {
         $normalizedIdentifier = $this->normalizeEntityIdentifier($targetClass, $identifier);
+        $entityManager = $this->entityManagerResolver->requireForClass($targetClass);
 
         return $dryRun
-            ? $this->em->getReference($targetClass, $normalizedIdentifier)
-            : $this->em->find($targetClass, $normalizedIdentifier);
+            ? $entityManager->getReference($targetClass, $normalizedIdentifier)
+            : $entityManager->find($targetClass, $normalizedIdentifier);
     }
 }

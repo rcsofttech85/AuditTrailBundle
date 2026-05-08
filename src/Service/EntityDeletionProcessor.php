@@ -52,7 +52,6 @@ final readonly class EntityDeletionProcessor
             $this->auditManager->addPendingDeletion(
                 $entity,
                 $this->auditService->getEntityData($entity, [], $em),
-                $em->contains($entity),
                 $action,
             );
         }

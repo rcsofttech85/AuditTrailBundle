@@ -27,6 +27,7 @@ services:
       $trackUserAgent: '%audit_trail.track_user_agent%'
       $adminPermission: '%audit_trail.admin_permission%'
       $adminExportLimit: '%audit_trail.admin_export_limit%'
+      $retentionDays: '%audit_trail.retention_days%'
 
   Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService:
     ~
@@ -67,11 +68,19 @@ services:
   Rcsofttech\AuditTrailBundle\Contract\AuditQueueManagerInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager
 
+  Rcsofttech\AuditTrailBundle\Service\FailedAuditDispatchRetainerInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager
+
   Rcsofttech\AuditTrailBundle\Contract\AuditToggleInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager
 
   Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface:
     alias: Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository
+
+  Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository:
+    arguments:
+      $filterApplier: '@Rcsofttech\AuditTrailBundle\Repository\AuditLogQueryFilterApplier'
+      $changedFieldQueryExecutor: '@Rcsofttech\AuditTrailBundle\Repository\AuditLogChangedFieldQueryExecutor'
 
   Rcsofttech\AuditTrailBundle\Contract\AuditReaderInterface:
     alias: Rcsofttech\AuditTrailBundle\Query\AuditReader

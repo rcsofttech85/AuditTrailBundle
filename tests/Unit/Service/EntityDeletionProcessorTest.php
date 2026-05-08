@@ -37,7 +37,7 @@ final class EntityDeletionProcessorTest extends TestCase
 
     public function testAddsPendingDeletionForAuditedDeletes(): void
     {
-        $em = $this->createMock(EntityManagerInterface::class);
+        $em = self::createStub(EntityManagerInterface::class);
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
         $changeProcessor = $this->createMock(ChangeProcessorInterface::class);
@@ -56,10 +56,9 @@ final class EntityDeletionProcessorTest extends TestCase
             ->method('getEntityData')
             ->with($entity, [], $em)
             ->willReturn(['id' => '1']);
-        $em->expects($this->once())->method('contains')->with($entity)->willReturn(true);
         $this->auditManager->expects($this->once())
             ->method('addPendingDeletion')
-            ->with($entity, ['id' => '1'], true, AuditAction::Delete);
+            ->with($entity, ['id' => '1'], AuditAction::Delete);
 
         $this->createProcessor(changeProcessor: $changeProcessor)->process($em, $uow, []);
     }

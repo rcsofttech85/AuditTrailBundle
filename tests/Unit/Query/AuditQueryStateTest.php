@@ -13,6 +13,8 @@ final class AuditQueryStateTest extends TestCase
 {
     public function testWithMethodsReturnNewStateWithUpdatedValues(): void
     {
+        self::assertFalse(new AuditQueryState()->hasChangedFieldFilter());
+
         $since = new DateTimeImmutable('-1 day');
         $until = new DateTimeImmutable();
 
@@ -35,6 +37,7 @@ final class AuditQueryStateTest extends TestCase
         self::assertSame($since, $state->since);
         self::assertSame($until, $state->until);
         self::assertSame(['status'], $state->changedFields);
+        self::assertTrue($state->hasChangedFieldFilter());
         self::assertSame(15, $state->limit);
         self::assertSame('after-1', $state->afterId);
         self::assertNull($state->beforeId);

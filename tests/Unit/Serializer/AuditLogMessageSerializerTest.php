@@ -68,6 +68,7 @@ final class AuditLogMessageSerializerTest extends TestCase
             'created_at' => $createdAt->format(DateTimeInterface::ATOM),
             'signature' => null,
             'delivery_id' => null,
+            'reverted_log_id' => null,
             'context' => ['ctx' => 'val'],
         ];
 

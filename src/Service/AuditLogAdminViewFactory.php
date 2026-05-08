@@ -124,7 +124,7 @@ final readonly class AuditLogAdminViewFactory
         return sprintf(
             'Successfully reverted %s #%s to its previous state.',
             $this->shortenClass($auditLog->entityClass),
-            $auditLog->entityId,
+            $auditLog->requireEntityId(),
         );
     }
 }

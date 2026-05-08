@@ -7,16 +7,18 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use BackedEnum;
 use DateTimeInterface;
 use Doctrine\Common\Collections\Collection;
+use Doctrine\Common\Collections\Criteria;
 use Doctrine\ORM\PersistentCollection;
 use Override;
 use Psr\Log\LoggerInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Stringable;
 use Throwable;
 use UnitEnum;
 
+use function array_slice;
+use function count;
 use function is_array;
 use function is_object;
 use function is_resource;
@@ -135,17 +137,19 @@ final readonly class ValueSerializer implements ValueSerializerInterface
      *
      * @param PersistentCollection<int|string, mixed> $value
      *
-     * @return array<int|string, mixed>|array{_truncated: bool, _total_count: int, _sample: array<mixed>}
+     * @return array<int|string, mixed>|array{_truncated: bool, _total_count: int|string, _sample: array<mixed>}
      */
     private function serializeIdentifiersFromPersistentCollection(PersistentCollection $value): array
     {
         try {
-            $count = $value->count();
-            $sample = $value->slice(0, $this->maxCollectionItems);
+            $sample = $this->loadIdentifierSample($value);
         } catch (Throwable) {
-            $wrapped = $value->unwrap();
-            $count = $wrapped->count();
-            $sample = $wrapped->slice(0, $this->maxCollectionItems);
+            $sample = $value->unwrap()->slice(0, $this->maxCollectionItems + 1);
+        }
+
+        $hasMoreItems = $this->maxCollectionItems < count($sample);
+        if ($hasMoreItems) {
+            $sample = array_slice($sample, 0, $this->maxCollectionItems);
         }
 
         $serializedSample = array_map(
@@ -153,20 +157,36 @@ final readonly class ValueSerializer implements ValueSerializerInterface
             $sample
         );
 
-        if ($count > $this->maxCollectionItems) {
+        if ($hasMoreItems) {
             $this->logger?->warning('Collection exceeds max items for audit', [
-                'count' => $count,
+                'count' => 'unknown',
                 'max' => $this->maxCollectionItems,
             ]);
 
             return [
                 '_truncated' => true,
-                '_total_count' => $count,
+                '_total_count' => 'unknown',
                 '_sample' => $serializedSample,
             ];
         }
 
         return $serializedSample;
+    }
+
+    /**
+     * @param PersistentCollection<int|string, mixed> $value
+     *
+     * @return list<mixed>
+     */
+    private function loadIdentifierSample(PersistentCollection $value): array
+    {
+        if ($value->getOwner() === null) {
+            return array_values($value->unwrap()->slice(0, $this->maxCollectionItems + 1));
+        }
+
+        return array_values($value
+            ->matching(Criteria::create()->setMaxResults($this->maxCollectionItems + 1))
+            ->toArray());
     }
 
     private function serializeObject(object $value, int $depth = 0): mixed
@@ -200,11 +220,6 @@ final readonly class ValueSerializer implements ValueSerializerInterface
 
     private function resolveEntityId(object $entity): mixed
     {
-        $resolvedId = $this->entityIdResolver->resolveFromEntity($entity);
-        if ($resolvedId !== AuditLogInterface::PENDING_ID) {
-            return $resolvedId;
-        }
-
-        return null;
+        return $this->entityIdResolver->resolveFromEntity($entity);
     }
 }

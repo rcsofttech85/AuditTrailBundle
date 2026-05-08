@@ -7,7 +7,6 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditQueueManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
@@ -29,7 +28,7 @@ final readonly class EntityAuditDispatchManager
         UnitOfWork $uow,
         bool $isInsert,
     ): void {
-        $hasResolvedEntityId = $audit->entityId !== AuditLogInterface::PENDING_ID;
+        $hasResolvedEntityId = $audit->hasResolvedEntityId();
         $canDispatchNow = (!$isInsert && !$this->deferTransportUntilCommit)
             || ($isInsert && !$hasResolvedEntityId && !$this->deferTransportUntilCommit && $this->failOnTransportError)
             || ($isInsert && $hasResolvedEntityId);

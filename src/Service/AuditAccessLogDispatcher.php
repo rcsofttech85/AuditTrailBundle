@@ -46,13 +46,12 @@ final readonly class AuditAccessLogDispatcher
                 null,
                 $pendingAccess->entity,
             )) {
-                $this->cooldownManager->persistForRequest(
-                    $pendingAccess->requestKey,
-                    $pendingAccess->context,
-                    $pendingAccess->access->cooldown,
-                );
+                return;
             }
+
+            $this->cooldownManager->clearForRequest($pendingAccess->requestKey, $pendingAccess->context);
         } catch (Throwable $e) {
+            $this->cooldownManager->clearForRequest($pendingAccess->requestKey, $pendingAccess->context);
             $this->logger?->error('Failed to log audit access', [
                 'entity' => $pendingAccess->entity::class,
                 'exception' => $e->getMessage(),

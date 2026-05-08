@@ -6,6 +6,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\Persistence\ManagerRegistry;
 use Exception;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
@@ -14,6 +15,7 @@ use Rcsofttech\AuditTrailBundle\Attribute\Auditable;
 use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
+use Rcsofttech\AuditTrailBundle\Service\EntityManagerResolver;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use stdClass;
 
@@ -157,6 +159,37 @@ final class EntityDataExtractorTest extends AbstractAuditTestCase
         self::assertSame('entity_data_extraction_failed', $data['_error']);
     }
 
+    public function testExtractUsesResolvedEntityManagerWhenAvailable(): void
+    {
+        $entity = new stdClass();
+        $this->em = self::createMock(EntityManagerInterface::class);
+        $secondaryEntityManager = self::createMock(EntityManagerInterface::class);
+        $meta = $this->createMetadataStub();
+
+        $this->em->expects($this->never())->method('getClassMetadata');
+        $secondaryEntityManager->expects($this->once())
+            ->method('getClassMetadata')
+            ->with($entity::class)
+            ->willReturn($meta);
+        $this->metadataCache->method('getSensitiveFields')->willReturn([]);
+        $meta->method('getFieldNames')->willReturn(['name']);
+        $meta->method('getAssociationNames')->willReturn([]);
+        $meta->method('getFieldValue')->willReturnMap([
+            [$entity, 'name', 'John'],
+        ]);
+        $this->serializer->method('serialize')->willReturn('John');
+
+        $this->extractor = new EntityDataExtractor(
+            $this->em,
+            $this->serializer,
+            $this->metadataCache,
+            $this->logger,
+            $this->createResolver($entity::class, $secondaryEntityManager),
+        );
+
+        self::assertSame(['name' => 'John'], $this->extractor->extract($entity));
+    }
+
     public function testGetFieldValueSafelyException(): void
     {
         $entity = new stdClass();
@@ -185,5 +218,15 @@ final class EntityDataExtractorTest extends AbstractAuditTestCase
         $metadata = self::createStub(ClassMetadata::class);
 
         return $metadata;
+    }
+
+    private function createResolver(string $class, EntityManagerInterface $entityManager): EntityManagerResolver
+    {
+        $registry = self::createStub(ManagerRegistry::class);
+        $registry->method('getManagerForClass')->willReturnCallback(
+            static fn (string $resolvedClass): ?EntityManagerInterface => $resolvedClass === $class ? $entityManager : null
+        );
+
+        return new EntityManagerResolver($registry);
     }
 }

@@ -7,11 +7,12 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\EventSubscriber;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Service\FailedAuditDispatchRetainerInterface;
 use Rcsofttech\AuditTrailBundle\ValueObject\PendingAuditPlan;
 use Rcsofttech\AuditTrailBundle\ValueObject\PendingDeletionEntry;
 use Rcsofttech\AuditTrailBundle\ValueObject\ScheduledAuditEntry;
 
-final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
+final class MockScheduledAuditManager implements ScheduledAuditManagerInterface, FailedAuditDispatchRetainerInterface
 {
     /** @var list<ScheduledAuditEntry> */
     private array $scheduledAudits = [];
@@ -27,9 +28,9 @@ final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
         $this->scheduledAudits[] = new ScheduledAuditEntry($entity, $audit, $isInsert);
     }
 
-    public function addPendingDeletion(object $entity, array $data, bool $isManaged, AuditAction $action): void
+    public function addPendingDeletion(object $entity, array $data, AuditAction $action): void
     {
-        $this->pendingDeletions[] = new PendingDeletionEntry($entity, $data, $isManaged, $action);
+        $this->pendingDeletions[] = new PendingDeletionEntry($entity, $data, $action);
     }
 
     public function schedulePendingAuditPlan(PendingAuditPlan $plan): void
@@ -53,7 +54,7 @@ final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
     }
 
     /**
-     * @param list<PendingDeletionEntry|array{entity: object, data: array<string, mixed>, is_managed: bool, action: AuditAction}> $pendingDeletions
+     * @param list<PendingDeletionEntry|array{entity: object, data: array<string, mixed>, action: AuditAction}> $pendingDeletions
      */
     public function replacePendingDeletions(array $pendingDeletions): void
     {
@@ -76,6 +77,11 @@ final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
     public function getPendingAuditPlans(): array
     {
         return $this->pendingAuditPlans;
+    }
+
+    public function hasPendingAuditPlans(): bool
+    {
+        return $this->pendingAuditPlans !== [];
     }
 
     public function hasScheduledAudits(): bool
@@ -102,11 +108,19 @@ final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
     }
 
     /**
-     * @param list<PendingDeletionEntry|array{entity: object, data: array<string, mixed>, is_managed: bool, action: AuditAction}> $pendingDeletions
+     * @param list<PendingDeletionEntry|array{entity: object, data: array<string, mixed>, action: AuditAction}> $pendingDeletions
      */
     public function seedPendingDeletions(array $pendingDeletions): void
     {
         $this->pendingDeletions = $this->normalizePendingDeletions($pendingDeletions);
+    }
+
+    /**
+     * @param list<PendingAuditPlan> $pendingAuditPlans
+     */
+    public function seedPendingAuditPlans(array $pendingAuditPlans): void
+    {
+        $this->pendingAuditPlans = $pendingAuditPlans;
     }
 
     private bool $enabled = true;
@@ -157,7 +171,7 @@ final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
     }
 
     /**
-     * @param list<PendingDeletionEntry|array{entity: object, data: array<string, mixed>, is_managed: bool, action: AuditAction}> $pendingDeletions
+     * @param list<PendingDeletionEntry|array{entity: object, data: array<string, mixed>, action: AuditAction}> $pendingDeletions
      *
      * @return list<PendingDeletionEntry>
      */
@@ -173,7 +187,6 @@ final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
             $normalized[] = new PendingDeletionEntry(
                 $pendingDeletion['entity'],
                 $pendingDeletion['data'],
-                $pendingDeletion['is_managed'],
                 $pendingDeletion['action'],
             );
         }

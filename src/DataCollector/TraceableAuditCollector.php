@@ -64,7 +64,7 @@ final class TraceableAuditCollector implements ResetInterface
 
         return [
             'entity_class' => $audit->entityClass,
-            'entity_id' => $audit->entityId,
+            'entity_id' => $audit->entityId ?? '[unresolved]',
             'action' => $audit->action->value,
             'changed_fields' => $audit->changedFields !== null ? array_values($audit->changedFields) : null,
             'user' => $audit->username ?? $audit->userId,

@@ -63,7 +63,6 @@ final readonly class SoftDeleteAuditListener
         $this->auditManager->addPendingDeletion(
             $entity,
             $oldData,
-            $objectManager->contains($entity),
             AuditAction::SoftDelete,
         );
     }

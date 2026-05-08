@@ -94,6 +94,24 @@ final class ChangeProcessorTest extends TestCase
         self::assertArrayHasKey('large_float_diff', $changes[0]);
     }
 
+    public function testExtractChangesDoesNotCollapseNumericStrings(): void
+    {
+        $metadataManager = self::createStub(AuditMetadataManagerInterface::class);
+        $processor = $this->createProcessor($metadataManager);
+        $entity = new stdClass();
+        $changeSet = [
+            'sku' => ['00123', '123'],
+        ];
+
+        $metadataManager->method('getSensitiveFields')->willReturn([]);
+        $metadataManager->method('getIgnoredProperties')->willReturn([]);
+
+        $changes = $processor->extractChanges($entity, $changeSet);
+
+        self::assertSame(['sku' => '00123'], $changes[0]);
+        self::assertSame(['sku' => '123'], $changes[1]);
+    }
+
     public function testDetermineUpdateAction(): void
     {
         $processor = $this->createProcessor();

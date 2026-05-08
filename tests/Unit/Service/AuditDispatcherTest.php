@@ -8,7 +8,6 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
 use Exception;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -21,6 +20,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Event\AuditDeliveryFailedEvent;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
+use Rcsofttech\AuditTrailBundle\Service\AuditContextNormalizer;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\AuditFallbackPersister;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogContextProcessor;
@@ -39,7 +39,6 @@ use function str_repeat;
 use function strlen;
 use function tmpfile;
 
-#[AllowMockObjectsWithoutExpectations]
 final class AuditDispatcherTest extends TestCase
 {
     /** @var (AuditTransportInterface&\PHPUnit\Framework\MockObject\Stub)|(AuditTransportInterface&MockObject) */
@@ -120,7 +119,11 @@ final class AuditDispatcherTest extends TestCase
     ): AuditDispatcher {
         $contextProcessor = new AuditLogContextProcessor(
             new ContextSanitizer(),
-            $dataMasker ?? $this->dataMasker,
+            new AuditContextNormalizer(
+                new ContextSanitizer(),
+                $dataMasker ?? $this->dataMasker,
+                $logger,
+            ),
             $logger,
             $aiProcessors ?? [],
         );

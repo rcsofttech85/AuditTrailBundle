@@ -50,11 +50,14 @@ final class AuditIntegrityNormalizer
     /**
      * @return array<string, mixed>
      */
-    public function normalize(AuditLog $log, bool $includeChangedFields = true): array
-    {
+    public function normalize(
+        AuditLog $log,
+        bool $includeChangedFields = true,
+        bool $includeRevertedLogId = true,
+    ): array {
         $data = [
             'entity_class' => $log->entityClass,
-            'entity_id' => $log->entityId,
+            'entity_id' => $log->requireEntityId(),
             'action' => $log->action->value,
             'old_values' => $this->normalizeValues($log->oldValues),
             'new_values' => $this->normalizeValues($log->newValues),
@@ -66,6 +69,10 @@ final class AuditIntegrityNormalizer
             'transaction_hash' => $log->transactionHash,
             'created_at' => $log->createdAt->setTimezone($this->utc)->format('Y-m-d H:i:s'),
         ];
+
+        if ($includeRevertedLogId) {
+            $data['reverted_log_id'] = $log->revertedLogId;
+        }
 
         if ($includeChangedFields) {
             $data['changed_fields'] = $this->normalizeValues($log->changedFields);

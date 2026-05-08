@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
-use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\ValueObject\RevertPlan;
@@ -12,7 +11,7 @@ use Rcsofttech\AuditTrailBundle\ValueObject\RevertPlan;
 final readonly class RevertPlanBuilder
 {
     public function __construct(
-        private EntityManagerInterface $em,
+        private EntityManagerResolver $entityManagerResolver,
         private RevertValueDenormalizer $denormalizer,
         private ValueSerializerInterface $serializer,
         private RevertCollectionAssociationSynchronizer $collectionSynchronizer,
@@ -24,7 +23,7 @@ final readonly class RevertPlanBuilder
      */
     public function build(object $entity, array $values, bool $dryRun): RevertPlan
     {
-        $metadata = $this->em->getClassMetadata($entity::class);
+        $metadata = $this->entityManagerResolver->requireForObject($entity)->getClassMetadata($entity::class);
         $appliedChanges = [];
         $previousValues = [];
 

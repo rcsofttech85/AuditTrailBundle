@@ -189,6 +189,9 @@ final class AuditLogCrudController extends AbstractCrudController
         return $this->crudConfigurator->configureFilters($filters);
     }
 
+    /**
+     * @param AdminContext<AuditLog> $context
+     */
     private function getAuditLogFromContext(AdminContext $context): ?AuditLog
     {
         return $this->locator->loadFromContext($context);

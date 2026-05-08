@@ -10,7 +10,6 @@ use Doctrine\ORM\UnitOfWork;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditQueueManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
@@ -88,7 +87,7 @@ final class EntityInsertionProcessorTest extends TestCase
         $idResolver->expects($this->once())
             ->method('resolveFromEntity')
             ->with($pendingRelatedEntity, $em)
-            ->willReturn(AuditLogInterface::PENDING_ID);
+            ->willReturn(null);
         $this->auditService->method('getEntityData')->willReturn([]);
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
@@ -118,6 +117,7 @@ final class EntityInsertionProcessorTest extends TestCase
                 $collectionIdExtractor,
                 new JoinTableCollectionIdLoader($resolver),
             ),
+            new JoinTableCollectionIdLoader($resolver),
         );
 
         return new EntityInsertionProcessor(

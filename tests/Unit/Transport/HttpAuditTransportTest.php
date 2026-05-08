@@ -90,7 +90,7 @@ final class HttpAuditTransportTest extends TestCase
         $idResolver = self::createStub(EntityIdResolverInterface::class);
         $transport = new HttpAuditTransport($client, 'http://example.com', $integrityService, $idResolver);
 
-        $log = new AuditLog('TestEntity', 'pending', 'create');
+        $log = new AuditLog('TestEntity', null, 'create');
 
         $idResolver->method('resolve')->willReturn('100');
 

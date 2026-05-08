@@ -14,6 +14,8 @@ use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use function array_fill_keys;
 use function array_key_exists;
 use function is_array;
+use function is_float;
+use function is_int;
 use function max;
 
 final class ChangeProcessor implements ChangeProcessorInterface
@@ -72,7 +74,7 @@ final class ChangeProcessor implements ChangeProcessorInterface
             return $oldValue !== $newValue;
         }
 
-        if (is_numeric($oldValue) && is_numeric($newValue)) {
+        if ($this->isNativeNumeric($oldValue) && $this->isNativeNumeric($newValue)) {
             $oldFloat = (float) $oldValue;
             $newFloat = (float) $newValue;
             $difference = abs($oldFloat - $newFloat);
@@ -82,6 +84,11 @@ final class ChangeProcessor implements ChangeProcessorInterface
         }
 
         return $oldValue !== $newValue;
+    }
+
+    private function isNativeNumeric(mixed $value): bool
+    {
+        return is_int($value) || is_float($value);
     }
 
     /**

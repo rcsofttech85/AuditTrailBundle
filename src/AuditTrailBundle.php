@@ -10,7 +10,7 @@ use Symfony\Component\HttpKernel\Bundle\Bundle;
 
 final class AuditTrailBundle extends Bundle
 {
-    public const string VERSION = '3.0.0';
+    public const string VERSION = '4.0.0';
 
     public function getPath(): string
     {

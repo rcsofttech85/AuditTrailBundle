@@ -6,7 +6,6 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
 use DateTimeImmutable;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -179,7 +178,7 @@ final class AuditTrailFunctionalTest extends AbstractFunctionalTestCase
         ], ['id' => 'DESC']);
 
         self::assertNotNull($log, 'Create action should produce an audit log in immediate mode');
-        self::assertNotSame(AuditLogInterface::PENDING_ID, $log->entityId, 'Entity ID should be resolved');
+        self::assertNotNull($log->entityId, 'Entity ID should be resolved');
         self::assertSame((string) $entity->getId(), $log->entityId);
     }
 
@@ -529,6 +528,95 @@ final class AuditTrailFunctionalTest extends AbstractFunctionalTestCase
         self::assertNotNull($log->changedFields);
         self::assertContains('name', $log->changedFields);
         self::assertContains('tags', $log->changedFields);
+    }
+
+    public function testF8RelationOnlyClearingLastTagCollectionProducesUpdateLog(): void
+    {
+        self::bootKernel();
+        $em = $this->getEntityManager();
+
+        $author = new Author('Original Name');
+        $tag = new Tag('php');
+        $author->addTag($tag);
+        $em->persist($author);
+        $em->flush();
+
+        $authorId = $author->getId();
+        self::assertNotNull($authorId);
+
+        $em->clear();
+
+        /** @var Author|null $author */
+        $author = $em->find(Author::class, $authorId);
+        self::assertInstanceOf(Author::class, $author);
+
+        $author->getTags()->clear();
+        $em->flush();
+
+        /** @var AuditLog[] $updateLogs */
+        $updateLogs = $em->getRepository(AuditLog::class)->findBy([
+            'entityClass' => Author::class,
+            'action' => AuditAction::Update,
+        ], ['id' => 'ASC']);
+
+        self::assertCount(1, $updateLogs, 'Clearing the last tag collection without scalar changes should still produce one update log');
+
+        $log = $updateLogs[0];
+        self::assertNotNull($log->oldValues);
+        self::assertNotNull($log->newValues);
+        self::assertCount(1, $log->oldValues['tags'] ?? []);
+        self::assertSame([], $log->newValues['tags'] ?? null);
+        self::assertNotNull($log->changedFields);
+        self::assertSame(['tags'], $log->changedFields);
+    }
+
+    public function testF8ClearingAndReplacingTagCollectionKeepsOriginalIds(): void
+    {
+        self::bootKernel();
+        $em = $this->getEntityManager();
+
+        $author = new Author('Replace Tag Case');
+        $originalTag = new Tag('original');
+        $replacementTag = new Tag('replacement');
+        $author->addTag($originalTag);
+        $em->persist($author);
+        $em->persist($replacementTag);
+        $em->flush();
+
+        $authorId = $author->getId();
+        self::assertNotNull($authorId);
+        self::assertNotNull($originalTag->getId());
+        self::assertNotNull($replacementTag->getId());
+
+        $em->clear();
+
+        /** @var Author|null $author */
+        $author = $em->find(Author::class, $authorId);
+        self::assertInstanceOf(Author::class, $author);
+
+        /** @var Tag|null $replacementTag */
+        $replacementTag = $em->find(Tag::class, $replacementTag->getId());
+        self::assertInstanceOf(Tag::class, $replacementTag);
+
+        $author->getTags()->clear();
+        $author->addTag($replacementTag);
+        $em->flush();
+
+        /** @var AuditLog[] $updateLogs */
+        $updateLogs = $em->getRepository(AuditLog::class)->findBy([
+            'entityClass' => Author::class,
+            'action' => AuditAction::Update,
+        ], ['id' => 'ASC']);
+
+        self::assertCount(1, $updateLogs, 'Clearing and replacing a tag in the same flush should produce one update log');
+
+        $log = $updateLogs[0];
+        self::assertNotNull($log->oldValues);
+        self::assertNotNull($log->newValues);
+        self::assertSame([$originalTag->getId()], $log->oldValues['tags'] ?? null);
+        self::assertSame([(string) $replacementTag->getId()], $log->newValues['tags'] ?? null);
+        self::assertNotNull($log->changedFields);
+        self::assertSame(['tags'], $log->changedFields);
     }
 
     public function testF8DeletingTagProducesOwningEntityTagUpdateLog(): void
@@ -974,6 +1062,8 @@ final class AuditTrailFunctionalTest extends AbstractFunctionalTestCase
 
         $post = new DateTimePost();
         $post->setTitle('Pressure Test');
+        $em->persist($post);
+        $em->flush();
 
         /** @var AuditServiceInterface $auditService */
         $auditService = $this->getService(AuditServiceInterface::class);

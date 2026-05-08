@@ -14,20 +14,23 @@ use Rcsofttech\AuditTrailBundle\Query\AuditChangedFieldMatcher;
 use Rcsofttech\AuditTrailBundle\Query\AuditQueryExecutor;
 use Rcsofttech\AuditTrailBundle\Query\AuditQueryFilterFactory;
 use Rcsofttech\AuditTrailBundle\Query\AuditQueryState;
+use Rcsofttech\AuditTrailBundle\Query\ChangedFieldQueryableAuditLogRepositoryInterface;
 use ReflectionClass;
 use Symfony\Component\Uid\Uuid;
 
 use function array_key_exists;
+use function is_array;
 
 final class AuditQueryExecutorTest extends TestCase
 {
-    private AuditLogRepositoryInterface&MockObject $repository;
+    /** @var (AuditLogRepositoryInterface&\PHPUnit\Framework\MockObject\Stub)|(AuditLogRepositoryInterface&MockObject) */
+    private AuditLogRepositoryInterface $repository;
 
     private AuditQueryExecutor $executor;
 
     protected function setUp(): void
     {
-        $this->repository = $this->createMock(AuditLogRepositoryInterface::class);
+        $this->repository = self::createStub(AuditLogRepositoryInterface::class);
         $this->executor = new AuditQueryExecutor(
             $this->repository,
             new AuditQueryFilterFactory(),
@@ -35,13 +38,28 @@ final class AuditQueryExecutorTest extends TestCase
         );
     }
 
+    /** @return AuditLogRepositoryInterface&MockObject */
+    private function useRepositoryMock(): AuditLogRepositoryInterface
+    {
+        $repository = $this->createMock(AuditLogRepositoryInterface::class);
+        $this->repository = $repository;
+        $this->executor = new AuditQueryExecutor(
+            $this->repository,
+            new AuditQueryFilterFactory(),
+            new AuditChangedFieldMatcher(),
+        );
+
+        return $repository;
+    }
+
     public function testCountUsesRepositoryCountWhenChangedFieldFilteringIsInactive(): void
     {
-        $this->repository->expects($this->once())
+        $repository = $this->useRepositoryMock();
+        $repository->expects($this->once())
             ->method('countWithFilters')
             ->with(self::callback(static fn (array $filters): bool => ($filters['userId'] ?? null) === '42'))
             ->willReturn(9);
-        $this->repository->expects($this->never())->method('findWithFilters');
+        $repository->expects($this->never())->method('findWithFilters');
 
         $count = $this->executor->count(new AuditQueryState(userId: '42'));
 
@@ -55,7 +73,8 @@ final class AuditQueryExecutorTest extends TestCase
         $secondId = Uuid::v7()->toString();
         $this->setLogId($second, $secondId);
 
-        $this->repository->expects($this->once())
+        $repository = $this->useRepositoryMock();
+        $repository->expects($this->once())
             ->method('findWithFilters')
             ->with(self::callback(static fn (array $filters): bool => ($filters['entityClass'] ?? null) === 'Class'), 30)
             ->willReturn([$first, $second]);
@@ -73,7 +92,8 @@ final class AuditQueryExecutorTest extends TestCase
         $second = new AuditLog('Class', '2', AuditAction::Update, changedFields: ['status']);
         $third = new AuditLog('Class', '3', AuditAction::Update, changedFields: ['status']);
 
-        $this->repository->expects($this->once())
+        $repository = $this->useRepositoryMock();
+        $repository->expects($this->once())
             ->method('findWithFilters')
             ->with(self::callback(static fn (array $filters): bool => array_key_exists('afterId', $filters) && $filters['afterId'] === null), 250)
             ->willReturn([$first, $second, $third]);
@@ -81,6 +101,62 @@ final class AuditQueryExecutorTest extends TestCase
         $count = $this->executor->count(new AuditQueryState(changedFields: ['status']));
 
         self::assertSame(2, $count);
+    }
+
+    public function testCountUsesRepositoryChangedFieldQueryWhenSupported(): void
+    {
+        /** @var (AuditLogRepositoryInterface&ChangedFieldQueryableAuditLogRepositoryInterface)&MockObject $repository */
+        $repository = $this->createMockForIntersectionOfInterfaces([
+            AuditLogRepositoryInterface::class,
+            ChangedFieldQueryableAuditLogRepositoryInterface::class,
+        ]);
+        $repository->expects($this->once())->method('supportsChangedFieldQueries')->willReturn(true);
+        $repository->expects($this->once())
+            ->method('countWithChangedFields')
+            ->with(self::callback(static fn (array $filters): bool => !isset($filters['afterId']) && !isset($filters['beforeId'])), ['status'])
+            ->willReturn(4);
+        $repository->expects($this->never())->method('findWithFilters');
+
+        $executor = new AuditQueryExecutor(
+            $repository,
+            new AuditQueryFilterFactory(),
+            new AuditChangedFieldMatcher(),
+        );
+
+        self::assertSame(4, $executor->count(new AuditQueryState(changedFields: ['status'])));
+    }
+
+    public function testGetPageUsesRepositoryChangedFieldQueryWhenSupported(): void
+    {
+        $last = new AuditLog('Class', '2', AuditAction::Update, changedFields: ['status']);
+        $lastId = Uuid::v7()->toString();
+        $this->setLogId($last, $lastId);
+
+        /** @var (AuditLogRepositoryInterface&ChangedFieldQueryableAuditLogRepositoryInterface)&MockObject $repository */
+        $repository = $this->createMockForIntersectionOfInterfaces([
+            AuditLogRepositoryInterface::class,
+            ChangedFieldQueryableAuditLogRepositoryInterface::class,
+        ]);
+        $repository->expects($this->once())->method('supportsChangedFieldQueries')->willReturn(true);
+        $repository->expects($this->once())
+            ->method('findWithChangedFields')
+            ->with(self::callback(static fn (mixed $filters): bool => is_array($filters)), ['status'], 30)
+            ->willReturn([
+                new AuditLog('Class', '1', AuditAction::Update, changedFields: ['status']),
+                $last,
+            ]);
+        $repository->expects($this->never())->method('findWithFilters');
+
+        $executor = new AuditQueryExecutor(
+            $repository,
+            new AuditQueryFilterFactory(),
+            new AuditChangedFieldMatcher(),
+        );
+
+        $page = $executor->getPage(new AuditQueryState(changedFields: ['status']));
+
+        self::assertCount(2, $page->entries);
+        self::assertSame($lastId, $page->nextCursor);
     }
 
     private function setLogId(AuditLog $log, string $id): void

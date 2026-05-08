@@ -37,7 +37,10 @@ final class HttpAuditTransport implements AuditTransportInterface
     public function send(AuditTransportContext $context): AuditDeliveryResult
     {
         $log = $context->audit;
-        $entityId = $this->idResolver->resolve($log, $context) ?? $log->entityId;
+        $entityId = $this->resolveEntityId($context);
+        if ($entityId === null) {
+            throw new RuntimeException('Cannot send an HTTP audit payload before the entity ID has been resolved.');
+        }
 
         $payload = [
             'entity_class' => $log->entityClass,
@@ -90,6 +93,11 @@ final class HttpAuditTransport implements AuditTransportInterface
     #[Override]
     public function supports(AuditTransportContext $context): bool
     {
-        return $context->phase->isAsyncDispatchPhase();
+        return $context->phase->isAsyncDispatchPhase() && $this->resolveEntityId($context) !== null;
+    }
+
+    private function resolveEntityId(AuditTransportContext $context): ?string
+    {
+        return $this->idResolver->resolve($context->audit, $context) ?? $context->audit->entityId;
     }
 }

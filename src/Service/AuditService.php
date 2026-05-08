@@ -16,6 +16,8 @@ use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 
 final readonly class AuditService implements AuditServiceInterface
 {
+    private EntityClassResolver $entityClassResolver;
+
     /**
      * @param iterable<AuditVoterInterface> $voters
      */
@@ -26,7 +28,10 @@ final readonly class AuditService implements AuditServiceInterface
         private AuditLogFactory $auditLogFactory,
         #[AutowireIterator('audit_trail.voter')]
         private iterable $voters = [],
+        private ?EntityManagerResolver $entityManagerResolver = null,
+        ?EntityClassResolver $entityClassResolver = null,
     ) {
+        $this->entityClassResolver = $entityClassResolver ?? new EntityClassResolver($this->entityManagerResolver);
     }
 
     #[Override]
@@ -35,7 +40,7 @@ final readonly class AuditService implements AuditServiceInterface
         AuditAction $action = AuditAction::Create,
         array $changeSet = [],
     ): bool {
-        if ($this->metadataManager->isEntityIgnored($entity::class)) {
+        if ($this->metadataManager->isEntityIgnored($this->entityClassResolver->resolve($entity))) {
             return false;
         }
 
@@ -72,7 +77,7 @@ final readonly class AuditService implements AuditServiceInterface
     ): array {
         $ignored = $this->metadataManager->getIgnoredProperties($entity, $additionalIgnored);
 
-        return $this->dataExtractor->extract($entity, $ignored, $entityManager ?? $this->entityManager);
+        return $this->dataExtractor->extract($entity, $ignored, $this->resolveEntityManager($entity, $entityManager));
     }
 
     #[Override]
@@ -90,13 +95,20 @@ final readonly class AuditService implements AuditServiceInterface
             $oldValues,
             $newValues,
             $context,
-            $entityManager ?? $this->entityManager,
+            $this->resolveEntityManager($entity, $entityManager),
         );
     }
 
     #[Override]
     public function getSensitiveFields(object $entity): array
     {
-        return $this->metadataManager->getSensitiveFields($entity::class);
+        return $this->metadataManager->getSensitiveFields($this->entityClassResolver->resolve($entity));
+    }
+
+    private function resolveEntityManager(object $entity, ?EntityManagerInterface $entityManager): EntityManagerInterface
+    {
+        return $entityManager
+            ?? $this->entityManagerResolver?->resolveForObject($entity)
+            ?? $this->entityManager;
     }
 }

@@ -7,7 +7,6 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 use DateTimeImmutable;
 use Doctrine\Persistence\ManagerRegistry;
 use Doctrine\Persistence\ObjectManager;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\VerifyIntegrityCommand;
@@ -22,7 +21,6 @@ use Symfony\Component\Uid\Uuid;
 
 use function sprintf;
 
-#[AllowMockObjectsWithoutExpectations]
 final class VerifyIntegrityCommandTest extends TestCase
 {
     use ConsoleOutputTestTrait;
@@ -33,7 +31,7 @@ final class VerifyIntegrityCommandTest extends TestCase
     /** @var (AuditIntegrityServiceInterface&\PHPUnit\Framework\MockObject\Stub)|(AuditIntegrityServiceInterface&MockObject) */
     private AuditIntegrityServiceInterface $integrityService;
 
-    /** @var ManagerRegistry&MockObject */
+    /** @var (ManagerRegistry&\PHPUnit\Framework\MockObject\Stub)|(ManagerRegistry&MockObject) */
     private ManagerRegistry $managerRegistry;
 
     private CommandTester $commandTester;
@@ -42,7 +40,7 @@ final class VerifyIntegrityCommandTest extends TestCase
     {
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
         $this->integrityService = self::createStub(AuditIntegrityServiceInterface::class);
-        $this->managerRegistry = self::createMock(ManagerRegistry::class);
+        $this->managerRegistry = self::createStub(ManagerRegistry::class);
         $this->resetCommandTester();
     }
 
@@ -71,6 +69,16 @@ final class VerifyIntegrityCommandTest extends TestCase
         $this->resetCommandTester();
 
         return $integrityService;
+    }
+
+    /** @return ManagerRegistry&MockObject */
+    private function useManagerRegistryMock(): ManagerRegistry
+    {
+        $managerRegistry = self::createMock(ManagerRegistry::class);
+        $this->managerRegistry = $managerRegistry;
+        $this->resetCommandTester();
+
+        return $managerRegistry;
     }
 
     private function resetCommandTester(): void
@@ -224,8 +232,9 @@ final class VerifyIntegrityCommandTest extends TestCase
         $this->setLogId($log2, '018f3b3b-3b3b-7b3b-8b3b-3b3b3b3b3b3b');
 
         $repository = $this->useRepositoryMock();
+        $managerRegistry = $this->useManagerRegistryMock();
         $manager = self::createMock(ObjectManager::class);
-        $this->managerRegistry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn($manager);
+        $managerRegistry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn($manager);
         $this->integrityService->method('isEnabled')->willReturn(true);
         $repository->method('count')->willReturn(2);
         $repository->expects($this->once())
@@ -248,8 +257,9 @@ final class VerifyIntegrityCommandTest extends TestCase
     {
         $log1 = new AuditLog('User', '1', 'update', new DateTimeImmutable('2024-01-01 10:00:00'));
         $this->setLogId($log1, '018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a');
+        $managerRegistry = $this->useManagerRegistryMock();
         $manager = self::createMock(ObjectManager::class);
-        $this->managerRegistry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn($manager);
+        $managerRegistry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn($manager);
         $this->repository->method('count')->willReturn(1);
         $this->repository->method('findAllWithFilters')->willReturn([$log1]);
         $integrityService = $this->useIntegrityServiceMock();
@@ -272,8 +282,9 @@ final class VerifyIntegrityCommandTest extends TestCase
     public function testExecuteWithBatching(): void
     {
         $repository = $this->useRepositoryMock();
+        $managerRegistry = $this->useManagerRegistryMock();
         $manager = self::createMock(ObjectManager::class);
-        $this->managerRegistry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn($manager);
+        $managerRegistry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn($manager);
         $this->integrityService->method('isEnabled')->willReturn(true);
         $repository->method('count')->willReturn(150);
 
@@ -299,12 +310,11 @@ final class VerifyIntegrityCommandTest extends TestCase
 
     public function testExecuteAllLogsLimitsTamperedPreview(): void
     {
-        $repository = $this->useRepositoryMock();
-        $integrityService = $this->useIntegrityServiceMock();
+        $managerRegistry = $this->useManagerRegistryMock();
         $manager = self::createMock(ObjectManager::class);
-        $this->managerRegistry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn($manager);
-        $integrityService->method('isEnabled')->willReturn(true);
-        $repository->method('count')->willReturn(55);
+        $managerRegistry->expects($this->once())->method('getManagerForClass')->with(AuditLog::class)->willReturn($manager);
+        $this->integrityService->method('isEnabled')->willReturn(true);
+        $this->repository->method('count')->willReturn(55);
 
         $logs = [];
         for ($i = 1; $i <= 55; ++$i) {
@@ -313,8 +323,8 @@ final class VerifyIntegrityCommandTest extends TestCase
             $logs[] = $log;
         }
 
-        $repository->method('findAllWithFilters')->willReturn($logs);
-        $integrityService->method('verifySignature')->willReturn(false);
+        $this->repository->method('findAllWithFilters')->willReturn($logs);
+        $this->integrityService->method('verifySignature')->willReturn(false);
         $manager->expects($this->exactly(55))->method('detach')->with(self::isInstanceOf(AuditLog::class));
 
         $this->commandTester->execute([]);

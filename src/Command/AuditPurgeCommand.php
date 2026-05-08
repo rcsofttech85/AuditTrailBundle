@@ -30,6 +30,7 @@ final class AuditPurgeCommand extends Command
         private readonly AuditLogRepositoryInterface $repository,
         private readonly AuditIntegrityServiceInterface $integrityService,
         private readonly ManagerRegistry $managerRegistry,
+        private readonly int $retentionDays = 365,
     ) {
         parent::__construct();
     }
@@ -41,7 +42,7 @@ final class AuditPurgeCommand extends Command
                 'before',
                 null,
                 InputOption::VALUE_REQUIRED,
-                'Delete logs before this date (e.g., "30 days ago", "2024-01-01", "-1 year")'
+                'Delete logs before this date (required for deletion; dry runs default to the configured retention window when omitted)'
             )
             ->addOption(
                 'dry-run',
@@ -66,6 +67,7 @@ final class AuditPurgeCommand extends Command
                     The <info>%command.name%</info> command deletes old audit logs.
 
                     Examples:
+                      <info>php %command.full_name% --dry-run</info>
                       <info>php %command.full_name% --before="30 days ago" --dry-run</info>
                       <info>php %command.full_name% --before="2024-01-01" --force</info>
                       <info>php %command.full_name% --before="1 year ago"</info>
@@ -77,13 +79,11 @@ final class AuditPurgeCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
 
-        // Parse and validate the date
         $before = $this->parseBeforeDate($input, $io);
         if ($before === null) {
             return Command::FAILURE;
         }
 
-        // Count logs that will be deleted
         $count = $this->repository->countOlderThan($before);
 
         if ($count === 0) {
@@ -92,24 +92,20 @@ final class AuditPurgeCommand extends Command
             return Command::SUCCESS;
         }
 
-        // Display summary
         $this->displaySummary($io, $count, $before);
 
-        // Handle dry-run mode
         if ((bool) $input->getOption('dry-run')) {
             $io->warning('Dry run mode - no logs were deleted.');
 
             return Command::SUCCESS;
         }
 
-        // Confirm deletion
         if (!$this->confirmDeletion($input, $io, $count)) {
             $io->info('Operation cancelled.');
 
             return Command::SUCCESS;
         }
 
-        // Integrity check before deletion
         if (!((bool) $input->getOption('skip-integrity')) && $this->integrityService->isEnabled()) {
             $tamperedCount = $this->verifyIntegrityBeforePurge($io, $before);
             if ($tamperedCount > 0) {
@@ -122,7 +118,6 @@ final class AuditPurgeCommand extends Command
             }
         }
 
-        // Perform deletion
         $io->section('Deleting audit logs...');
         $deleted = $this->repository->deleteOldLogs($before);
 
@@ -136,11 +131,18 @@ final class AuditPurgeCommand extends Command
         $beforeStr = $input->getOption('before');
 
         if (!is_string($beforeStr) || $beforeStr === '') {
-            $io->error('The --before option is required.');
-            $io->note('Example: --before="30 days ago"');
-            $io->note('Valid formats: "30 days ago", "2024-01-01", "-1 year", "last month"');
+            if (!(bool) $input->getOption('dry-run')) {
+                $io->error('The --before option is required unless you are running a dry run.');
 
-            return null;
+                return null;
+            }
+
+            $io->note(sprintf(
+                'No --before value provided; using the configured retention window of %d day(s) for this dry run.',
+                $this->retentionDays,
+            ));
+
+            return new DateTimeImmutable(sprintf('-%d days', $this->retentionDays));
         }
 
         try {
@@ -168,12 +170,10 @@ final class AuditPurgeCommand extends Command
 
     private function confirmDeletion(InputInterface $input, SymfonyStyle $io, int $count): bool
     {
-        // Skip confirmation if --force is used
         if ((bool) $input->getOption('force')) {
             return true;
         }
 
-        // Warn for large operations
         if ($count > 10000) {
             $io->warning(sprintf(
                 'You are about to delete %s audit logs. This is a large operation.',

@@ -2,10 +2,9 @@
 
 This guide is for applications upgrading from a 3.x release to `4.0`.
 
-v4 includes a few important API changes and one important correctness fix for
-same-flush collection auditing.
+v4 changes a few public APIs and fixes one important collection-audit bug.
 
-The most important upgrade themes are:
+The main upgrade points are:
 
 - audit actions are now represented by the new `AuditAction` enum
 - several contracts and service boundaries were tightened or moved
@@ -13,17 +12,17 @@ The most important upgrade themes are:
 - same-flush to-many relation auditing now resolves final identifiers later in
   the flush lifecycle instead of persisting placeholders
 
-If your application only uses the built-in bundle services and transports, the
-upgrade is usually manageable:
+If your application only uses the built-in services and transports, the
+upgrade is usually simple:
 
 - update the package
 - clear the container cache
 - run your test suite
 - manually verify one same-flush collection add scenario
 
-If you maintain custom transports, custom scheduled-audit infrastructure,
-contract implementations, or custom admin/event integrations, read the rest of
-this guide carefully.
+If you maintain custom transports, custom scheduled-audit code, contract
+implementations, or custom admin or event integrations, read the rest of this
+guide carefully.
 
 ## Quick Checklist
 
@@ -31,44 +30,65 @@ Before deploying v4:
 
 1. Upgrade the package and clear the container cache.
 2. Update any code that reads or writes audit actions as raw strings.
-3. If you implement bundle contracts, review the current signatures directly.
+3. If you implement bundle contracts, check the current signatures directly.
 4. If you implement `ScheduledAuditManagerInterface`, add support for pending
    audit plans:
    - `schedulePendingAuditPlan()`
    - `getPendingAuditPlans()`
-   - `replacePendingAuditPlans()`
+   - If you fully replace the stock `ScheduledAuditManager` service, also
+     review the internal failed-dispatch retention flow provided through
+     `FailedAuditDispatchRetainerInterface`.
 5. If you import `TrackableCollectionInterface`, update the namespace to
    `Rcsofttech\AuditTrailBundle\Contract\TrackableCollectionInterface`.
-6. If you already use custom AI enrichment, review
+6. If you configure `soft_delete_field`, ensure it points to a nullable
+   timestamp-like field such as `deletedAt` or `archivedAt`. The built-in
+   restore flow clears that field by setting it to `null`, so boolean or
+   status-based soft-delete markers are not part of the built-in restore
+   contract.
+7. If you already use custom AI enrichment, review
    `AuditLogAiProcessorInterface`, the `context['ai']` payload shape, and any
    admin-side AI insight integrations you expose.
-7. If you subscribed to old event-name constants, switch to event classes.
-8. If you manually instantiate `EntityProcessor`, update that wiring to match
+8. If you subscribed to old event-name constants, switch to event classes.
+9. If you manually instantiate `EntityProcessor`, update that wiring to match
    the new concrete constructor or prefer DI / `EntityProcessorInterface`.
-9. If you manually instantiate `AuditQuery` or `AuditReader`, update that
-   wiring to match the new concrete constructors or prefer DI /
-   `AuditReaderInterface`.
-10. If you implement `AuditExporterInterface`, update `exportToStream()` to
+10. If you manually instantiate `AuditQuery` or `AuditReader`, update that
+    wiring to match the new concrete constructors or prefer DI /
+    `AuditReaderInterface`.
+11. If you implement `AuditLogInterface` or `EntityIdResolverInterface`,
+    update unresolved ID handling:
+    - `AuditLogInterface::$entityId` is now nullable
+    - unresolved IDs now use `null` instead of placeholder strings
+    - callers that require a concrete ID should use
+      `hasResolvedEntityId()` / `requireEntityId()`
+12. If you implement `AuditExporterInterface`, update `exportToStream()` to
     return the exported record count as `int`.
+13. Run your schema migration before production traffic so the new v4 audit-log
+    columns and indexes exist. Historical revert rows created on v3 remain
+    recognized after upgrade even if they only stored `reverted_log_id` inside
+    `context`.
+14. If you enable HTTP or queue transport and relied on implicit failure
+    defaults, review `fail_on_transport_error` and `fallback_to_database`.
+    When those remote transports are enabled and the flags are left unset, v4
+    sets them to `true` and `false` respectively.
 
 ## 1. `AuditAction` Is New in v4
 
 v4 introduces `Rcsofttech\AuditTrailBundle\Enum\AuditAction`.
 
-This is a real major-version change from v3:
+This is a real major version change from v3:
 
 - `AuditLog::$action` is now an `AuditAction` enum-backed field
 - `AuditServiceInterface`, `AuditVoterInterface`, and
   `ChangeProcessorInterface` now use `AuditAction`
-- command, repository, query, renderer, transport, and admin flows now work
-  with the enum-oriented model
+- command, repository, query, renderer, transport, and admin code now use the
+  enum model
 
 What this means in practice:
 
 - custom code that compared raw action strings may need updates
 - custom contract implementations must match the new action type expectations
-- if you persisted or transformed action values outside the bundle, re-check
-  those integrations
+- if you store or transform action values outside the bundle, re-check those
+  integrations
 
 Typical migration example:
 
@@ -95,28 +115,35 @@ Some extension points changed in v4.
 Important examples:
 
 - `TrackableCollectionInterface` moved from `Service` to `Contract`
+- `AuditLogInterface::$entityId` is now `?string`, and the contract adds
+  `hasResolvedEntityId()` / `requireEntityId()`
+- `EntityIdResolverInterface::resolveFromEntity()` and
+  `resolveFromValues()` now return `?string`
 - event usage is class-based rather than relying on older event-name constants
-- AI-related admin and insight features were expanded on top of the existing
-  AI-oriented enrichment hook
+- AI-related admin features were expanded on top of the existing enrichment
+  hook
 - the project now includes a CI workflow that checks backward compatibility for
   public API changes
 - scheduled-audit state handling is more explicit
 - flush-time entity lifecycle handling is split across focused processors while
   preserving the `EntityProcessorInterface` entry point
-- transport and repository/query internals were modernized around typed
+- transport and repository/query internals were split into smaller typed
   services and value objects
 - the query layer now separates immutable fluent state from execution and page
   materialization
 - `AuditExporterInterface::exportToStream()` now returns `int` instead of
   `void`
+- `ScheduledAuditManagerInterface` keeps pending-audit plan support on the
+  public contract, while failed-dispatch `replace*()` methods moved behind the
+  internal `FailedAuditDispatchRetainerInterface`
 
-If your application extends the bundle, review the current interfaces in
+If your application extends the bundle, check the current interfaces in
 `src/Contract` directly.
 
 ### Audit export contract change
 
-v4 keeps the `audit:export` command behavior the same at the user level, but
-the export pipeline was restructured internally around streaming services.
+v4 keeps the `audit:export` command behavior the same, but the internal export
+pipeline was reworked around streaming services.
 
 The relevant upgrade point for custom integrations is:
 
@@ -126,46 +153,36 @@ The relevant upgrade point for custom integrations is:
 If you provide a custom `AuditExporterInterface` implementation, update that
 method signature accordingly.
 
-## 3. AI Support
+## 3. Optional AI Metadata
 
-The AI processor hook is not new in v4. What changed in v4 is the admin and
-audit insight side around it.
+The AI processor hook is still optional in v4.
 
-The core idea stays the same:
+What stays the same:
 
-- there is no hard dependency on any AI provider
-- applications can attach structured AI metadata to audit logs before signing
-  and dispatch
-- AI metadata remains namespaced under `context['ai']`
+- there is no built-in AI provider integration
+- applications can attach structured metadata under `context['ai']`
+- normal audit delivery must still work when AI processing is skipped or fails
 
-The current behavior is:
+What changed in v4:
 
-- processors can be skipped for phases where AI enrichment is not allowed
-- processor failures are contained so they do not crash normal audit delivery
-- oversized AI metadata is truncated defensively
-- collisions between AI processor namespaces/keys are handled explicitly
+- admin-side AI insight support expanded
+- processor failures are contained so they do not break audit delivery
+- oversized AI metadata is trimmed defensively
+- namespace collisions inside `context['ai']` are handled explicitly
 
-What this means for integrators:
-
-- if you do nothing, nothing AI-specific is required
-- if you provide custom AI processors, review the interface and current tests
-- if you expose audit data in custom admin tools, review any new AI insight UI
-  expectations separately from the core processor hook
-- if you consume audit context downstream, be aware that `context['ai']` may
-  now exist in a structured form
-
-This is still an extension point, not built-in AI provider integration.
+If you use custom AI processors, review the interface, the `context['ai']`
+payload shape, and any admin tools that render that metadata.
 
 ## 4. Same-Flush Collection Adds Are Fixed
 
-This is the biggest correctness improvement in v4.
+This is the biggest bug fix in v4.
 
 In v3 and earlier, the bundle tried to serialize to-many association
 identifiers too early during flush processing. That caused wrong audit payloads
 when a related entity did not yet have a stable identifier, especially with
 auto-increment integer IDs.
 
-Typical older symptoms:
+Common old symptoms:
 
 - parent `create` or `update` logs missing the newly added related ID
 - placeholder values such as `App\Entity\Category` appearing in collection
@@ -181,7 +198,7 @@ In v4:
   completed
 - audit payloads now store the final related IDs instead of placeholders
 
-What this means in practice:
+What this means:
 
 - parent `create` and `update` logs are now correct for same-flush relation
   creation cases
@@ -198,13 +215,38 @@ Your implementation must now support:
 
 - `schedulePendingAuditPlan(PendingAuditPlan $plan)`
 - `getPendingAuditPlans(): array`
-- `replacePendingAuditPlans(array $plans): void`
 
 This is required because v4 may delay final audit-log construction for
 collection-sensitive create/update flows until `postFlush`.
 
 If your custom manager only handled scheduled audits and pending deletions, you
 need to update it for v4.
+
+The stock bundle also uses an internal failed-dispatch retention contract to
+re-queue work after post-flush delivery failures. Only applications that fully
+replace the stock scheduled-audit service need to mirror that internal
+behavior. Failed retries should keep the first materialized audit payload so a
+later flush does not regenerate timestamps, transaction metadata, or resolved
+collection snapshots.
+
+## 5.1. Unresolved Entity IDs Now Use `null`
+
+If you touch the audit entity or identifier contracts directly, note that v4 no
+longer models unresolved audit entity IDs with placeholder strings.
+
+What changed:
+
+- `AuditLogInterface::$entityId` is now `?string`
+- `EntityIdResolverInterface::resolveFromEntity()` now returns `?string`
+- `EntityIdResolverInterface::resolveFromValues()` now returns `?string`
+
+What this means in practice:
+
+- pre-flush or same-flush create flows may carry `null` until the final
+  identifier is available
+- custom code should stop comparing against placeholder sentinel values
+- use `hasResolvedEntityId()` or `requireEntityId()` when you need an explicit
+  guard on an audit log instance
 
 ## 6. Queue and Toggle Contracts Are Split Internally
 
@@ -319,8 +361,8 @@ After the upgrade, verify these behaviors in the running app:
 
 ## Final Advice
 
-If your application does not extend the bundle, v4 is mostly an API/contract
-cleanup plus a correctness improvement for same-flush collection auditing.
+If your application does not extend the bundle, v4 is mostly an API and
+contract cleanup plus a bug fix for same-flush collection auditing.
 
 If your application does extend the bundle, treat this as a real major upgrade.
 Review the current contracts, upgrade guide, and affected tests, not just the

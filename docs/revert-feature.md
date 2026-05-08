@@ -1,8 +1,13 @@
 # Revert Entity Changes
 
-AuditTrailBundle provides a powerful **Point-in-Time Restore** capability, allowing you to undo accidental changes or recover data from any point in your audit history.
+AuditTrailBundle can revert an entity to an earlier audited state. Use it to
+undo a bad change or recover a deleted record after you review the audit
+history.
 
-When using the built-in EasyAdmin UI, the revert button is intentionally shown only for the latest meaningful state-changing log of an entity. Older `create`, `update`, or `soft_delete` entries remain revertable through the CLI or programmatic API, but the admin UI hides them to reduce stale-history mistakes.
+In the built-in EasyAdmin UI, the revert button is shown only for the latest
+meaningful state-changing log of an entity. Older `create`, `update`, or
+`soft_delete` entries can still be reverted through the CLI or code, but the
+admin UI hides them to reduce stale-history mistakes.
 
 ```bash
 # Revert an entity to its state in a specific audit log
@@ -17,7 +22,8 @@ php bin/console audit:revert 018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a --noisy
 
 ## Custom Context on Revert
 
-You can pass custom context when programmatically reverting an entity. This is useful for tracking why a revert was performed.
+You can pass custom context when you revert an entity in code. This is useful
+when you want to record why the revert happened.
 
 ```php
 <?php
@@ -30,13 +36,25 @@ $auditReverter->revert($log, false, false, [
 ]);
 ```
 
-The bundle also **automatically** adds `reverted_log_id` to the context of the new audit log, linking it back to the original entry.
+The bundle also adds `reverted_log_id` to the new audit log context so it
+points back to the original entry.
+The explicit `revert` audit follows the same transport rules as the rest of the
+bundle. Transports that support in-transaction delivery can record the revert
+inside the Doctrine transaction. Deferred-only transports such as queue or HTTP
+are sent only after the entity change commits successfully.
+If an in-transaction transport fails with `fail_on_transport_error: true`, the
+entity revert is rolled back with it. If only deferred delivery is available,
+the revert may already be committed when the later transport failure is
+reported. In that case, replaying the same update revert is rejected as a no-op
+instead of creating an empty second `revert` audit.
 
 ## Controlling Log Redundancy
 
-By default, `AuditReverter` **silences** the standard `AuditSubscriber` during a revert. This prevents a duplicate `update` log from being created alongside the explicit `revert` log.
+By default, `AuditReverter` disables the normal `AuditSubscriber` during a
+revert. This stops the bundle from creating a duplicate `update` log next to
+the explicit `revert` log.
 
-For scenarios requiring full technical transparency (e.g., strict forensic compliance), you can disable this silencing:
+If you want to keep those normal technical logs too, you can turn that off:
 
 ```php
 <?php
@@ -49,16 +67,16 @@ $auditReverter->revert($log, false, false, [], false);
 
 ## What the Reverter Handles
 
-- **Association Awareness**: Automatically handles entity relations and collections.
-- **UUID-Safe Relation Restore**: Dry-run previews and persisted reverts correctly restore related entities even when associations use UUID-backed identifiers instead of a plain `id` column.
-- **Typed Identifier Restore**: Reverts also normalize root entity identifiers before lookup, covering UUID- and ULID-backed entities more safely.
-- **Soft-Delete Support**: Handles soft-delete revert flows and restore operations when supported by the configured soft-delete handler.
-- **Dry Run Mode**: Preview exactly what will change before applying (`--dry-run`).
-- **Validation**: Validates the entity before completing a persisted revert.
+- Handles entity relations and collections
+- Handles UUID-backed relations in previews and real reverts
+- Normalizes root entity identifiers before lookup
+- Supports soft-delete restore when the configured handler supports it
+- Supports dry runs with `--dry-run`
+- Validates the entity before finishing the revert
 
 ## Custom Revert Handlers
 
-In v4, custom revert behavior can be extended through dedicated action handlers.
+You can extend custom revert behavior through dedicated action handlers.
 
 Implement:
 
@@ -66,15 +84,15 @@ Implement:
 use Rcsofttech\AuditTrailBundle\Contract\RevertActionHandlerInterface;
 ```
 
-Implementations are auto-tagged by the bundle; you do not need to add the
+Implementations are auto-tagged by the bundle. You do not need to add the
 `audit_trail.revert_action_handler` tag manually when autoconfiguration is enabled.
 
-This is useful when you need action-specific revert planning without decorating
-the bundle's main revert orchestration service.
+Use this when you need action-specific revert logic without decorating the main
+revert service.
 
 ## EasyAdmin Preview Behavior
 
-The EasyAdmin revert modal uses the same dry-run logic as the programmatic reverter.
+The EasyAdmin revert modal uses the same dry-run logic as the code API.
 
 - To-many relations are restored as collections, not as raw Doctrine internals.
 - UUID-backed relations are previewed safely without triggering missing-identifier errors.
@@ -82,4 +100,4 @@ The EasyAdmin revert modal uses the same dry-run logic as the programmatic rever
 - Collection items are rendered in a readable form such as `Tag#018f... (Security)` instead of `ArrayCollection@...`.
 
 > [!TIP]
-> Use the revert feature for **emergency data recovery**, **undoing unauthorized changes**, or **restoring accidental deletions** after reviewing the dry-run output.
+> Use the dry-run output first when you are reverting important data.

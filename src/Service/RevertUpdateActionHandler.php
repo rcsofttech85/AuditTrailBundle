@@ -29,6 +29,11 @@ final readonly class RevertUpdateActionHandler implements RevertActionHandlerInt
             throw new RuntimeException('No old values found in audit log to revert to.');
         }
 
-        return $this->revertPlanBuilder->build($entity, $oldValues, $dryRun);
+        $plan = $this->revertPlanBuilder->build($entity, $oldValues, $dryRun);
+        if (!$dryRun && $plan->isEmpty()) {
+            throw new RuntimeException('Entity already matches the target state of this update audit log.');
+        }
+
+        return $plan;
     }
 }

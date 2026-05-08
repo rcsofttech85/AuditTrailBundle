@@ -41,7 +41,12 @@ final readonly class AuditFallbackPersister
             };
         } catch (Throwable $fallbackError) {
             $this->logger?->critical(
-                sprintf('AUDIT LOSS: Failed to persist fallback for %s#%s: %s', $audit->entityClass, $audit->entityId, $fallbackError->getMessage()),
+                sprintf(
+                    'AUDIT LOSS: Failed to persist fallback for %s#%s: %s',
+                    $audit->entityClass,
+                    $this->describeEntityId($audit),
+                    $fallbackError->getMessage(),
+                ),
                 ['exception' => $fallbackError],
             );
 
@@ -82,16 +87,21 @@ final readonly class AuditFallbackPersister
         $audit->seal();
 
         $message = $phase === null
-            ? sprintf('Audit log for %s#%s saved via database fallback.', $audit->entityClass, $audit->entityId)
+            ? sprintf('Audit log for %s#%s saved via database fallback.', $audit->entityClass, $this->describeEntityId($audit))
             : sprintf(
                 'Audit log for %s#%s saved via database fallback during phase "%s".',
                 $audit->entityClass,
-                $audit->entityId,
+                $this->describeEntityId($audit),
                 $phase->value,
             );
 
         $this->logger?->warning($message);
 
         return true;
+    }
+
+    private function describeEntityId(AuditLog $audit): string
+    {
+        return $audit->entityId ?? '[unresolved]';
     }
 }

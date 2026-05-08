@@ -14,12 +14,10 @@ use Doctrine\ORM\Mapping\ManyToManyInverseSideMapping;
 use Doctrine\ORM\Mapping\ManyToManyOwningSideMapping;
 use Doctrine\ORM\Mapping\OneToManyAssociationMapping;
 use Doctrine\ORM\UnitOfWork;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ChangeProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
@@ -45,7 +43,6 @@ use Rcsofttech\AuditTrailBundle\Service\JoinTableCollectionIdLoader;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubCollection;
 use stdClass;
 
-#[AllowMockObjectsWithoutExpectations]
 final class EntityProcessorTest extends TestCase
 {
     private AuditServiceInterface&MockObject $auditService;
@@ -85,6 +82,7 @@ final class EntityProcessorTest extends TestCase
         $collectionChangeResolver = new CollectionChangeResolver(
             $collectionIdExtractor,
             new CollectionChangeIndexBuilder($collectionIdExtractor, $joinTableLoader),
+            $joinTableLoader,
         );
 
         return new EntityProcessor(
@@ -122,6 +120,7 @@ final class EntityProcessorTest extends TestCase
                 $this->auditManager,
                 $collectionChangeResolver,
                 new DeferredCollectionDetector($collectionChangeResolver),
+                $collectionTransitionMerger,
                 new EntityAuditDispatchManager(
                     $dispatcher ?? $this->dispatcher,
                     $this->auditManager,
@@ -196,7 +195,7 @@ final class EntityProcessorTest extends TestCase
             ->with($entity, AuditAction::Create, [])
             ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
-        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
+        $audit = new AuditLog(stdClass::class, null, AuditAction::Create);
         $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($audit);
         $dispatcher->expects($this->never())->method('dispatch');
         $this->auditManager->expects($this->once())->method('schedule')->with($entity, $audit, true);
@@ -319,10 +318,9 @@ final class EntityProcessorTest extends TestCase
             ->with($entity)
             ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn(['data']);
-        $em->method('contains')->willReturn(true);
         $this->changeProcessor->method('determineDeletionAction')->willReturn(AuditAction::Delete);
 
-        $this->auditManager->expects($this->once())->method('addPendingDeletion')->with($entity, ['data'], true, AuditAction::Delete);
+        $this->auditManager->expects($this->once())->method('addPendingDeletion')->with($entity, ['data'], AuditAction::Delete);
 
         $this->processor->processDeletions($em, $uow);
     }
@@ -585,7 +583,7 @@ final class EntityProcessorTest extends TestCase
             ->with($entity)
             ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
-        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
+        $audit = new AuditLog(stdClass::class, null, AuditAction::Create);
         $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($audit);
         $dispatcher->expects($this->never())->method('dispatch');
         $this->auditManager->expects($this->once())->method('schedule')->with($entity, $audit, true);
@@ -606,7 +604,7 @@ final class EntityProcessorTest extends TestCase
             ->with($entity)
             ->willReturn(true);
         $this->auditService->method('getEntityData')->willReturn([]);
-        $audit = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
+        $audit = new AuditLog(stdClass::class, null, AuditAction::Create);
         $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($audit);
         $dispatcher->expects($this->once())
             ->method('dispatch')
@@ -690,7 +688,7 @@ final class EntityProcessorTest extends TestCase
         $queryBuilder = $this->createMock(QueryBuilder::class);
         $result = self::createStub(Result::class);
         $ownerMetadata = $this->createMock(ClassMetadata::class);
-        $targetMetadata = $this->createMock(ClassMetadata::class);
+        $targetMetadata = self::createStub(ClassMetadata::class);
         $mapping = ManyToManyOwningSideMapping::fromMappingArrayAndNamingStrategy([
             'fieldName' => 'tags',
             'sourceEntity' => $owner::class,

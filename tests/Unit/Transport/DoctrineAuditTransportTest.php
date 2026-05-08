@@ -7,9 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Transport;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\UnitOfWork;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -19,13 +17,12 @@ use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use Rcsofttech\AuditTrailBundle\Transport\DoctrineAuditTransport;
 use stdClass;
 
-#[AllowMockObjectsWithoutExpectations]
 final class DoctrineAuditTransportTest extends TestCase
 {
     /** @var EntityIdResolverInterface&\PHPUnit\Framework\MockObject\Stub */
     private EntityIdResolverInterface $idResolver;
 
-    /** @var AuditLogWriterInterface&\PHPUnit\Framework\MockObject\MockObject */
+    /** @var AuditLogWriterInterface&\PHPUnit\Framework\MockObject\Stub */
     private AuditLogWriterInterface $auditLogWriter;
 
     private DoctrineAuditTransport $transport;
@@ -33,8 +30,18 @@ final class DoctrineAuditTransportTest extends TestCase
     protected function setUp(): void
     {
         $this->idResolver = self::createStub(EntityIdResolverInterface::class);
-        $this->auditLogWriter = $this->createMock(AuditLogWriterInterface::class);
+        $this->auditLogWriter = self::createStub(AuditLogWriterInterface::class);
         $this->transport = new DoctrineAuditTransport($this->idResolver, $this->auditLogWriter);
+    }
+
+    /** @return AuditLogWriterInterface&\PHPUnit\Framework\MockObject\MockObject */
+    private function useAuditLogWriterMock(): AuditLogWriterInterface
+    {
+        $auditLogWriter = self::createMock(AuditLogWriterInterface::class);
+        $this->auditLogWriter = $auditLogWriter;
+        $this->transport = new DoctrineAuditTransport($this->idResolver, $this->auditLogWriter);
+
+        return $auditLogWriter;
     }
 
     public function testSendOnFlushPersistsLog(): void
@@ -54,12 +61,13 @@ final class DoctrineAuditTransportTest extends TestCase
 
     public function testSendPostFlushUpdatesId(): void
     {
-        $log = new AuditLog(stdClass::class, 'pending', AuditAction::Create);
+        $log = new AuditLog(stdClass::class, null, AuditAction::Create);
 
         $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
         $this->idResolver->method('resolve')->willReturn('100');
-        $this->auditLogWriter->expects($this->once())->method('insert')->with($log, $em);
+        $auditLogWriter = $this->useAuditLogWriterMock();
+        $auditLogWriter->expects($this->once())->method('insert')->with($log, $em);
 
         $this->transport->send(new AuditTransportContext(AuditPhase::PostFlush, $em, $log, null, $entity));
 
@@ -69,12 +77,13 @@ final class DoctrineAuditTransportTest extends TestCase
 
     public function testSendPostFlushWithIsInsertUpdatesId(): void
     {
-        $log = new AuditLog(stdClass::class, 'pending', AuditAction::Create);
+        $log = new AuditLog(stdClass::class, null, AuditAction::Create);
 
         $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
         $this->idResolver->method('resolve')->willReturn('456');
-        $this->auditLogWriter->expects($this->once())->method('insert')->with($log, $em);
+        $auditLogWriter = $this->useAuditLogWriterMock();
+        $auditLogWriter->expects($this->once())->method('insert')->with($log, $em);
 
         $this->transport->send(new AuditTransportContext(AuditPhase::PostFlush, $em, $log, null, $entity));
 
@@ -95,7 +104,7 @@ final class DoctrineAuditTransportTest extends TestCase
 
     public function testDoesNotSupportOnFlushForPendingEntityId(): void
     {
-        $log = new AuditLog(stdClass::class, AuditLogInterface::PENDING_ID, AuditAction::Create);
+        $log = new AuditLog(stdClass::class, null, AuditAction::Create);
 
         self::assertFalse($this->transport->supports(new AuditTransportContext(
             AuditPhase::OnFlush,

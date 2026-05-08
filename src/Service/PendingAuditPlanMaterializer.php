@@ -21,6 +21,10 @@ final readonly class PendingAuditPlanMaterializer
 
     public function materialize(PendingAuditPlan $plan, EntityManagerInterface $entityManager): AuditLog
     {
+        if ($plan->audit !== null) {
+            return $plan->audit;
+        }
+
         $oldValues = $plan->oldValues;
         $newValues = $plan->refreshEntityData
             ? $this->auditService->getEntityData($plan->entity, [], $entityManager)

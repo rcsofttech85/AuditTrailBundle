@@ -40,6 +40,7 @@ final readonly class AuditExporter implements AuditExporterInterface
         'username',
         'ip_address',
         'user_agent',
+        'reverted_log_id',
         'created_at',
     ];
 
@@ -107,7 +108,7 @@ final readonly class AuditExporter implements AuditExporterInterface
         return [
             'id' => $audit->id?->toRfc4122(),
             'entity_class' => $audit->entityClass,
-            'entity_id' => $audit->entityId,
+            'entity_id' => $audit->requireEntityId(),
             'action' => $audit->action->value,
             'old_values' => $audit->oldValues,
             'new_values' => $audit->newValues,
@@ -116,6 +117,7 @@ final readonly class AuditExporter implements AuditExporterInterface
             'username' => $audit->username,
             'ip_address' => $audit->ipAddress,
             'user_agent' => $audit->userAgent,
+            'reverted_log_id' => $audit->revertedLogId,
             'created_at' => $audit->createdAt->format(DateTimeInterface::ATOM),
         ];
     }

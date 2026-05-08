@@ -34,7 +34,7 @@ final class AuditLogMessageFactoryTest extends TestCase
         $this->idResolver = $idResolver;
         $this->factory = new AuditLogMessageFactory($idResolver);
 
-        $log = new AuditLog(stdClass::class, 'pending', AuditAction::Create);
+        $log = new AuditLog(stdClass::class, null, AuditAction::Create);
 
         $message = $this->factory->createQueueMessage($this->createContext($log));
 
@@ -50,7 +50,7 @@ final class AuditLogMessageFactoryTest extends TestCase
         $this->idResolver = $idResolver;
         $this->factory = new AuditLogMessageFactory($idResolver);
 
-        $log = new AuditLog(stdClass::class, 'pending', AuditAction::Create);
+        $log = new AuditLog(stdClass::class, null, AuditAction::Create);
 
         $message = $this->factory->createPersistMessage($this->createContext($log));
 

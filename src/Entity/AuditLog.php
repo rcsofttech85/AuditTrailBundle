@@ -20,10 +20,12 @@ use function sprintf;
 use const FILTER_VALIDATE_IP;
 
 #[ORM\Entity(repositoryClass: AuditLogRepository::class)]
+#[ORM\HasLifecycleCallbacks]
 #[ORM\Index(name: 'created_idx', columns: ['created_at'])]
 #[ORM\Index(name: 'user_action_date_idx', columns: ['user_id', 'action', 'created_at'])]
 #[ORM\Index(name: 'entity_date_idx', columns: ['entity_class', 'entity_id', 'created_at'])]
 #[ORM\Index(name: 'transaction_idx', columns: ['transaction_hash'])]
+#[ORM\Index(name: 'reverted_log_idx', columns: ['reverted_log_id'])]
 #[ORM\UniqueConstraint(name: 'uniq_delivery_id', columns: ['delivery_id'])]
 class AuditLog implements AuditLogInterface
 {
@@ -53,11 +55,18 @@ class AuditLog implements AuditLogInterface
                 $this->entityClass = $trimmed;
             }
         },
-        #[ORM\Column(length: 255)]
-        public string $entityId {
+        #[ORM\Column(length: 255, nullable: true)]
+        public ?string $entityId {
             get => $this->entityId;
             set {
                 $this->checkSealed();
+
+                if ($value === null) {
+                    $this->entityId = null;
+
+                    return;
+                }
+
                 $trimmed = mb_trim($value);
                 if ($trimmed === '') {
                     throw new InvalidArgumentException('Entity ID cannot be empty');
@@ -116,6 +125,14 @@ class AuditLog implements AuditLogInterface
                 $this->deliveryId = $value;
             }
         },
+        #[ORM\Column(length: 36, nullable: true)]
+        public ?string $revertedLogId = null {
+            get => $this->revertedLogId;
+            set {
+                $this->checkSealed();
+                $this->revertedLogId = $value;
+            }
+        },
     ) {
         $this->action = AuditAction::fromScalar($action);
     }
@@ -129,6 +146,12 @@ class AuditLog implements AuditLogInterface
         $this->isSealed = true;
     }
 
+    #[ORM\PostLoad]
+    public function sealAfterLoad(): void
+    {
+        $this->seal();
+    }
+
     public function markContextNormalized(): void
     {
         $this->isContextNormalized = true;
@@ -137,6 +160,20 @@ class AuditLog implements AuditLogInterface
     public function isContextNormalized(): bool
     {
         return $this->isContextNormalized;
+    }
+
+    public function hasResolvedEntityId(): bool
+    {
+        return $this->entityId !== null;
+    }
+
+    public function requireEntityId(): string
+    {
+        if ($this->entityId === null) {
+            throw new LogicException('Audit log entity ID has not been resolved yet.');
+        }
+
+        return $this->entityId;
     }
 
     private function checkSealed(): void

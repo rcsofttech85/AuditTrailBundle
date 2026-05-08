@@ -1,9 +1,9 @@
 # Architecture Guide
 
-This document is for contributors who want a quick mental model of the bundle.
+This document gives contributors a quick overview of the bundle.
 
-It is not a full internal spec. It is a practical map of where work happens and
-which extension points are meant to be used.
+It is not a full internal spec. It just shows where the main work happens and
+which extension points you should use first.
 
 ## High-Level Flow
 
@@ -17,8 +17,8 @@ In simple terms:
 - `onFlush` is where the bundle inspects Doctrine changes
 - `postFlush` is where deferred work is finalized and dispatched
 
-This split keeps the bundle safer around Doctrine lifecycle rules and lets it
-handle cases where final relation identifiers do not exist yet during the first
+This split helps the bundle stay within Doctrine lifecycle rules. It also lets
+the bundle handle cases where final relation IDs do not exist yet in the first
 phase.
 
 ## Main Runtime Pieces
@@ -36,16 +36,16 @@ These services are the heart of flush-time auditing:
 - `EntityCollectionUpdateProcessor`
 - `EntityDeletionProcessor`
 
-Their responsibilities are roughly:
+They mainly do this work:
 
 - detect entity and collection changes
 - decide whether something should be audited
 - create immediate audit work or defer it
 - finalize post-flush work and dispatch it
 
-`EntityProcessor` is intentionally thin in v4. It preserves the
-`EntityProcessorInterface` entry point while delegating each flush-time
-lifecycle concern to a focused processor service.
+`EntityProcessor` stays small in v4. It keeps the
+`EntityProcessorInterface` entry point and passes each flush-time lifecycle
+concern to a smaller processor service.
 
 ### Audit Creation and Dispatch
 
@@ -56,7 +56,7 @@ These services build and send audit logs:
 - `EntityAuditDispatchManager`
 - `ScheduledAuditManager`
 
-They are responsible for:
+They mainly:
 
 - turning detected changes into audit log objects
 - tracking scheduled and deferred work
@@ -65,7 +65,7 @@ They are responsible for:
 
 ### Querying Audit Logs
 
-The query layer is intentionally split in v4:
+The query layer is split in v4:
 
 - `AuditReader`
 - `AuditQuery`
@@ -73,16 +73,16 @@ The query layer is intentionally split in v4:
 - `AuditQueryExecutor`
 - `AuditQueryPage`
 
-Their responsibilities are roughly:
+In short:
 
 - `AuditReader` is the bundle-facing query entry point
 - `AuditQuery` is the fluent immutable API callers chain against
 - `AuditQueryState` holds filter and cursor state
-- `AuditQueryExecutor` performs repository access and changed-field batch scans
+- `AuditQueryExecutor` performs repository access and changed-field execution, using native database predicates when supported and batched fallback scans otherwise
 - `AuditQueryPage` materializes entries with the next cursor from one query
 
-This keeps the fluent API small while moving repository execution and paging
-rules out of the query builder itself.
+This keeps the fluent API small and moves execution and paging rules out of the
+query builder itself.
 
 ### Transports
 
@@ -99,7 +99,7 @@ If you are changing delivery behavior, start there and in `AuditDispatcher`.
 
 ### Admin UI
 
-Admin integration is intentionally split into smaller services now.
+Admin integration is split into smaller services.
 
 Look at:
 
@@ -110,8 +110,8 @@ Look at:
 - `AuditLogAdminViewFactory`
 - `AuditLogExportResponseFactory`
 
-If your change is mostly presentation or export behavior, prefer changing these
-services instead of pushing more logic into the controller.
+If your change is mostly about presentation or export behavior, change these
+services instead of adding more logic to the controller.
 
 ### Revert Support
 
@@ -125,8 +125,8 @@ Important pieces include:
 - `RevertValueDenormalizer`
 - `RevertActionHandlerInterface` implementations
 
-If you need to add new revert behavior, prefer a new handler or helper over
-growing `AuditReverter`.
+If you need new revert behavior, prefer a new handler or helper instead of
+making `AuditReverter` bigger.
 
 ### Integrity
 

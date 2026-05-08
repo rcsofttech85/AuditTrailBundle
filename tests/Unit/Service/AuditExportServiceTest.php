@@ -55,7 +55,7 @@ final class AuditExportServiceTest extends TestCase
             new AuditLog('User', '3', 'create'),
         ];
         $outputFile = sys_get_temp_dir().'/audit_export_service_test.json';
-        @unlink($outputFile);
+        $this->removeFileIfExists($outputFile);
 
         $this->repository
             ->expects($this->once())
@@ -90,7 +90,16 @@ final class AuditExportServiceTest extends TestCase
             self::assertSame('10 B', $result->formattedSize);
             self::assertStringContainsString('["1","2"]', (string) file_get_contents($outputFile));
         } finally {
-            @unlink($outputFile);
+            $this->removeFileIfExists($outputFile);
         }
+    }
+
+    private function removeFileIfExists(string $path): void
+    {
+        if (!file_exists($path)) {
+            return;
+        }
+
+        self::assertTrue(unlink($path));
     }
 }

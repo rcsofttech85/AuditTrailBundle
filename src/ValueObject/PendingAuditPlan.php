@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\ValueObject;
 
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 final readonly class PendingAuditPlan
@@ -22,6 +23,7 @@ final readonly class PendingAuditPlan
         public array $deferredCollectionFields = [],
         public array $context = [],
         public bool $refreshEntityData = false,
+        public ?AuditLog $audit = null,
     ) {
     }
 
@@ -55,6 +57,20 @@ final readonly class PendingAuditPlan
             newValues: $newValues,
             deferredCollectionFields: $deferredCollectionFields,
             context: $context,
+        );
+    }
+
+    public function withAudit(AuditLog $audit): self
+    {
+        return new self(
+            entity: $this->entity,
+            action: $this->action,
+            oldValues: $this->oldValues,
+            newValues: $this->newValues,
+            deferredCollectionFields: $this->deferredCollectionFields,
+            context: $this->context,
+            refreshEntityData: $this->refreshEntityData,
+            audit: $audit,
         );
     }
 }

@@ -8,15 +8,18 @@
 [![Codacy Badge](https://app.codacy.com/project/badge/Coverage/4737e92c64cc4e63b781016efeb48a99)](https://app.codacy.com/gh/rcsofttech85/AuditTrailBundle/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
 [![Mutation Testing](https://img.shields.io/endpoint?style=flat&url=https%3A%2F%2Fbadge-api.stryker-mutator.io%2Fgithub.com%2Frcsofttech85%2FAuditTrailBundle%2Fmain)](https://dashboard.stryker-mutator.io/reports/github.com/rcsofttech85/AuditTrailBundle/main)
 
-**High-performance audit trail bundle for Symfony.**
-
-AuditTrailBundle is a modern, lightweight bundle that automatically tracks and stores Doctrine ORM entity changes. Built for performance and compliance, it uses a **Split-Phase Architecture** by default, while still allowing stricter in-transaction delivery when your compliance requirements demand it.
+AuditTrailBundle records Doctrine ORM entity changes and stores audit logs.
+By default it captures changes during flush and sends audits after `postFlush`
+so normal writes stay fast. If you need stricter rules, you can also keep
+audit delivery inside the transaction.
 
 ---
 
 ## Why AuditTrailBundle?
 
-Most audit bundles capture changes synchronously, which can significantly slow down your application's write performance. AuditTrailBundle solves this by separating **Capture**, **Delivery**, and phase-appropriate **Persistence** work.
+Many audit bundles do everything in one step. That can slow down writes.
+AuditTrailBundle splits capture, delivery, and persistence so it fits Doctrine
+flush rules better and keeps normal writes lighter.
 
 ### Split-Phase Architecture
 
@@ -48,29 +51,29 @@ Most audit bundles capture changes synchronously, which can significantly slow d
                                                                      | Async Save
 ```
 
-- **Flexible delivery**: Audit capture happens during the flush. By default, dispatch is deferred until the `postFlush` boundary, and some transports can also be offloaded to Messenger workers.
-- **Doctrine-safe phase handling**: The bundle does not call `flush()` from inside Doctrine `postFlush`. In-transaction ORM-safe writes stay in `onFlush`; deferred database writes use a direct writer path.
-- **Data Integrity**: Cryptographic signing helps detect tampering with persisted logs and transport payloads.
-- **Developer First**: Simple PHP 8 attributes, zero boilerplate.
+- **Deferred by default**: The bundle captures changes during flush and sends audits after `postFlush` unless you choose stricter behavior.
+- **Safe with Doctrine**: It does not call `flush()` from inside Doctrine `postFlush`. Deferred database writes use a separate writer.
+- **Integrity support**: You can sign audit logs and transport payloads.
+- **Simple setup**: Use PHP 8 attributes and normal Symfony services.
 
 ### Key Features
 
-- **High Performance**: Deferred-by-default audits using a **Split-Phase Architecture** (capture in `onFlush`, dispatch after `postFlush` in the default mode).
-- **Multiple Transports**: Doctrine (Database), HTTP (ELK/Splunk), and Queue (RabbitMQ/Redis/Messenger).
-- **Deep Collection Tracking**: Tracks Many-to-Many and One-to-Many changes with precision.
-- **Sensitive Data Masking**: Native support for `#[SensitiveParameter]` and custom `#[Sensitive]` attributes.
-- **Safe Revert Support**: Easily roll back entities to any point in history.
-- **Access Auditing**: Track sensitive entity read operations (GET requests) with built-in request-level deduplication and optional cross-request cooldowns.
-- **Conditional Auditing**: Skip logs based on runtime conditions or Expressions.
-- **Rich Context**: Automatically tracks IP, User Agent, impersonation context, and custom metadata.
-- **AI-Ready Extension Hooks**: Optional AI processors can add namespaced summaries, anomaly flags, or structured insights before audit signing and transport dispatch.
-- **Web Profiler Integration**: Real-time audit log visibility in the Symfony debug toolbar and profiler panel.
+- Deferred audit delivery by default
+- Database, HTTP, and queue transports
+- Tracking for to-many collection changes
+- Sensitive data masking
+- Revert support
+- Access audit support for reads
+- Conditional auditing
+- Request and user context tracking
+- Optional AI metadata hooks
+- Symfony profiler support
 
 ---
 
 ## Admin UI
 
-Native integration with **EasyAdmin** provides a built-in dashboard for browsing and reviewing audit logs.
+The bundle includes EasyAdmin support for browsing and reviewing audit logs.
 
 ![EasyAdmin Integration Showcase](.github/assets/easyadmin_integration_dark.png)
 
@@ -78,7 +81,7 @@ Native integration with **EasyAdmin** provides a built-in dashboard for browsing
 
 ## Security & Compliance
 
-Track not just what changed, but who did it and where they were.
+The bundle can also help with audit integrity and review.
 
 - **Sensitive Data Masking**: Native support for `#[SensitiveParameter]` and custom `#[Sensitive]` attributes.
 - **HMAC Signatures**: Audit logs can be signed so tampering can be detected during verification.
@@ -92,17 +95,17 @@ Track not just what changed, but who did it and where they were.
 
 | Topic | Description |
 | :--- | :--- |
-| **[Installation & Setup](README.md#quick-start)** | Getting started guide. |
+| **[Installation & Setup](README.md#quick-start)** | Basic setup. |
 | **[Configuration](docs/configuration.md)** | Full configuration reference (`enabled`, `transports`, `integrity`, access auditing, export limits, queue limits, collection serialization). |
 | **[Advanced Usage](docs/advanced-usage.md)** | Attributes, Conditional Auditing, Impersonation, Custom Context. |
-| **[Architecture](docs/architecture.md)** | Contributor-oriented map of the flush pipeline, transports, admin layer, revert flow, and extension points. |
+| **[Architecture](docs/architecture.md)** | A short map of the main runtime pieces and extension points. |
 | **[Transports](docs/symfony-audit-transports.md)** | Doctrine, HTTP, and Queue (Messenger) transport details. |
 | **[Audit Reader](docs/symfony-audit-reader.md)** | Querying audit logs programmatically. |
-| **[Revert & Recovery](docs/revert-feature.md)** | Point-in-time restoration of entities. |
+| **[Revert & Recovery](docs/revert-feature.md)** | How revert works. |
 | **[Security & Integrity](docs/security-integrity.md)** | Data masking, cryptographic signing, and verification. |
 | **[CLI Commands](docs/cli-commands.md)** | Console commands for listing, purging, and exporting logs. |
 | **[Integrations](docs/integrations.md)** | EasyAdmin and Symfony Profiler support. |
-| **[Serialization](docs/serialization.md)** | Cross-platform JSON format. |
+| **[Serialization](docs/serialization.md)** | JSON payload shape. |
 | **[Failure & Transaction Safety](docs/configuration.md#transaction-safety-guide)** | Recommended settings for `defer_transport_until_commit`, fallback, and transport errors. |
 
 ---
@@ -169,11 +172,12 @@ If you enable a transport without its supporting package installed, the bundle f
 
 ### 5. Operational Defaults
 
-If you are choosing settings for a production rollout:
+If you are choosing settings for production:
 
 - Use `defer_transport_until_commit: true` for HTTP or queue-first setups where application write latency matters most.
 - HTTP and queue transports remain deferred-phase transports; setting `defer_transport_until_commit: false` does not move them into Doctrine's `onFlush` transaction window.
-- Use synchronous database transport with `fail_on_transport_error: true` when compliance requires the write and audit to succeed or fail together.
+- If you enable HTTP or queue transport and leave the failure knobs unset, the bundle defaults to stricter remote handling: `fail_on_transport_error: true` and `fallback_to_database: false`. Override them if you want softer behavior or a local safety net.
+- Use synchronous database transport with `fail_on_transport_error: true` when the write and audit must succeed or fail together.
 - Keep `fallback_to_database: true` when you want external transport failures to still leave a local audit trail.
 - Configure a PSR-6 `cache_pool` if you rely on cross-request access-audit cooldowns.
 
@@ -186,13 +190,16 @@ Feature dependency notes:
 
 Operational notes:
 
-- Audit query limits must be positive integers. The fluent `AuditReader`/`AuditQuery` API and repository layer now reject `0` or negative limits instead of silently accepting them.
+- Audit query limits must be positive integers. `AuditReader`, `AuditQuery`, and the repository reject `0` or negative limits.
 - Cursor pagination uses audit-log UUIDs. Invalid cursors are rejected.
+- `AuditReader` / `AuditQuery` `changedField()` uses database JSON checks on MySQL, PostgreSQL, and SQLite. On other platforms it falls back to batched in-memory matching.
+- When you use object-based lookups or `ignored_entities`, configure the real mapped class such as `App\Entity\Order`. The bundle maps proxies and lazy subclasses back to that class.
 - EasyAdmin transaction drill-down accepts only one cursor at a time: `afterId` or `beforeId`, never both.
-- CLI audit IP attribution is intentionally conservative. In console contexts the bundle now prefers explicit environment-derived values such as `AUDIT_TRAIL_CLI_IP`, `SSH_CLIENT`, or `SSH_CONNECTION`; if no valid IP is available, it records `null` instead of guessing from hostname resolution.
-- When an entity changes scalar fields and Doctrine collections in the same flush, the bundle now records one merged `update` audit instead of splitting that flush into redundant update entries.
-- EasyAdmin revert previews now handle UUID-backed relations and to-many collections safely, and restored collection values are shown in a readable format instead of raw Doctrine object dumps.
-- Delete-driven collection audits are most reliable with bidirectional Doctrine associations. Unidirectional mappings can leave the bundle without enough reverse-relation context to infer an owner-side collection update when a related entity is deleted.
+- CLI audit IP handling is conservative. In console use, the bundle prefers values such as `AUDIT_TRAIL_CLI_IP`, `SSH_CLIENT`, or `SSH_CONNECTION`. If no valid IP is available, it stores `null`.
+- When an entity changes scalar fields and Doctrine collections in the same flush, the bundle records one merged `update` audit instead of redundant separate entries.
+- EasyAdmin revert previews handle UUID-backed relations and to-many collections safely, and restored collection values are shown in a readable format.
+- The built-in soft-delete restore flow clears `soft_delete_field` by setting it back to `null`, so it should point to a nullable timestamp-like field such as `deletedAt` or `archivedAt`. Boolean or status-based soft-delete markers need custom restore handling.
+- Collection audits caused by deleting a related entity are most reliable with bidirectional Doctrine associations. With unidirectional mappings, the bundle may not have enough reverse relation context to emit an owner-side collection update.
 
 ---
 

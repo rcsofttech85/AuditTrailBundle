@@ -10,7 +10,6 @@ use Doctrine\Common\Collections\Selectable;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
@@ -43,7 +42,7 @@ final class ValueSerializerTest extends AbstractAuditTestCase
     private function createSerializerEntityIdResolver(): EntityIdResolverInterface
     {
         $resolver = self::createStub(EntityIdResolverInterface::class);
-        $resolver->method('resolveFromEntity')->willReturnCallback(static function (object $entity): string {
+        $resolver->method('resolveFromEntity')->willReturnCallback(static function (object $entity): ?string {
             if (method_exists($entity, 'getId')) {
                 return (string) $entity->getId();
             }
@@ -52,10 +51,10 @@ final class ValueSerializerTest extends AbstractAuditTestCase
                 /** @var mixed $id */
                 $id = $entity->id;
 
-                return $id !== null ? (string) $id : AuditLogInterface::PENDING_ID;
+                return $id !== null ? (string) $id : null;
             }
 
-            return AuditLogInterface::PENDING_ID;
+            return null;
         });
 
         return $resolver;
@@ -232,10 +231,35 @@ final class ValueSerializerTest extends AbstractAuditTestCase
         self::assertSame([1, 2], $result['_sample']);
     }
 
+    public function testIdsOnlyModeKeepsUnknownCountWhenTruncatingUninitializedCollection(): void
+    {
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with('Collection exceeds max items for audit', ['count' => 'unknown', 'max' => 2]);
+
+        $serializer = $this->createConfiguredSerializer('ids_only', $logger, 2);
+        /** @var ClassMetadata<TestEntity>&\PHPUnit\Framework\MockObject\Stub $metadata */
+        $metadata = self::createStub(ClassMetadata::class);
+        $metadata->method('getName')->willReturn(TestEntity::class);
+
+        /** @var ArrayCollection<int, TestEntity>&Selectable<int, TestEntity> $inner */
+        $inner = new ArrayCollection([new TestEntity(1), new TestEntity(2), new TestEntity(3)]);
+        /** @phpstan-ignore-next-line */
+        $collection = $this->createUninitializedCollection($this->em, $metadata, $inner);
+
+        /** @var array{_truncated: bool, _total_count: string, _sample: array<mixed>} $result */
+        $result = $serializer->serialize($collection);
+
+        self::assertTrue($result['_truncated']);
+        self::assertSame('unknown', $result['_total_count']);
+        self::assertSame(['1', '2'], $result['_sample']);
+    }
+
     public function testSerializeObjectWithoutResolvableIdFallsBackToClassName(): void
     {
         $resolver = self::createStub(EntityIdResolverInterface::class);
-        $resolver->method('resolveFromEntity')->willReturn(AuditLogInterface::PENDING_ID);
+        $resolver->method('resolveFromEntity')->willReturn(null);
         $serializer = new ValueSerializer($resolver);
 
         self::assertSame(stdClass::class, $serializer->serialize(new stdClass()));

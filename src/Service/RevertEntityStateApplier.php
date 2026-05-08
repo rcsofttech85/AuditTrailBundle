@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
-use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
 use Rcsofttech\AuditTrailBundle\ValueObject\RevertPlan;
@@ -12,7 +11,7 @@ use Rcsofttech\AuditTrailBundle\ValueObject\RevertPlan;
 final readonly class RevertEntityStateApplier
 {
     public function __construct(
-        private EntityManagerInterface $em,
+        private EntityManagerResolver $entityManagerResolver,
         private SoftDeleteHandlerInterface $softDeleteHandler,
         private RevertCollectionAssociationSynchronizer $collectionSynchronizer,
     ) {
@@ -20,7 +19,7 @@ final readonly class RevertEntityStateApplier
 
     public function apply(object $entity, RevertPlan $revertPlan): void
     {
-        $metadata = $this->em->getClassMetadata($entity::class);
+        $metadata = $this->entityManagerResolver->requireForObject($entity)->getClassMetadata($entity::class);
 
         foreach ($revertPlan->fieldValues as $field => $value) {
             $this->applyRevertFieldValue($metadata, $entity, $field, $value);

@@ -172,7 +172,7 @@ final class QueueAuditTransportTest extends TestCase
 
     public function testSendResolvesPendingId(): void
     {
-        $log = new AuditLog('TestEntity', 'pending', AuditAction::Create);
+        $log = new AuditLog('TestEntity', null, AuditAction::Create);
 
         $queueMessage = new AuditLogMessage(
             entityClass: 'TestEntity',

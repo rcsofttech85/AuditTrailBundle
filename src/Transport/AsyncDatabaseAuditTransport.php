@@ -36,6 +36,6 @@ final class AsyncDatabaseAuditTransport implements AuditTransportInterface
     #[Override]
     public function supports(AuditTransportContext $context): bool
     {
-        return $context->phase->isAsyncDispatchPhase();
+        return $context->phase->isAsyncDispatchPhase() && $context->audit->hasResolvedEntityId();
     }
 }

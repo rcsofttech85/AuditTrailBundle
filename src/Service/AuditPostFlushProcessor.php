@@ -7,9 +7,9 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditQueueManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\ValueObject\PendingAuditPlan;
@@ -24,6 +24,7 @@ final readonly class AuditPostFlushProcessor
         private AuditServiceInterface $auditService,
         private AuditDispatcherInterface $dispatcher,
         private AuditQueueManagerInterface $auditManager,
+        private FailedAuditDispatchRetainerInterface $failedDispatchRetainer,
         private PendingAuditPlanMaterializer $pendingAuditPlanMaterializer,
         private TransactionIdGenerator $transactionIdGenerator,
         private AuditedEntityMarker $auditedEntityMarker,
@@ -63,16 +64,10 @@ final readonly class AuditPostFlushProcessor
 
         foreach ($this->auditManager->getPendingDeletions() as $pendingDeletion) {
             $entity = $pendingDeletion->entity;
-            $oldData = $pendingDeletion->data;
-            $action = $pendingDeletion->action;
-
-            $newData = $action === AuditAction::SoftDelete
-                ? $this->auditService->getEntityData($entity, [], $entityManager)
-                : null;
-            $audit = $this->auditService->createAuditLog($entity, $action, $oldData, $newData, [], $entityManager);
+            $audit = $pendingDeletion->audit ?? $this->materializePendingDeletion($pendingDeletion, $entityManager);
 
             if (!$this->dispatcher->dispatch($audit, $entityManager, AuditPhase::PostFlush, null, $entity)) {
-                $failedPendingDeletions[] = $pendingDeletion;
+                $failedPendingDeletions[] = $pendingDeletion->withAudit($audit);
                 continue;
             }
 
@@ -93,7 +88,7 @@ final readonly class AuditPostFlushProcessor
             $audit = $this->pendingAuditPlanMaterializer->materialize($plan, $entityManager);
 
             if (!$this->dispatcher->dispatch($audit, $entityManager, AuditPhase::PostFlush, null, $plan->entity)) {
-                $failedPlans[] = $plan;
+                $failedPlans[] = $plan->withAudit($audit);
                 continue;
             }
 
@@ -117,7 +112,7 @@ final readonly class AuditPostFlushProcessor
 
             if ($scheduledAudit->isInsert) {
                 $id = $this->auditedEntityMarker->resolveEntityId($entity, $entityManager);
-                if ($id !== AuditLogInterface::PENDING_ID) {
+                if ($id !== null) {
                     $audit->entityId = $id;
                 }
             }
@@ -144,15 +139,33 @@ final readonly class AuditPostFlushProcessor
         array $failedScheduledAudits,
     ): void {
         if ($failedPendingDeletions !== []) {
-            $this->auditManager->replacePendingDeletions($failedPendingDeletions);
+            $this->failedDispatchRetainer->replacePendingDeletions($failedPendingDeletions);
         }
 
         if ($failedPendingAuditPlans !== []) {
-            $this->auditManager->replacePendingAuditPlans($failedPendingAuditPlans);
+            $this->failedDispatchRetainer->replacePendingAuditPlans($failedPendingAuditPlans);
         }
 
         if ($failedScheduledAudits !== []) {
-            $this->auditManager->replaceScheduledAudits($failedScheduledAudits);
+            $this->failedDispatchRetainer->replaceScheduledAudits($failedScheduledAudits);
         }
+    }
+
+    private function materializePendingDeletion(
+        PendingDeletionEntry $pendingDeletion,
+        EntityManagerInterface $entityManager,
+    ): AuditLog {
+        $newData = $pendingDeletion->action === AuditAction::SoftDelete
+            ? $this->auditService->getEntityData($pendingDeletion->entity, [], $entityManager)
+            : null;
+
+        return $this->auditService->createAuditLog(
+            $pendingDeletion->entity,
+            $pendingDeletion->action,
+            $pendingDeletion->data,
+            $newData,
+            [],
+            $entityManager,
+        );
     }
 }

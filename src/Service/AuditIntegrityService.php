@@ -19,9 +19,13 @@ use const JSON_UNESCAPED_UNICODE;
 
 final class AuditIntegrityService implements AuditIntegrityServiceInterface
 {
-    /**
-     * @var bool Read-only property check for integrity status using PHP 8.4 hooks.
-     */
+    private const array SIGNATURE_VARIANTS = [
+        ['includeChangedFields' => true, 'includeRevertedLogId' => true],
+        ['includeChangedFields' => false, 'includeRevertedLogId' => true],
+        ['includeChangedFields' => true, 'includeRevertedLogId' => false],
+        ['includeChangedFields' => false, 'includeRevertedLogId' => false],
+    ];
+
     public bool $isEnabled {
         get => $this->enabled && $this->secret !== null;
     }
@@ -68,11 +72,18 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
             return false;
         }
 
-        if ($this->signatureMatches($log, $storedSignature, true)) {
-            return true;
+        foreach (self::SIGNATURE_VARIANTS as $variant) {
+            if ($this->signatureMatches(
+                $log,
+                $storedSignature,
+                $variant['includeChangedFields'],
+                $variant['includeRevertedLogId'],
+            )) {
+                return true;
+            }
         }
 
-        return $this->signatureMatches($log, $storedSignature, false);
+        return false;
     }
 
     #[Override]
@@ -85,14 +96,18 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
         return hash_hmac($this->algorithm, $payload, $this->secret);
     }
 
-    private function signatureMatches(AuditLog $log, string $storedSignature, bool $includeChangedFields): bool
-    {
+    private function signatureMatches(
+        AuditLog $log,
+        string $storedSignature,
+        bool $includeChangedFields,
+        bool $includeRevertedLogId,
+    ): bool {
         if ($this->secret === null) {
             throw new RuntimeException('Cannot verify signature: secret key is not configured.');
         }
 
         $payload = json_encode(
-            $this->normalizer->normalize($log, $includeChangedFields),
+            $this->normalizer->normalize($log, $includeChangedFields, $includeRevertedLogId),
             JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
         );
         $expectedSignature = hash_hmac($this->algorithm, $payload, $this->secret);

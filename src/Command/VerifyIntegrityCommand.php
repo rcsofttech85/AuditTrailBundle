@@ -84,7 +84,7 @@ final class VerifyIntegrityCommand extends Command
         }
 
         $io->title(sprintf('Verifying Audit Log #%s', $id));
-        $io->writeln(sprintf('Entity: %s [%s]', $log->entityClass, $log->entityId));
+        $io->writeln(sprintf('Entity: %s [%s]', $log->entityClass, $log->requireEntityId()));
         $io->writeln(sprintf('Action: %s', $log->action->value));
         $io->writeln(sprintf('Created: %s', $log->createdAt->format('Y-m-d H:i:s')));
         $io->newLine();
@@ -130,7 +130,7 @@ final class VerifyIntegrityCommand extends Command
                     $tamperedLogs[] = [
                         'id' => $log->id?->toRfc4122(),
                         'entity' => $log->entityClass,
-                        'entity_id' => $log->entityId,
+                        'entity_id' => $log->requireEntityId(),
                         'action' => $log->action->value,
                         'created_at' => $log->createdAt->format('Y-m-d H:i:s'),
                     ];

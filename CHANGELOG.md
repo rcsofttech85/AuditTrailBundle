@@ -29,10 +29,17 @@ collection auditing.
   related entity is added to a to-many association in the same flush, v4
   materializes the final collection identifiers after flush completion instead
   of persisting unresolved placeholders.
+- **Unresolved audit entity IDs now use `null`**: if custom code instantiates
+  `AuditLog`, implements `AuditLogInterface`, or plugs into
+  `EntityIdResolverInterface`, unresolved IDs are now represented by `null`
+  rather than a placeholder string. Use `hasResolvedEntityId()` /
+  `requireEntityId()` when you need an explicit guard.
 - **Pending audit plans are now part of the scheduled-audit contract**: custom
   `ScheduledAuditManagerInterface` implementations must support
-  `schedulePendingAuditPlan()`, `getPendingAuditPlans()`, and
-  `replacePendingAuditPlans()`.
+  `schedulePendingAuditPlan()` and `getPendingAuditPlans()`. The
+  failed-dispatch `replace*()` methods now belong to the internal
+  `FailedAuditDispatchRetainerInterface`, not the public scheduled-audit
+  contract.
 - **Queue and toggle responsibilities are now split internally**: the bundle
   introduces `AuditQueueManagerInterface` and `AuditToggleInterface`. Stock
   applications can continue using `ScheduledAuditManagerInterface`, but custom
@@ -58,6 +65,14 @@ See `docs/upgrade-v4.md` for the full migration guide.
 - **Same-flush to-many relation auditing**: parent `create` and `update` logs
   now store the final identifiers when a newly created related entity is added
   to a collection in the same flush.
+- **Revert failure boundaries**: strict in-transaction revert delivery now
+  rolls the entity change back when the transport fails, while committed
+  deferred failures no longer allow hollow no-op replay reverts to create empty
+  `revert` audit rows.
+- **Revert upgrade compatibility**: historical revert rows created before v4
+  remain recognized after upgrade even when they only stored
+  `context['reverted_log_id']` and do not yet have the dedicated
+  `reverted_log_id` column populated.
 - **Placeholder relation payloads**: unresolved collection values no longer
   persist entity class names such as `App\Entity\Category` as stand-ins for
   final related identifiers.
@@ -83,8 +98,16 @@ See `docs/upgrade-v4.md` for the full migration guide.
 - **Safer deferred retry defaults**: in-memory scheduled/deferred audit queues
   now have configurable default limits so long-running processes fail loudly
   instead of retaining failed work without bound.
+- **Stable deferred retry payloads**: once a pending deletion or deferred
+  collection/create plan is materialized after `postFlush`, later retry
+  attempts now reuse that exact audit log instead of rebuilding its metadata,
+  context, or payload from a later flush cycle.
 - **Contract separation**: queue-management and enable/disable responsibilities
   are easier to consume independently in custom integrations.
+- **Phase-aware revert dispatch**: explicit `revert` audit logs now use the
+  same transport-phase rules as normal auditing. Synchronous database delivery
+  can still participate in the current transaction, while deferred-only
+  transports are emitted only after the revert commits successfully.
 - **Query execution separation**: `AuditQuery` now keeps fluent state and
   delegates repository execution, changed-field batch scanning, and page
   materialization to focused query services.
@@ -241,7 +264,7 @@ This major release represents a complete architectural modernization of the bund
 - **PHP 8.4 Required**: The bundle now requires PHP 8.4+ for property hooks, asymmetric visibility, and typed class constants.
 - **Symfony 7.4+ Required**: Updated to leverage modern Symfony DI attributes and framework features.
 - **AuditLog Identification**: The primary key for the `AuditLog` entity has shifted from **Integer to UUID** (`Symfony\Component\Uid\Uuid`). This requires a database migration.
-- **AuditLog Constructor**: Now enforces mandatory parameters (`entityClass`, `entityId`, `action`) at instantiation time.
+- **AuditLog Constructor**: Requires `entityClass` and `action` at instantiation time; `entityId` may be `null` until it is resolved later in the lifecycle.
 - **AuditLog Entity is Non-Readonly**: The entity uses `private(set)` per-property instead of a global `readonly` class, enabling the `seal()` mechanism and controlled mutability via property hooks.
 - **AuditEntry Getters Removed**: All getter methods on `AuditEntry` have been replaced with read-only property hooks (e.g., `$entry->getEntityClass()` → `$entry->entityClass`).
 - **AuditQuery `execute()` Removed**: Use `getResults()`, `getFirstResult()`, `count()`, or `exists()` instead.

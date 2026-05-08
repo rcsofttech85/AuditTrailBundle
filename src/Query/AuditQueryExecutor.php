@@ -50,11 +50,16 @@ final readonly class AuditQueryExecutor
         $filters = $this->buildFilters($state);
         unset($filters['afterId'], $filters['beforeId']);
 
-        if ($state->changedFields === []) {
+        if (!$state->hasChangedFieldFilter()) {
             return $this->repository->countWithFilters($filters);
         }
 
-        return $this->countMatchingResults($state, $filters);
+        $queryableRepository = $this->resolveChangedFieldQueryableRepository();
+        if ($queryableRepository !== null) {
+            return $queryableRepository->countWithChangedFields($filters, $state->changedFields);
+        }
+
+        return $this->countMatchingResults($filters, $state->changedFields);
     }
 
     /**
@@ -77,15 +82,16 @@ final readonly class AuditQueryExecutor
 
     /**
      * @param array<string, mixed> $filters
+     * @param list<string>         $changedFields
      */
-    private function countMatchingResults(AuditQueryState $state, array $filters): int
+    private function countMatchingResults(array $filters, array $changedFields): int
     {
         $count = 0;
         $cursor = null;
 
         do {
             $batch = $this->fetchFilterBatch($filters, $cursor);
-            $count += $this->changedFieldMatcher->countMatches($batch, $state->changedFields);
+            $count += $this->changedFieldMatcher->countMatches($batch, $changedFields);
             $cursor = $this->resolveBatchCursor($batch);
         } while ($this->shouldContinueFilteredBatchLoop($batch, $cursor));
 
@@ -97,28 +103,40 @@ final readonly class AuditQueryExecutor
      */
     private function fetchLogs(AuditQueryState $state, int $limit): array
     {
-        if ($state->changedFields === []) {
+        $filters = $this->buildFilters($state);
+        if (!$state->hasChangedFieldFilter()) {
             /** @var list<AuditLog> $logs */
-            $logs = $this->repository->findWithFilters($this->buildFilters($state), $limit);
+            $logs = $this->repository->findWithFilters($filters, $limit);
 
             return $logs;
         }
 
-        return $this->fetchLogsWithChangedFieldFilter($state, $limit);
+        $queryableRepository = $this->resolveChangedFieldQueryableRepository();
+        if ($queryableRepository !== null) {
+            return $queryableRepository->findWithChangedFields($filters, $state->changedFields, $limit);
+        }
+
+        return $this->fetchLogsWithChangedFieldFilter($filters, $state->changedFields, $state->afterId, $limit);
     }
 
     /**
+     * @param array<string, mixed> $filters
+     * @param list<string>         $changedFields
+     *
      * @return list<AuditLog>
      */
-    private function fetchLogsWithChangedFieldFilter(AuditQueryState $state, int $limit): array
-    {
+    private function fetchLogsWithChangedFieldFilter(
+        array $filters,
+        array $changedFields,
+        ?string $afterId,
+        int $limit,
+    ): array {
         $results = [];
-        $filters = $this->buildFilters($state);
-        $cursor = $state->afterId;
+        $cursor = $afterId;
 
         do {
             $batch = $this->fetchFilterBatch($filters, $cursor);
-            foreach ($this->changedFieldMatcher->filter($batch, $state->changedFields) as $log) {
+            foreach ($this->changedFieldMatcher->filter($batch, $changedFields) as $log) {
                 $results[] = $log;
             }
             $cursor = $this->resolveBatchCursor($batch);
@@ -158,5 +176,14 @@ final readonly class AuditQueryExecutor
     private function shouldContinueFilteredBatchLoop(array $batch, ?string $cursor): bool
     {
         return $batch !== [] && $cursor !== null && count($batch) === self::FILTER_BATCH_SIZE;
+    }
+
+    private function resolveChangedFieldQueryableRepository(): ?ChangedFieldQueryableAuditLogRepositoryInterface
+    {
+        if (!$this->repository instanceof ChangedFieldQueryableAuditLogRepositoryInterface) {
+            return null;
+        }
+
+        return $this->repository->supportsChangedFieldQueries() ? $this->repository : null;
     }
 }

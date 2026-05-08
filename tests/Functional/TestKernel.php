@@ -22,11 +22,6 @@ class TestKernel extends Kernel implements CompilerPassInterface
 {
     use MicroKernelTrait;
 
-    public function __construct(string $environment, bool $debug)
-    {
-        parent::__construct($environment, $debug);
-    }
-
     /** @var array<string, mixed> */
     private array $auditConfig = [];
 
@@ -34,6 +29,9 @@ class TestKernel extends Kernel implements CompilerPassInterface
     private array $doctrineConfig = [];
 
     public static bool $useThrowingTransport = false;
+
+    /** @var list<string>|null */
+    public static ?array $throwingTransportSupportedPhases = null;
 
     public function build(ContainerBuilder $container): void
     {
@@ -73,7 +71,12 @@ class TestKernel extends Kernel implements CompilerPassInterface
     public function getCacheDir(): string
     {
         return sys_get_temp_dir().'/audit_trail_test/cache/'.
-            md5(serialize([$this->auditConfig, $this->doctrineConfig]));
+            md5(serialize([
+                $this->auditConfig,
+                $this->doctrineConfig,
+                self::$useThrowingTransport,
+                self::$throwingTransportSupportedPhases,
+            ]));
     }
 
     public function getLogDir(): string

@@ -4,69 +4,89 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
-use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
-
-use function in_array;
+use ReflectionMethod;
+use ReflectionProperty;
 
 final readonly class SoftDeleteHandler implements SoftDeleteHandlerInterface
 {
-    private const string GEDMO_SOFT_DELETE_FILTER = 'Gedmo\\SoftDeleteable\\Filter\\SoftDeleteableFilter';
-
     public function __construct(
-        private EntityManagerInterface $em,
-        /** @var list<string> */
-        private array $softDeleteFilterNames = ['softdeleteable'],
+        private EntityManagerResolver $entityManagerResolver,
+        private string $softDeleteField = 'deletedAt',
     ) {
     }
 
     public function isSoftDeleted(object $entity): bool
     {
-        return method_exists($entity, 'getDeletedAt') && null !== $entity->getDeletedAt();
+        return $this->readSoftDeleteValue($entity) !== null;
     }
 
     public function restoreSoftDeleted(object $entity): void
     {
-        if (method_exists($entity, 'setDeletedAt')) {
-            $entity->setDeletedAt(null);
+        $this->writeSoftDeleteValue($entity, null);
+    }
+
+    private function readSoftDeleteValue(object $entity): mixed
+    {
+        $metadata = $this->resolveMetadata($entity);
+        if ($metadata !== null && ($metadata->hasField($this->softDeleteField) || $metadata->hasAssociation($this->softDeleteField))) {
+            return $metadata->getFieldValue($entity, $this->softDeleteField);
+        }
+
+        $getter = 'get'.$this->toMethodSuffix($this->softDeleteField);
+        if (method_exists($entity, $getter)) {
+            return new ReflectionMethod($entity, $getter)->invoke($entity);
+        }
+
+        $isser = 'is'.$this->toMethodSuffix($this->softDeleteField);
+        if (method_exists($entity, $isser)) {
+            return new ReflectionMethod($entity, $isser)->invoke($entity);
+        }
+
+        if (property_exists($entity, $this->softDeleteField)) {
+            return new ReflectionProperty($entity, $this->softDeleteField)->getValue($entity);
+        }
+
+        return null;
+    }
+
+    private function writeSoftDeleteValue(object $entity, mixed $value): void
+    {
+        $metadata = $this->resolveMetadata($entity);
+        if ($metadata !== null && ($metadata->hasField($this->softDeleteField) || $metadata->hasAssociation($this->softDeleteField))) {
+            $metadata->setFieldValue($entity, $this->softDeleteField, $value);
+
+            return;
+        }
+
+        $setter = 'set'.$this->toMethodSuffix($this->softDeleteField);
+        if (method_exists($entity, $setter)) {
+            new ReflectionMethod($entity, $setter)->invoke($entity, $value);
+
+            return;
+        }
+
+        if (property_exists($entity, $this->softDeleteField)) {
+            new ReflectionProperty($entity, $this->softDeleteField)->setValue($entity, $value);
         }
     }
 
     /**
-     * @return array<string>
+     * @return ClassMetadata<object>|null
      */
-    public function disableSoftDeleteFilters(): array
+    private function resolveMetadata(object $entity): ?ClassMetadata
     {
-        $filters = $this->em->getFilters();
-        $disabled = [];
-
-        foreach ($filters->getEnabledFilters() as $name => $filter) {
-            if ($this->isManagedSoftDeleteFilter($name, $filter)) {
-                $disabled[] = $name;
-            }
+        $entityManager = $this->entityManagerResolver->resolveForObject($entity);
+        if ($entityManager === null) {
+            return null;
         }
 
-        foreach ($disabled as $name) {
-            $filters->disable($name);
-        }
-
-        return $disabled;
+        return $entityManager->getClassMetadata($entity::class);
     }
 
-    /**
-     * @param array<string> $names
-     */
-    public function enableFilters(array $names): void
+    private function toMethodSuffix(string $field): string
     {
-        array_walk($names, $this->em->getFilters()->enable(...));
-    }
-
-    private function isManagedSoftDeleteFilter(string $name, object $filter): bool
-    {
-        if (in_array($name, $this->softDeleteFilterNames, true)) {
-            return true;
-        }
-
-        return is_a($filter, self::GEDMO_SOFT_DELETE_FILTER);
+        return str_replace(' ', '', ucwords(str_replace(['_', '-'], ' ', $field)));
     }
 }

@@ -19,6 +19,7 @@ abstract class AbstractFunctionalTestCase extends KernelTestCase
         parent::setUp();
 
         TestKernel::$useThrowingTransport = false;
+        TestKernel::$throwingTransportSupportedPhases = null;
 
         $this->clearTestCache();
     }
@@ -27,6 +28,7 @@ abstract class AbstractFunctionalTestCase extends KernelTestCase
     {
         // Reset any static state on the TestKernel
         TestKernel::$useThrowingTransport = false;
+        TestKernel::$throwingTransportSupportedPhases = null;
 
         parent::tearDown();
     }

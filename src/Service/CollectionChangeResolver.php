@@ -13,6 +13,8 @@ use Rcsofttech\AuditTrailBundle\Contract\TrackableCollectionInterface;
 
 use function array_values;
 use function is_int;
+use function is_iterable;
+use function is_object;
 use function spl_object_id;
 
 /**
@@ -23,6 +25,7 @@ final readonly class CollectionChangeResolver
     public function __construct(
         private CollectionIdExtractor $collectionIdExtractor,
         private CollectionChangeIndexBuilder $indexBuilder,
+        private JoinTableCollectionIdLoader $joinTableCollectionIdLoader,
     ) {
     }
 
@@ -75,20 +78,28 @@ final readonly class CollectionChangeResolver
         EntityManagerInterface $em,
     ): ?array {
         $fieldName = $this->resolveCollectionFieldName($collection);
-        $oldIds = $this->collectionIdExtractor->extractFromIterable($collection->getSnapshot(), $em);
         $insertElements = array_values($this->getCollectionInsertDiff($collection));
         $deleteElements = array_values($this->getCollectionDeleteDiff($collection));
+        $oldIds = $this->resolveOriginalCollectionIds(
+            $collection,
+            $fieldName,
+            $insertElements !== [] || $deleteElements !== [],
+            $em,
+        );
 
         if ($insertElements === [] && $deleteElements === []) {
+            $currentIds = [];
+            $oldIds = $this->resolveOriginalCollectionIds($collection, $fieldName, true, $em);
+
             return $oldIds === []
                 ? null
-                : ['field' => $fieldName, 'old' => $oldIds, 'new' => []];
+                : ['field' => $fieldName, 'old' => $oldIds, 'new' => $currentIds];
         }
 
         return [
             'field' => $fieldName,
             'old' => $oldIds,
-            'new' => $this->computeNewIds($oldIds, $insertElements, $deleteElements, $em),
+            'new' => $this->normalizeUniqueIds($this->resolveCurrentCollectionIds($collection, $em)),
         ];
     }
 
@@ -165,58 +176,91 @@ final readonly class CollectionChangeResolver
     }
 
     /**
-     * @param array<int, int|string> $oldIds
-     * @param array<int, object>     $insertDiff
-     * @param array<int, object>     $deleteDiff
+     * @param TrackableCollection $collection
      *
      * @return array<int, int|string>
      */
-    private function computeNewIds(
-        array $oldIds,
-        array $insertDiff,
-        array $deleteDiff,
+    private function resolveOriginalCollectionIds(
+        PersistentCollection|TrackableCollectionInterface $collection,
+        string $fieldName,
+        bool $allowDatabaseFallback,
         EntityManagerInterface $em,
     ): array {
-        $newIds = $oldIds;
-        $newIdLookup = $this->buildIdLookup($newIds);
+        $oldIds = $this->collectionIdExtractor->extractFromIterable($collection->getSnapshot(), $em);
+        if ($oldIds !== [] || !$allowDatabaseFallback) {
+            return $oldIds;
+        }
 
-        foreach ($this->collectionIdExtractor->extractFromIterable($insertDiff, $em) as $id) {
-            $lookupKey = $this->buildIdLookupKey($id);
-            if (isset($newIdLookup[$lookupKey])) {
+        $owner = $collection->getOwner();
+        if ($owner === null) {
+            return [];
+        }
+
+        return $this->joinTableCollectionIdLoader->loadOriginalCollectionIdsFromDatabase(
+            $owner,
+            $fieldName,
+            $em,
+        );
+    }
+
+    /**
+     * @param TrackableCollection $collection
+     *
+     * @return array<int, int|string>
+     */
+    private function resolveCurrentCollectionIds(
+        PersistentCollection|TrackableCollectionInterface $collection,
+        EntityManagerInterface $em,
+    ): array {
+        if ($collection instanceof PersistentCollection) {
+            return $this->collectionIdExtractor->extractFromIterable($collection, $em);
+        }
+
+        if (is_iterable($collection)) {
+            return $this->collectionIdExtractor->extractFromIterable($collection, $em);
+        }
+
+        $deletedObjectIds = [];
+        foreach ($this->getCollectionDeleteDiff($collection) as $entity) {
+            $deletedObjectIds[spl_object_id($entity)] = true;
+        }
+
+        $currentItems = [];
+        foreach ($collection->getSnapshot() as $entity) {
+            if (is_object($entity) && isset($deletedObjectIds[spl_object_id($entity)])) {
                 continue;
             }
 
-            $newIds[] = $id;
-            $newIdLookup[$lookupKey] = true;
+            $currentItems[] = $entity;
         }
 
-        $deletedIdLookup = $this->buildIdLookup($this->collectionIdExtractor->extractFromIterable($deleteDiff, $em));
-        $filteredIds = [];
-
-        foreach ($newIds as $id) {
-            if (isset($deletedIdLookup[$this->buildIdLookupKey($id)])) {
-                continue;
-            }
-
-            $filteredIds[] = $id;
-        }
-
-        return $filteredIds;
+        return $this->collectionIdExtractor->extractFromIterable(
+            [...$currentItems, ...$this->getCollectionInsertDiff($collection)],
+            $em,
+        );
     }
 
     /**
      * @param array<int, int|string> $ids
      *
-     * @return array<string, true>
+     * @return array<int, int|string>
      */
-    private function buildIdLookup(array $ids): array
+    private function normalizeUniqueIds(array $ids): array
     {
+        $normalized = [];
         $lookup = [];
+
         foreach ($ids as $id) {
-            $lookup[$this->buildIdLookupKey($id)] = true;
+            $lookupKey = $this->buildIdLookupKey($id);
+            if (isset($lookup[$lookupKey])) {
+                continue;
+            }
+
+            $normalized[] = $id;
+            $lookup[$lookupKey] = true;
         }
 
-        return $lookup;
+        return $normalized;
     }
 
     private function buildIdLookupKey(int|string $id): string

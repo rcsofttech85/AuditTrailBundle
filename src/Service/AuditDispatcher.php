@@ -74,7 +74,7 @@ final class AuditDispatcher implements AuditDispatcherInterface
                     sprintf(
                         'Audit delivery partially succeeded for %s#%s before failing in a later transport.',
                         $audit->entityClass,
-                        $audit->entityId,
+                        $this->describeEntityId($audit),
                     ),
                     [
                         'completed_transports' => $result->completedTransports,
@@ -98,7 +98,12 @@ final class AuditDispatcher implements AuditDispatcherInterface
             return true;
         } catch (Throwable $e) {
             $this->logger?->error(
-                sprintf('Audit transport failed for %s#%s: %s', $audit->entityClass, $audit->entityId, $e->getMessage()),
+                sprintf(
+                    'Audit transport failed for %s#%s: %s',
+                    $audit->entityClass,
+                    $this->describeEntityId($audit),
+                    $e->getMessage(),
+                ),
                 ['exception' => $e]
             );
 
@@ -119,5 +124,10 @@ final class AuditDispatcher implements AuditDispatcherInterface
         if ($audit->deliveryId === null) {
             $audit->deliveryId = Uuid::v7()->toRfc4122();
         }
+    }
+
+    private function describeEntityId(AuditLog $audit): string
+    {
+        return $audit->entityId ?? '[unresolved]';
     }
 }

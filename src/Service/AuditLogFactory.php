@@ -8,7 +8,6 @@ use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -17,10 +16,8 @@ use Throwable;
 
 use function in_array;
 use function sprintf;
-use function strlen;
 
 use const FILTER_VALIDATE_IP;
-use const JSON_THROW_ON_ERROR;
 
 final readonly class AuditLogFactory
 {
@@ -32,16 +29,21 @@ final readonly class AuditLogFactory
 
     private DateTimeZone $tz;
 
+    private EntityClassResolver $entityClassResolver;
+
     public function __construct(
         private ClockInterface $clock,
         private TransactionIdGenerator $transactionIdGenerator,
         private ContextResolverInterface $contextResolver,
         private EntityIdResolverInterface $idResolver,
         private ContextSanitizer $contextSanitizer,
+        private AuditContextNormalizer $contextNormalizer,
         private ?LoggerInterface $logger = null,
         private string $timezone = 'UTC',
+        ?EntityClassResolver $entityClassResolver = null,
     ) {
         $this->tz = new DateTimeZone($this->timezone);
+        $this->entityClassResolver = $entityClassResolver ?? new EntityClassResolver();
     }
 
     /**
@@ -58,6 +60,7 @@ final readonly class AuditLogFactory
         EntityManagerInterface $entityManager,
     ): AuditLog {
         $entityId = $this->resolveEntityId($entity, $action, $oldValues, $entityManager);
+        $entityClass = $this->entityClassResolver->resolve($entity, $entityManager);
         $changedFields = $this->resolveChangedFields($action, $newValues);
         $resolvedContext = $this->resolveContext($entity, $action, $newValues ?? [], $context);
         $ipAddress = $this->sanitizeOptionalString($resolvedContext['ipAddress']);
@@ -68,8 +71,8 @@ final readonly class AuditLogFactory
         }
 
         $auditLog = new AuditLog(
-            entityClass: $entity::class,
-            entityId: (string) $entityId,
+            entityClass: $entityClass,
+            entityId: $entityId,
             action: $action,
             createdAt: $this->clock->now()->setTimezone($this->tz),
             oldValues: $oldValues !== null ? $this->contextSanitizer->sanitizeArray($oldValues) : null,
@@ -80,7 +83,7 @@ final readonly class AuditLogFactory
             username: $this->sanitizeOptionalString($resolvedContext['username']),
             ipAddress: $ipAddress,
             userAgent: $this->sanitizeOptionalString($resolvedContext['userAgent']),
-            context: $this->enforceContextSafety($entity::class, (string) $entityId, $resolvedContext['context']),
+            context: $this->contextNormalizer->normalize($resolvedContext['context'], $entityClass, $entityId),
         );
 
         $auditLog->markContextNormalized();
@@ -96,10 +99,10 @@ final readonly class AuditLogFactory
         AuditAction $action,
         ?array $oldValues,
         EntityManagerInterface $entityManager,
-    ): string|int {
+    ): ?string {
         $entityId = $this->idResolver->resolveFromEntity($entity, $entityManager);
-        if ($entityId === AuditLogInterface::PENDING_ID && $action === AuditAction::Delete && $oldValues !== null) {
-            $entityId = $this->idResolver->resolveFromValues($entity, $oldValues, $entityManager) ?? AuditLogInterface::PENDING_ID;
+        if ($entityId === null && $action === AuditAction::Delete && $oldValues !== null) {
+            $entityId = $this->idResolver->resolveFromValues($entity, $oldValues, $entityManager);
         }
 
         return $entityId;
@@ -144,47 +147,6 @@ final readonly class AuditLogFactory
                 'ipAddress' => null,
                 'userAgent' => null,
                 'context' => ['_error' => 'Context resolution failed'],
-            ];
-        }
-    }
-
-    /**
-     * @param array<string, mixed> $context
-     *
-     * @return array<string, mixed>
-     */
-    private function enforceContextSafety(string $entityClass, string $entityId, array $context): array
-    {
-        try {
-            $context = $this->contextSanitizer->sanitizeArray($context);
-
-            $encoded = json_encode($context, JSON_THROW_ON_ERROR);
-            $encodedSize = strlen($encoded);
-
-            if ($encodedSize > ContextSanitizer::MAX_CONTEXT_BYTES) {
-                $this->logger?->warning(
-                    sprintf(
-                        'Audit context for %s#%s truncated (%d bytes exceeded %d limit).',
-                        $entityClass,
-                        $entityId,
-                        $encodedSize,
-                        ContextSanitizer::MAX_CONTEXT_BYTES,
-                    ),
-                );
-
-                return ['_truncated' => true, '_original_size' => $encodedSize];
-            }
-
-            return $context;
-        } catch (Throwable $e) {
-            $this->logger?->warning(
-                sprintf('Audit context safety failed for %s#%s: %s', $entityClass, $entityId, $e->getMessage()),
-                ['exception' => $e],
-            );
-
-            return [
-                '_context_safety_error' => true,
-                '_message' => 'Context could not be normalized safely.',
             ];
         }
     }

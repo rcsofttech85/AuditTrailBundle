@@ -6,14 +6,21 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\Mapping\ClassMetadataFactory;
 use Doctrine\ORM\UnitOfWork;
+use Doctrine\Persistence\ManagerRegistry;
+use Doctrine\Persistence\Mapping\MappingException;
 use LogicException;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
+use Rcsofttech\AuditTrailBundle\Service\DoctrineEntityIdentifierExtractor;
+use Rcsofttech\AuditTrailBundle\Service\EntityIdentifierFormatter;
 use Rcsofttech\AuditTrailBundle\Service\EntityIdResolver;
+use Rcsofttech\AuditTrailBundle\Service\EntityManagerResolver;
+use Rcsofttech\AuditTrailBundle\Service\EntityPayloadIdentifierResolver;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use stdClass;
 
@@ -23,7 +30,7 @@ final class EntityIdResolverTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->resolver = new EntityIdResolver();
+        $this->resolver = $this->createEntityIdResolver();
     }
 
     public function testResolveNotPendingIsInsert(): void
@@ -42,14 +49,14 @@ final class EntityIdResolverTest extends TestCase
 
     public function testResolvePendingMissingContext(): void
     {
-        $log = new AuditLog('App\Entity\User', 'pending', AuditAction::Create);
+        $log = new AuditLog('App\Entity\User', null, AuditAction::Create);
 
         self::assertNull($this->resolver->resolve($log, $this->createContext(AuditPhase::PostFlush, $log)));
     }
 
     public function testResolvePendingSingleId(): void
     {
-        $log = new AuditLog(stdClass::class, 'pending', AuditAction::Create);
+        $log = new AuditLog(stdClass::class, null, AuditAction::Create);
 
         $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
@@ -63,7 +70,7 @@ final class EntityIdResolverTest extends TestCase
 
     public function testResolvePendingCompositeId(): void
     {
-        $log = new AuditLog(stdClass::class, 'pending', AuditAction::Create);
+        $log = new AuditLog(stdClass::class, null, AuditAction::Create);
 
         $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
@@ -77,7 +84,7 @@ final class EntityIdResolverTest extends TestCase
 
     public function testResolvePendingCompositeIdWithAssociationIdentifiers(): void
     {
-        $log = new AuditLog(stdClass::class, 'pending', AuditAction::Create);
+        $log = new AuditLog(stdClass::class, null, AuditAction::Create);
 
         $entity = new stdClass();
         $user = new class {};
@@ -102,7 +109,7 @@ final class EntityIdResolverTest extends TestCase
 
     public function testResolvePendingNoId(): void
     {
-        $log = new AuditLog(stdClass::class, 'pending', AuditAction::Create);
+        $log = new AuditLog(stdClass::class, null, AuditAction::Create);
 
         $entity = new stdClass();
         $em = self::createStub(EntityManagerInterface::class);
@@ -111,7 +118,7 @@ final class EntityIdResolverTest extends TestCase
         $em->method('getClassMetadata')->willReturn($metadata);
         $metadata->method('getIdentifierValues')->willReturn([]);
 
-        self::assertSame('pending', $this->resolver->resolve($log, $this->createContext(AuditPhase::PostFlush, $log, $em, $entity)));
+        self::assertNull($this->resolver->resolve($log, $this->createContext(AuditPhase::PostFlush, $log, $em, $entity)));
     }
 
     public function testResolveFromEntity(): void
@@ -122,8 +129,25 @@ final class EntityIdResolverTest extends TestCase
         $em->method('getClassMetadata')->willReturn($metadata);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 456]);
 
-        $resolver = new EntityIdResolver($em);
+        $resolver = $this->createEntityIdResolver($em);
         self::assertSame('456', $resolver->resolveFromEntity($entity));
+    }
+
+    public function testResolveFromEntityUsesResolvedEntityManagerWhenDefaultIsMissing(): void
+    {
+        $entity = new stdClass();
+        $em = self::createStub(EntityManagerInterface::class);
+        $metadata = self::createStub(ClassMetadata::class);
+        $em->method('getClassMetadata')->willReturn($metadata);
+        $metadata->method('getIdentifierValues')->willReturn(['id' => 654]);
+
+        $resolver = $this->createEntityIdResolver(
+            null,
+            null,
+            $this->createResolver($entity::class, $em),
+        );
+
+        self::assertSame('654', $resolver->resolveFromEntity($entity));
     }
 
     public function testResolveFromValues(): void
@@ -174,9 +198,9 @@ final class EntityIdResolverTest extends TestCase
             ->willReturn($metadata);
         $em->method('getUnitOfWork')->willReturn($uow);
 
-        $resolver = new EntityIdResolver($em);
+        $resolver = $this->createEntityIdResolver($em);
 
-        self::assertSame('pending', $resolver->resolveFromEntity($entity));
+        self::assertNull($resolver->resolveFromEntity($entity));
     }
 
     public function testResolveFromEntityReturnsPendingWhenAllStrategiesFail(): void
@@ -192,9 +216,113 @@ final class EntityIdResolverTest extends TestCase
         $metadata->method('getIdentifierFieldNames')->willReturn([]);
         $uow->method('isInIdentityMap')->willReturn(false);
 
-        $resolver = new EntityIdResolver($em);
+        $resolver = $this->createEntityIdResolver($em);
 
-        self::assertSame('pending', $resolver->resolveFromEntity($entity));
+        self::assertNull($resolver->resolveFromEntity($entity));
+    }
+
+    public function testResolveFromEntityDoesNotFallbackToArbitraryGetIdMethod(): void
+    {
+        $entity = new class {
+            public function getId(): string
+            {
+                return 'legacy-id';
+            }
+        };
+        $uow = self::createStub(UnitOfWork::class);
+        $uow->method('isInIdentityMap')->willReturn(false);
+
+        $metadata = self::createMock(ClassMetadata::class);
+        $metadata->expects($this->once())
+            ->method('getIdentifierValues')
+            ->with($entity)
+            ->willReturn([]);
+
+        $em = self::createMock(EntityManagerInterface::class);
+        $em->expects($this->once())
+            ->method('getClassMetadata')
+            ->with($entity::class)
+            ->willReturn($metadata);
+        $em->method('getUnitOfWork')->willReturn($uow);
+
+        $resolver = $this->createEntityIdResolver($em);
+
+        self::assertNull($resolver->resolveFromEntity($entity));
+    }
+
+    public function testResolveFromEntitySkipsLoggingForTransientClasses(): void
+    {
+        $entity = new stdClass();
+        $metadataFactory = self::createMock(ClassMetadataFactory::class);
+        $em = self::createMock(EntityManagerInterface::class);
+        $logger = self::createMock(LoggerInterface::class);
+
+        $metadataFactory->expects($this->once())
+            ->method('isTransient')
+            ->with($entity::class)
+            ->willReturn(true);
+        $em->method('getMetadataFactory')->willReturn($metadataFactory);
+        $em->expects($this->never())->method('getClassMetadata');
+        $logger->expects($this->never())->method('debug');
+
+        $resolver = $this->createEntityIdResolver($em, $logger);
+
+        self::assertNull($resolver->resolveFromEntity($entity));
+    }
+
+    public function testResolveFromEntitySkipsLoggingForMappingExceptions(): void
+    {
+        $entity = new stdClass();
+        $metadataFactory = self::createMock(ClassMetadataFactory::class);
+        $em = self::createMock(EntityManagerInterface::class);
+        $logger = self::createMock(LoggerInterface::class);
+
+        $metadataFactory->expects($this->once())
+            ->method('isTransient')
+            ->with($entity::class)
+            ->willReturn(false);
+        $em->method('getMetadataFactory')->willReturn($metadataFactory);
+        $em->expects($this->once())
+            ->method('getClassMetadata')
+            ->with($entity::class)
+            ->willThrowException(MappingException::nonExistingClass($entity::class));
+        $logger->expects($this->never())->method('debug');
+
+        $resolver = $this->createEntityIdResolver($em, $logger);
+
+        self::assertNull($resolver->resolveFromEntity($entity));
+    }
+
+    public function testResolveFromEntityLogsDebugWhenMetadataLookupFails(): void
+    {
+        $entity = new stdClass();
+        $metadataFactory = self::createMock(ClassMetadataFactory::class);
+        $em = self::createMock(EntityManagerInterface::class);
+        $logger = self::createMock(LoggerInterface::class);
+
+        $metadataFactory->expects($this->once())
+            ->method('isTransient')
+            ->with($entity::class)
+            ->willReturn(false);
+        $em->method('getMetadataFactory')->willReturn($metadataFactory);
+        $em->expects($this->once())
+            ->method('getClassMetadata')
+            ->with($entity::class)
+            ->willThrowException(new LogicException('metadata unavailable'));
+
+        $logger->expects($this->once())
+            ->method('debug')
+            ->with(
+                'Unable to read Doctrine metadata while resolving audit entity identifier.',
+                self::callback(static function (array $context) use ($entity): bool {
+                    return $context['entity_class'] === $entity::class
+                        && $context['exception'] instanceof LogicException;
+                }),
+            );
+
+        $resolver = $this->createEntityIdResolver($em, $logger);
+
+        self::assertNull($resolver->resolveFromEntity($entity));
     }
 
     public function testResolveFromValuesLogsWarningWhenIdentifierValuesCannotBeNormalized(): void
@@ -214,7 +342,7 @@ final class EntityIdResolverTest extends TestCase
                 $messages[] = [$message, $context];
             });
 
-        $resolver = new EntityIdResolver(null, $logger);
+        $resolver = $this->createEntityIdResolver(null, $logger);
 
         self::assertNull($resolver->resolveFromValues($entity, ['id' => new stdClass()], $em));
         self::assertContains(
@@ -242,5 +370,42 @@ final class EntityIdResolverTest extends TestCase
             null,
             $entity,
         );
+    }
+
+    private function createResolver(string $class, EntityManagerInterface $entityManager): EntityManagerResolver
+    {
+        $registry = self::createStub(ManagerRegistry::class);
+        $registry->method('getManagerForClass')->willReturnCallback(
+            static fn (string $resolvedClass): ?EntityManagerInterface => $resolvedClass === $class ? $entityManager : null
+        );
+
+        return new EntityManagerResolver($registry);
+    }
+
+    private function createEntityIdResolver(
+        ?EntityManagerInterface $entityManager = null,
+        ?LoggerInterface $logger = null,
+        ?EntityManagerResolver $entityManagerResolver = null,
+    ): EntityIdResolver {
+        $identifierExtractor = new DoctrineEntityIdentifierExtractor($logger);
+        $identifierFormatter = new EntityIdentifierFormatter($identifierExtractor, $logger);
+        $payloadIdentifierResolver = new EntityPayloadIdentifierResolver($identifierExtractor, $identifierFormatter, $logger);
+
+        return new EntityIdResolver(
+            $identifierExtractor,
+            $identifierFormatter,
+            $payloadIdentifierResolver,
+            $entityManagerResolver ?? ($entityManager !== null
+                ? $this->createResolverForAnyClass($entityManager)
+                : new EntityManagerResolver()),
+        );
+    }
+
+    private function createResolverForAnyClass(EntityManagerInterface $entityManager): EntityManagerResolver
+    {
+        $registry = self::createStub(ManagerRegistry::class);
+        $registry->method('getManagerForClass')->willReturn($entityManager);
+
+        return new EntityManagerResolver($registry);
     }
 }

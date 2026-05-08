@@ -10,7 +10,6 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\InverseSideMapping;
 use Doctrine\ORM\Mapping\OwningSideMapping;
 use Doctrine\ORM\UnitOfWork;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\ValueObject\AssociationImpact;
 
 use function array_filter;
@@ -53,7 +52,7 @@ final readonly class AssociationImpactAnalyzer
         EntityManagerInterface $em,
     ): void {
         $deletedId = $this->resolveEntityId($deletedEntity, $em);
-        if ($deletedId === AuditLogInterface::PENDING_ID) {
+        if ($deletedId === null) {
             return;
         }
 
@@ -188,8 +187,8 @@ final readonly class AssociationImpactAnalyzer
         return $metadataByClass[$entity::class] ??= $em->getClassMetadata($entity::class);
     }
 
-    private function resolveEntityId(object $entity, EntityManagerInterface $em): int|string
+    private function resolveEntityId(object $entity, EntityManagerInterface $em): ?string
     {
-        return $this->collectionIdExtractor->extractFromIterable([$entity], $em)[0] ?? AuditLogInterface::PENDING_ID;
+        return $this->collectionIdExtractor->extractFromIterable([$entity], $em)[0] ?? null;
     }
 }

@@ -19,6 +19,7 @@ use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Service\CollectionChangeIndexBuilder;
 use Rcsofttech\AuditTrailBundle\Service\CollectionChangeResolver;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
+use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
 use Rcsofttech\AuditTrailBundle\Service\DeferredCollectionDetector;
 use Rcsofttech\AuditTrailBundle\Service\EntityAuditDispatchManager;
 use Rcsofttech\AuditTrailBundle\Service\EntityCollectionUpdateProcessor;
@@ -119,7 +120,19 @@ final class EntityCollectionUpdateProcessorTest extends TestCase
 
         $em->expects($this->once())->method('getClassMetadata')->with($owner::class)->willReturn($metadata);
         $metadata->expects($this->once())->method('getFieldValue')->with($owner, 'items')->willReturn($owner->items);
-        $idResolver->expects($this->exactly(2))->method('resolveFromEntity')->with($pendingItem, $em)->willReturn(\Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface::PENDING_ID);
+        $idResolver->expects($this->exactly(3))
+            ->method('resolveFromEntity')
+            ->willReturnCallback(static function (object $entity, EntityManagerInterface $manager) use ($owner, $pendingItem, $em): ?string {
+                TestCase::assertSame($em, $manager);
+
+                if ($entity === $owner) {
+                    return null;
+                }
+
+                TestCase::assertSame($pendingItem, $entity);
+
+                return null;
+            });
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
             ->with($owner, AuditAction::Update, ['items' => []])
@@ -136,6 +149,91 @@ final class EntityCollectionUpdateProcessorTest extends TestCase
             }));
 
         $this->createProcessor(idResolver: $idResolver)->process($em, $uow, [$collection]);
+    }
+
+    public function testMergesMultipleCollectionFieldsForSameOwnerIntoSingleAudit(): void
+    {
+        $em = self::createMock(EntityManagerInterface::class);
+        $uow = self::createMock(UnitOfWork::class);
+        $owner = new class {
+            /** @var array<int, object> */
+            public array $tags = [];
+
+            /** @var array<int, object> */
+            public array $categories = [];
+        };
+        $existingTag = new class {
+            public function getId(): int
+            {
+                return 1;
+            }
+        };
+        $addedTag = new class {
+            public function getId(): int
+            {
+                return 2;
+            }
+        };
+        $removedCategory = new class {
+            public function getId(): int
+            {
+                return 10;
+            }
+        };
+        $tagCollection = new StubCollection(
+            $owner,
+            [$addedTag],
+            [],
+            $this->createStubCollectionMapping('tags', $owner::class),
+            [$existingTag],
+        );
+        $categoryCollection = new StubCollection(
+            $owner,
+            [],
+            [$removedCategory],
+            $this->createStubCollectionMapping('categories', $owner::class),
+            [$removedCategory],
+        );
+        $owner->tags = [$existingTag, $addedTag];
+        $owner->categories = [];
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Update);
+        $metadata = self::createMock(ClassMetadata::class);
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+
+        $uow->expects($this->once())->method('isScheduledForInsert')->with($owner)->willReturn(false);
+        $uow->expects($this->once())->method('isScheduledForUpdate')->with($owner)->willReturn(false);
+        $em->expects($this->exactly(2))->method('getClassMetadata')->with($owner::class)->willReturn($metadata);
+        $metadata->expects($this->exactly(2))
+            ->method('getFieldValue')
+            ->willReturnMap([
+                [$owner, 'tags', $owner->tags],
+                [$owner, 'categories', $owner->categories],
+            ]);
+        $idResolver->method('resolveFromEntity')->willReturnMap([
+            [$existingTag, $em, '1'],
+            [$addedTag, $em, '2'],
+            [$removedCategory, $em, '10'],
+        ]);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($owner, AuditAction::Update, ['tags' => ['1', '2'], 'categories' => []])
+            ->willReturn(true);
+        $this->auditService->expects($this->once())
+            ->method('createAuditLog')
+            ->with(
+                $owner,
+                AuditAction::Update,
+                ['tags' => ['1'], 'categories' => ['10']],
+                ['tags' => ['1', '2'], 'categories' => []],
+                [],
+                $em,
+            )
+            ->willReturn($audit);
+        $this->auditManager->expects($this->once())
+            ->method('schedule')
+            ->with($owner, $audit, false);
+
+        $this->createProcessor(idResolver: $idResolver)->process($em, $uow, [$tagCollection, $categoryCollection]);
     }
 
     /**
@@ -161,6 +259,7 @@ final class EntityCollectionUpdateProcessorTest extends TestCase
         $collectionChangeResolver = new CollectionChangeResolver(
             $collectionIdExtractor,
             new CollectionChangeIndexBuilder($collectionIdExtractor, new JoinTableCollectionIdLoader($resolver)),
+            new JoinTableCollectionIdLoader($resolver),
         );
 
         return new EntityCollectionUpdateProcessor(
@@ -168,6 +267,7 @@ final class EntityCollectionUpdateProcessorTest extends TestCase
             $this->auditManager,
             $collectionChangeResolver,
             new DeferredCollectionDetector($collectionChangeResolver),
+            new CollectionTransitionMerger(),
             new EntityAuditDispatchManager($dispatcher ?? self::createStub(AuditDispatcherInterface::class), $this->auditManager),
         );
     }

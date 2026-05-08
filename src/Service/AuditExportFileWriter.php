@@ -14,6 +14,8 @@ use function ftell;
 use function is_dir;
 use function is_resource;
 use function mkdir;
+use function restore_error_handler;
+use function set_error_handler;
 use function sprintf;
 use function str_starts_with;
 
@@ -38,10 +40,7 @@ final class AuditExportFileWriter
     {
         $this->ensureDirectoryExists($outputFile);
 
-        $handle = @fopen($outputFile, 'w');
-        if ($handle === false) {
-            throw new RuntimeException(sprintf('Failed to write to file: %s', $outputFile));
-        }
+        $handle = $this->openWritableHandle($outputFile);
 
         if ($this->isStreamTarget($outputFile)) {
             try {
@@ -72,5 +71,33 @@ final class AuditExportFileWriter
     private function isStreamTarget(string $outputFile): bool
     {
         return str_starts_with($outputFile, 'php://');
+    }
+
+    /**
+     * @return resource
+     */
+    private function openWritableHandle(string $outputFile)
+    {
+        $lastError = null;
+
+        set_error_handler(static function (int $_severity, string $message) use (&$lastError): bool {
+            $lastError = $message;
+
+            return true;
+        });
+
+        try {
+            $handle = fopen($outputFile, 'w');
+        } finally {
+            restore_error_handler();
+        }
+
+        if ($handle === false) {
+            $suffix = $lastError !== null ? sprintf(' (%s)', $lastError) : '';
+
+            throw new RuntimeException(sprintf('Failed to write to file: %s%s', $outputFile, $suffix));
+        }
+
+        return $handle;
     }
 }

@@ -11,12 +11,6 @@ use Symfony\Component\Uid\Uuid;
 
 use function in_array;
 
-/**
- * Rich value object wrapping an AuditLog with diff helpers.
- *
- * Provides a developer-friendly interface for accessing audit data
- * and computing field-level differences.
- */
 final class AuditEntry
 {
     public function __construct(
@@ -28,9 +22,6 @@ final class AuditEntry
 
     public string $entityClass { get => $this->log->entityClass; }
 
-    /**
-     * Get the short entity class name (without namespace).
-     */
     public string $entityShortName {
         get {
             $parts = explode('\\', $this->log->entityClass);
@@ -40,7 +31,7 @@ final class AuditEntry
         }
     }
 
-    public string $entityId { get => $this->log->entityId; }
+    public string $entityId { get => $this->log->requireEntityId(); }
 
     public string $action { get => $this->log->action->value; }
 
@@ -58,12 +49,7 @@ final class AuditEntry
 
     public DateTimeImmutable $createdAt { get => $this->log->createdAt; }
 
-    /**
-     * The underlying AuditLog entity.
-     */
     public AuditLog $auditLog { get => $this->log; }
-
-    // ========== Action Helpers ==========
 
     public bool $isCreate { get => $this->log->action === AuditAction::Create; }
 
@@ -75,13 +61,7 @@ final class AuditEntry
 
     public bool $isRestore { get => $this->log->action === AuditAction::Restore; }
 
-    // ========== Diff Helpers ==========
-
-    /**
-     * All changed fields with their old and new values.
-     *
-     * @var array<string, array{old: mixed, new: mixed}>
-     */
+    /** @var array<string, array{old: mixed, new: mixed}> */
     public array $diff {
         get {
             $oldValues = $this->log->oldValues ?? [];
@@ -100,16 +80,9 @@ final class AuditEntry
         }
     }
 
-    /**
-     * List of fields that changed.
-     *
-     * @var array<int, string>
-     */
+    /** @var array<int, string> */
     public array $changedFields { get => $this->log->changedFields ?? []; }
 
-    /**
-     * Check if a specific field was changed.
-     */
     public function hasFieldChanged(string $field): bool
     {
         $changedFields = $this->log->changedFields ?? [];
@@ -117,9 +90,6 @@ final class AuditEntry
         return in_array($field, $changedFields, true);
     }
 
-    /**
-     * Get the old value of a specific field.
-     */
     public function getOldValue(string $field): mixed
     {
         $oldValues = $this->log->oldValues;
@@ -127,9 +97,6 @@ final class AuditEntry
         return $oldValues[$field] ?? null;
     }
 
-    /**
-     * Get the new value of a specific field.
-     */
     public function getNewValue(string $field): mixed
     {
         $newValues = $this->log->newValues;
@@ -137,17 +104,9 @@ final class AuditEntry
         return $newValues[$field] ?? null;
     }
 
-    /**
-     * All old values.
-     *
-     * @var array<string, mixed>|null
-     */
+    /** @var array<string, mixed>|null */
     public ?array $oldValues { get => $this->log->oldValues; }
 
-    /**
-     * All new values.
-     *
-     * @var array<string, mixed>|null
-     */
+    /** @var array<string, mixed>|null */
     public ?array $newValues { get => $this->log->newValues; }
 }

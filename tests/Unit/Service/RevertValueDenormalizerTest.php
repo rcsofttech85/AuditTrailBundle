@@ -9,10 +9,11 @@ use DateTimeImmutable;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
+use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Service\EntityIdentifierNormalizer;
+use Rcsofttech\AuditTrailBundle\Service\EntityManagerResolver;
 use Rcsofttech\AuditTrailBundle\Service\RevertDateTimeValueDenormalizer;
 use Rcsofttech\AuditTrailBundle\Service\RevertValueDenormalizer;
 use RuntimeException;
@@ -20,7 +21,6 @@ use stdClass;
 use Symfony\Component\Uid\Ulid;
 use Symfony\Component\Uid\Uuid;
 
-#[AllowMockObjectsWithoutExpectations]
 final class RevertValueDenormalizerTest extends TestCase
 {
     /** @var (EntityManagerInterface&\PHPUnit\Framework\MockObject\Stub)|(EntityManagerInterface&MockObject) */
@@ -36,11 +36,21 @@ final class RevertValueDenormalizerTest extends TestCase
 
     private function createDenormalizer(EntityManagerInterface $em): RevertValueDenormalizer
     {
+        $resolver = $this->createResolver($em);
+
         return new RevertValueDenormalizer(
-            $em,
+            $resolver,
             new RevertDateTimeValueDenormalizer(),
-            new EntityIdentifierNormalizer($em),
+            new EntityIdentifierNormalizer($resolver),
         );
+    }
+
+    private function createResolver(EntityManagerInterface $em): EntityManagerResolver
+    {
+        $registry = self::createStub(ManagerRegistry::class);
+        $registry->method('getManagerForClass')->willReturn($em);
+
+        return new EntityManagerResolver($registry);
     }
 
     public function testDenormalizeNull(): void

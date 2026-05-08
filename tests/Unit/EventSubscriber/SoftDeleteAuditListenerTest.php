@@ -8,7 +8,6 @@ use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\UnitOfWork;
 use Doctrine\Persistence\Event\LifecycleEventArgs;
-use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
@@ -20,23 +19,60 @@ use Rcsofttech\AuditTrailBundle\EventSubscriber\SoftDeleteAuditListener;
 use ReflectionClass;
 use stdClass;
 
-#[AllowMockObjectsWithoutExpectations]
 final class SoftDeleteAuditListenerTest extends TestCase
 {
-    private AuditServiceInterface&MockObject $auditService;
+    /** @var (AuditServiceInterface&\PHPUnit\Framework\MockObject\Stub)|(AuditServiceInterface&MockObject) */
+    private AuditServiceInterface $auditService;
 
-    private ChangeProcessorInterface&MockObject $changeProcessor;
+    /** @var (ChangeProcessorInterface&\PHPUnit\Framework\MockObject\Stub)|(ChangeProcessorInterface&MockObject) */
+    private ChangeProcessorInterface $changeProcessor;
 
-    private ScheduledAuditManagerInterface&MockObject $auditManager;
+    /** @var (ScheduledAuditManagerInterface&\PHPUnit\Framework\MockObject\Stub)|(ScheduledAuditManagerInterface&MockObject) */
+    private ScheduledAuditManagerInterface $auditManager;
 
     private SoftDeleteAuditListener $listener;
 
     protected function setUp(): void
     {
-        $this->auditService = $this->createMock(AuditServiceInterface::class);
-        $this->changeProcessor = $this->createMock(ChangeProcessorInterface::class);
-        $this->auditManager = $this->createMock(ScheduledAuditManagerInterface::class);
+        $this->auditService = self::createStub(AuditServiceInterface::class);
+        $this->changeProcessor = self::createStub(ChangeProcessorInterface::class);
+        $this->auditManager = self::createStub(ScheduledAuditManagerInterface::class);
 
+        $this->rebuildListener();
+    }
+
+    /** @return AuditServiceInterface&MockObject */
+    private function useAuditServiceMock(): AuditServiceInterface
+    {
+        $auditService = $this->createMock(AuditServiceInterface::class);
+        $this->auditService = $auditService;
+        $this->rebuildListener();
+
+        return $auditService;
+    }
+
+    /** @return ChangeProcessorInterface&MockObject */
+    private function useChangeProcessorMock(): ChangeProcessorInterface
+    {
+        $changeProcessor = $this->createMock(ChangeProcessorInterface::class);
+        $this->changeProcessor = $changeProcessor;
+        $this->rebuildListener();
+
+        return $changeProcessor;
+    }
+
+    /** @return ScheduledAuditManagerInterface&MockObject */
+    private function useAuditManagerMock(): ScheduledAuditManagerInterface
+    {
+        $auditManager = $this->createMock(ScheduledAuditManagerInterface::class);
+        $this->auditManager = $auditManager;
+        $this->rebuildListener();
+
+        return $auditManager;
+    }
+
+    private function rebuildListener(): void
+    {
         $this->listener = new SoftDeleteAuditListener(
             $this->auditService,
             $this->changeProcessor,
@@ -56,31 +92,30 @@ final class SoftDeleteAuditListenerTest extends TestCase
     {
         $entity = new stdClass();
         $changeSet = ['deletedAt' => [null, '2026-04-02T00:00:00+00:00']];
-        $em = $this->createMock(EntityManagerInterface::class);
+        $em = self::createStub(EntityManagerInterface::class);
         $uow = $this->createMock(UnitOfWork::class);
-        $args = $this->createMock(LifecycleEventArgs::class);
+        $args = self::createStub(LifecycleEventArgs::class);
+        $auditManager = $this->useAuditManagerMock();
+        $changeProcessor = $this->useChangeProcessorMock();
+        $auditService = $this->useAuditServiceMock();
 
         $args->method('getObject')->willReturn($entity);
         $args->method('getObjectManager')->willReturn($em);
 
-        $this->auditManager->expects($this->once())
+        $auditManager->expects($this->once())
             ->method('isEnabled')
             ->willReturn(true);
         $em->method('getUnitOfWork')->willReturn($uow);
-        $em->expects($this->once())
-            ->method('contains')
-            ->with($entity)
-            ->willReturn(true);
         $uow->expects($this->once())
             ->method('getEntityChangeSet')
             ->with($entity)
             ->willReturn($changeSet);
 
-        $this->changeProcessor->expects($this->once())
+        $changeProcessor->expects($this->once())
             ->method('determineUpdateAction')
             ->with($changeSet)
             ->willReturn(AuditAction::SoftDelete);
-        $this->changeProcessor->expects($this->once())
+        $changeProcessor->expects($this->once())
             ->method('extractChanges')
             ->with($entity, $changeSet)
             ->willReturn([
@@ -88,21 +123,21 @@ final class SoftDeleteAuditListenerTest extends TestCase
                 ['deletedAt' => '2026-04-02T00:00:00+00:00'],
             ]);
 
-        $this->auditService->expects($this->exactly(2))
+        $auditService->expects($this->exactly(2))
             ->method('shouldAudit')
             ->willReturnCallback(static function (object $currentEntity, AuditAction $action = AuditAction::Create, array $changeSet = []): bool {
                 return $currentEntity instanceof stdClass
                     && ($action === AuditAction::Create || $action === AuditAction::SoftDelete)
                     && ($changeSet === [] || $changeSet === ['deletedAt' => '2026-04-02T00:00:00+00:00']);
             });
-        $this->auditService->expects($this->once())
+        $auditService->expects($this->once())
             ->method('getEntityData')
             ->with($entity, [], $em)
             ->willReturn(['deletedAt' => '2026-04-02T00:00:00+00:00']);
 
-        $this->auditManager->expects($this->once())
+        $auditManager->expects($this->once())
             ->method('addPendingDeletion')
-            ->with($entity, ['deletedAt' => null], true, AuditAction::SoftDelete);
+            ->with($entity, ['deletedAt' => null], AuditAction::SoftDelete);
 
         $this->listener->postSoftDelete($args);
     }
@@ -110,18 +145,21 @@ final class SoftDeleteAuditListenerTest extends TestCase
     public function testPostSoftDeleteSkipsWhenAuditManagerIsDisabled(): void
     {
         $entity = new stdClass();
-        $args = $this->createMock(LifecycleEventArgs::class);
-        $em = $this->createMock(EntityManagerInterface::class);
+        $args = self::createStub(LifecycleEventArgs::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $auditManager = $this->useAuditManagerMock();
+        $changeProcessor = $this->useChangeProcessorMock();
+        $auditService = $this->useAuditServiceMock();
 
         $args->method('getObject')->willReturn($entity);
         $args->method('getObjectManager')->willReturn($em);
 
-        $this->auditManager->expects($this->once())
+        $auditManager->expects($this->once())
             ->method('isEnabled')
             ->willReturn(false);
-        $this->changeProcessor->expects($this->never())->method('determineUpdateAction');
-        $this->auditService->expects($this->never())->method('shouldAudit');
-        $this->auditManager->expects($this->never())->method('addPendingDeletion');
+        $changeProcessor->expects($this->never())->method('determineUpdateAction');
+        $auditService->expects($this->never())->method('shouldAudit');
+        $auditManager->expects($this->never())->method('addPendingDeletion');
 
         $this->listener->postSoftDelete($args);
     }
@@ -129,11 +167,13 @@ final class SoftDeleteAuditListenerTest extends TestCase
     public function testPostSoftDeleteSkipsAuditLogEntity(): void
     {
         $auditLog = new AuditLog(stdClass::class, '1', AuditAction::SoftDelete);
-        $args = $this->createMock(LifecycleEventArgs::class);
+        $args = self::createStub(LifecycleEventArgs::class);
+        $changeProcessor = $this->useChangeProcessorMock();
+        $auditManager = $this->useAuditManagerMock();
         $args->method('getObject')->willReturn($auditLog);
 
-        $this->changeProcessor->expects($this->never())->method('determineUpdateAction');
-        $this->auditManager->expects($this->never())->method('addPendingDeletion');
+        $changeProcessor->expects($this->never())->method('determineUpdateAction');
+        $auditManager->expects($this->never())->method('addPendingDeletion');
 
         $this->listener->postSoftDelete($args);
     }
