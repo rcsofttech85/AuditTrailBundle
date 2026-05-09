@@ -176,6 +176,18 @@ class AuditLog implements AuditLogInterface
         return $this->entityId;
     }
 
+    /**
+     * @internal preserves a stable audit row identifier across transport boundaries
+     */
+    public function initializeIdIfMissing(Uuid $id): void
+    {
+        if ($this->id !== null) {
+            return;
+        }
+
+        $this->id = $id;
+    }
+
     private function checkSealed(): void
     {
         if ($this->isSealed) {

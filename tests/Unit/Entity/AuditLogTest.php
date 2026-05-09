@@ -9,6 +9,7 @@ use LogicException;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Symfony\Component\Uid\Uuid;
 
 final class AuditLogTest extends TestCase
 {
@@ -139,5 +140,17 @@ final class AuditLogTest extends TestCase
         self::assertSame(['v' => 2], $log->newValues);
         self::assertSame(['v'], $log->changedFields);
         self::assertSame('sig_123', $log->signature);
+    }
+
+    public function testInitializeIdIfMissingOnlySetsTheIdentifierOnce(): void
+    {
+        $log = new AuditLog('App\Entity\User', '1', 'create');
+        $firstId = Uuid::v7();
+        $secondId = Uuid::v7();
+
+        $log->initializeIdIfMissing($firstId);
+        $log->initializeIdIfMissing($secondId);
+
+        self::assertSame($firstId->toRfc4122(), $log->id?->toRfc4122());
     }
 }

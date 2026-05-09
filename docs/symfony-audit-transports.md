@@ -380,6 +380,11 @@ framework:
 
 Worker retries are handled safely: duplicate deliveries for the same internal message are ignored instead of creating duplicate audit rows.
 
+The async database path also preserves the original audit-log UUID when the
+message is created, then reuses that UUID in the worker. This keeps keyset
+pagination, latest-first reads, and transaction drilldowns aligned with audit
+creation order instead of worker-consumption timing.
+
 ---
 
 ## 5. Chain Transport (Multiple Transports)

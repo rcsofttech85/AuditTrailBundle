@@ -35,6 +35,7 @@ readonly class PersistAuditLogMessage
         public ?string $userAgent,
         public ?string $transactionHash,
         public string $createdAt,
+        public ?string $auditId = null,
         public ?string $signature = null,
         public ?string $deliveryId = null,
         public ?string $revertedLogId = null,
@@ -45,6 +46,8 @@ readonly class PersistAuditLogMessage
 
     public static function createFromAuditLog(AuditLog $log, ?string $resolvedEntityId = null): self
     {
+        $log->initializeIdIfMissing(Uuid::v7());
+
         return new self(
             entityClass: $log->entityClass,
             entityId: $resolvedEntityId ?? $log->requireEntityId(),
@@ -58,6 +61,7 @@ readonly class PersistAuditLogMessage
             userAgent: $log->userAgent,
             transactionHash: $log->transactionHash,
             createdAt: $log->createdAt->format(DateTimeInterface::ATOM),
+            auditId: $log->id?->toRfc4122(),
             signature: $log->signature,
             deliveryId: $log->deliveryId ?? Uuid::v7()->toRfc4122(),
             revertedLogId: $log->revertedLogId,

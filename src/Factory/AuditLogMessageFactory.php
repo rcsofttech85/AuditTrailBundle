@@ -10,6 +10,7 @@ use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\PersistAuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Centralises the creation of message DTOs from AuditLog entities.
@@ -40,6 +41,7 @@ final readonly class AuditLogMessageFactory implements AuditLogMessageFactoryInt
     public function createPersistMessage(AuditTransportContext $context): PersistAuditLogMessage
     {
         $entityId = $this->resolveEntityId($context);
+        $context->audit->initializeIdIfMissing(Uuid::v7());
 
         return PersistAuditLogMessage::createFromAuditLog($context->audit, $entityId);
     }

@@ -32,7 +32,7 @@ final class AuditLogWriter implements AuditLogWriterInterface
 
         $metadata = $em->getClassMetadata(AuditLog::class);
         $connection = $em->getConnection();
-        $this->assignIdentifierIfMissing($audit, $metadata);
+        $this->assignIdentifierIfMissing($audit);
 
         $fieldNames = $metadata->getFieldNames();
         if (!in_array('id', $fieldNames, true)) {
@@ -70,16 +70,9 @@ final class AuditLogWriter implements AuditLogWriterInterface
         return Type::getType($type)->convertToDatabaseValue($value, $em->getConnection()->getDatabasePlatform());
     }
 
-    /**
-     * @param ClassMetadata<AuditLog> $metadata
-     */
-    private function assignIdentifierIfMissing(AuditLog $audit, ClassMetadata $metadata): void
+    private function assignIdentifierIfMissing(AuditLog $audit): void
     {
-        if ($metadata->getFieldValue($audit, 'id') !== null) {
-            return;
-        }
-
-        $metadata->setFieldValue($audit, 'id', Uuid::v7());
+        $audit->initializeIdIfMissing(Uuid::v7());
     }
 
     /**

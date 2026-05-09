@@ -52,16 +52,24 @@ concern to a smaller processor service.
 These services build and send audit logs:
 
 - `AuditLogFactory`
+- `AuditLogMessageFactory`
 - `AuditDispatcher`
 - `EntityAuditDispatchManager`
 - `ScheduledAuditManager`
+- `AuditLogWriter`
 
 They mainly:
 
 - turning detected changes into audit log objects
+- assigning stable transport payloads for async and queue delivery
 - tracking scheduled and deferred work
 - dispatching to transports
 - handling fallback and delivery result paths
+
+For async database delivery, `AuditLogMessageFactory` preserves the audit row's
+UUID before Messenger dispatch and `AuditLogWriter` reuses that UUID when the
+worker persists the row. This keeps UUID-sorted readers and keyset pagination
+stable even if worker processing order differs from creation order.
 
 ### Querying Audit Logs
 

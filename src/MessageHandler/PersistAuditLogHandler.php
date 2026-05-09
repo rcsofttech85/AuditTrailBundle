@@ -5,14 +5,15 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\MessageHandler;
 
 use DateTimeImmutable;
-use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use LogicException;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Message\PersistAuditLogMessage;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+use Symfony\Component\Uid\Uuid;
 
 use function sprintf;
 
@@ -28,6 +29,7 @@ final readonly class PersistAuditLogHandler
 {
     public function __construct(
         private ManagerRegistry $registry,
+        private AuditLogWriterInterface $auditLogWriter,
     ) {
     }
 
@@ -54,17 +56,11 @@ final readonly class PersistAuditLogHandler
             revertedLogId: $message->revertedLogId,
         );
 
-        try {
-            $em->persist($log);
-            $em->flush();
-        } catch (UniqueConstraintViolationException) {
-            // Another worker or retry already stored this delivery; treat as idempotent success.
-            if ($em->isOpen()) {
-                $em->clear();
-            } else {
-                $this->registry->resetManager();
-            }
+        if ($message->auditId !== null) {
+            $log->initializeIdIfMissing(Uuid::fromString($message->auditId));
         }
+
+        $this->auditLogWriter->insert($log, $em);
     }
 
     private function getEntityManager(): EntityManagerInterface

@@ -97,6 +97,19 @@ final class AuditLogMessageFactoryTest extends TestCase
         self::assertSame('test-sig', $message->signature);
     }
 
+    public function testCreatePersistMessageInitializesAndReusesTheAuditId(): void
+    {
+        $log = new AuditLog(stdClass::class, '1', AuditAction::Create);
+        $context = $this->createContext($log);
+
+        $firstMessage = $this->factory->createPersistMessage($context);
+        $secondMessage = $this->factory->createPersistMessage($context);
+
+        self::assertNotNull($firstMessage->auditId);
+        self::assertSame($log->id?->toRfc4122(), $firstMessage->auditId);
+        self::assertSame($firstMessage->auditId, $secondMessage->auditId);
+    }
+
     public function testCreateQueueMessageIncludesSignatureAndDeliveryId(): void
     {
         $log = new AuditLog(stdClass::class, '1', AuditAction::Create);

@@ -79,6 +79,10 @@ See `docs/upgrade-v4.md` for the full migration guide.
 - **Collection update correctness across generated ID strategies**: collection
   diffs now behave consistently for integer-generated identifiers as well as
   UUID/ULID-backed relations.
+- **Async database ordering stability**: Messenger-backed database persistence
+  now preserves the original audit-log UUID across dispatch and worker insert,
+  keeping latest-first reads, cursor pagination, exports, and transaction
+  drilldowns aligned with audit creation order.
 
 ### 4.0.0 Improved
 

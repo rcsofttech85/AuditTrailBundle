@@ -78,6 +78,7 @@ final class AsyncDatabaseAndQueueConflictTest extends AbstractFunctionalTestCase
             if ($message instanceof PersistAuditLogMessage) {
                 $hasPersistMessage = true;
                 self::assertSame('create', $message->action, 'Persist message should retain the action.');
+                self::assertSame($log->id?->toRfc4122(), $message->auditId, 'Persist message should preserve the original audit UUID.');
                 self::assertSame('mock-signature-hash', $message->signature, 'Persist message MUST carry the signature to the database.');
                 self::assertSame(['test' => true], $message->context, 'Persist message MUST carry context.');
             }
