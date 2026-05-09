@@ -4,7 +4,9 @@
 
 Sensitive data is automatically masked in audit logs.
 
-### Option 1: Use PHP's `#[SensitiveParameter]`
+### Option 1: Use PHP's `#[SensitiveParameter]` on promoted constructor parameters
+
+The bundle currently reads `#[SensitiveParameter]` from promoted constructor parameters when building the sensitive-field map.
 
 ```php
 <?php

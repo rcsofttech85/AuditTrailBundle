@@ -83,7 +83,7 @@ The bundle includes EasyAdmin support for browsing and reviewing audit logs.
 
 The bundle can also help with audit integrity and review.
 
-- **Sensitive Data Masking**: Native support for `#[SensitiveParameter]` and custom `#[Sensitive]` attributes.
+- **Sensitive Data Masking**: Native support for `#[SensitiveParameter]` on promoted constructor parameters and custom `#[Sensitive]` attributes.
 - **HMAC Signatures**: Audit logs can be signed so tampering can be detected during verification.
 - **Integrity Verification**: Command-line tools to audit your audit logs.
 

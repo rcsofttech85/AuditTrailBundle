@@ -80,12 +80,14 @@ Your transport must now implement:
 <?php
 
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Transport\AuditDeliveryResult;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 
 final class AppAuditTransport implements AuditTransportInterface
 {
-    public function send(AuditTransportContext $context): void
+    public function send(AuditTransportContext $context): AuditDeliveryResult
     {
+        return AuditDeliveryResult::delivered();
     }
 
     public function supports(AuditTransportContext $context): bool
@@ -98,6 +100,7 @@ final class AppAuditTransport implements AuditTransportInterface
 What changed in practice:
 
 - `send()` now receives `AuditTransportContext`
+- `send()` now returns `AuditDeliveryResult`
 - `supports()` now receives `AuditTransportContext`
 - phase checks should use `$context->phase`
 - the current audit log is available as `$context->audit`
@@ -148,11 +151,24 @@ In v2, some custom implementations could survive with a partial contract or by
 relying on internal fallback behavior. v3 is stricter.
 
 If you implement `ScheduledAuditManagerInterface`, you now need the full
-contract, including accessors and replacement methods for retained state:
+contract. On the current codebase, check the current interface directly. The
+public manager surface includes queue/toggle responsibilities such as:
 
+- `schedule(object $entity, AuditLog $audit, bool $isInsert)`
+- `schedulePendingAuditPlan(PendingAuditPlan $plan)`
+- `addPendingDeletion(object $entity, array $data, AuditAction $action)`
 - `getScheduledAudits()`
+- `getPendingAuditPlans()`
 - `getPendingDeletions()`
+- `clear()`
+- `enable()`, `disable()`, `isEnabled()`
+
+The retained-state replacement methods used after failed post-flush dispatches
+are internal on the current codebase and now live behind
+`FailedAuditDispatchRetainerInterface`:
+
 - `replaceScheduledAudits(array $scheduledAudits)`
+- `replacePendingAuditPlans(array $plans)`
 - `replacePendingDeletions(array $pendingDeletions)`
 
 The practical reason is simple: v3 keeps retry and retention flow on explicit,
