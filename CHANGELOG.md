@@ -83,6 +83,9 @@ See `docs/upgrade-v4.md` for the full migration guide.
   now preserves the original audit-log UUID across dispatch and worker insert,
   keeping latest-first reads, cursor pagination, exports, and transaction
   drilldowns aligned with audit creation order.
+- **Transport integrity hardening**: queue transport signatures now cover the
+  exact serialized JSON body, and the async database worker rejects tampered
+  signed messages before they reach the audit table.
 
 ### 4.0.0 Improved
 

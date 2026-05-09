@@ -19,6 +19,7 @@ use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
+use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessagePayloadEncoder;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
 use stdClass;
@@ -70,6 +71,16 @@ final class QueueAuditTransportTest extends TestCase
         $this->resetTransport();
 
         return $eventDispatcher;
+    }
+
+    /** @return AuditIntegrityServiceInterface&MockObject */
+    private function useIntegrityServiceMock(): AuditIntegrityServiceInterface
+    {
+        $integrityService = self::createMock(AuditIntegrityServiceInterface::class);
+        $this->integrityService = $integrityService;
+        $this->resetTransport();
+
+        return $integrityService;
     }
 
     private function resetTransport(): void
@@ -132,6 +143,52 @@ final class QueueAuditTransportTest extends TestCase
 
                     return $hasApiKeyStamp && $hasSignatureStamp;
                 })
+            )
+            ->willReturn(new Envelope(new stdClass()));
+
+        $this->transport->send($this->createContext(AuditPhase::PostFlush, $log));
+    }
+
+    public function testSendSignsCanonicalSerializedPayload(): void
+    {
+        $log = new AuditLog('TestEntity', '1', AuditAction::Create, new DateTimeImmutable());
+        $queueMessage = new AuditLogMessage(
+            entityClass: 'TestEntity',
+            entityId: '1',
+            action: 'create',
+            oldValues: null,
+            newValues: ['url' => 'https://a/b', 'label' => 'Resume', 'title' => 'Resume'],
+            changedFields: ['url', 'label', 'title'],
+            userId: null,
+            username: null,
+            ipAddress: null,
+            userAgent: null,
+            transactionHash: null,
+            createdAt: $log->createdAt->format(DateTimeInterface::ATOM),
+        );
+
+        $this->messageFactory->method('createQueueMessage')->willReturn($queueMessage);
+        $integrityService = $this->useIntegrityServiceMock();
+        $integrityService->method('isEnabled')->willReturn(true);
+        $integrityService->expects($this->once())
+            ->method('signPayload')
+            ->with(new AuditLogMessagePayloadEncoder()->encode($queueMessage))
+            ->willReturn('canonical-signature');
+
+        $bus = $this->useBusMock();
+        $bus->expects($this->once())
+            ->method('dispatch')
+            ->with(
+                $queueMessage,
+                self::callback(static function (array $stamps): bool {
+                    foreach ($stamps as $stamp) {
+                        if ($stamp instanceof SignatureStamp) {
+                            return $stamp->signature === 'canonical-signature';
+                        }
+                    }
+
+                    return false;
+                }),
             )
             ->willReturn(new Envelope(new stdClass()));
 

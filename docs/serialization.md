@@ -41,6 +41,7 @@ publishing outbound audit messages and it throws if `decode()` is called.
 If you are consuming these messages in another Symfony application, treat the payload as plain JSON and read any transport-level metadata from headers or stamps:
 
 - Queue transport: the body may include the persisted audit log `signature`, while transport integrity is carried in a `SignatureStamp`
+- Queue transport `X-Audit-Signature`: HMAC of the canonical JSON body produced by `AuditLogMessageSerializer`
 - Custom HTTP delivery: integrity is carried in the `X-Signature` header
 - `AuditLogMessageSerializer` headers: `X-Audit-Api-Key` and `X-Audit-Signature` when the corresponding stamps are present
 

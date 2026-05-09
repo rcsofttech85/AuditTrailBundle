@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Security;
 
+use InvalidArgumentException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditRendererInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
@@ -24,8 +25,10 @@ final class SecurityAuditTest extends AbstractFunctionalTestCase
         $this->getEntityManager()->persist($log);
         $this->getEntityManager()->flush();
 
-        $results = $repository->findWithFilters($filters);
-        self::assertCount(0, $results, 'SQL injection in filters should not return results');
+        self::expectException(InvalidArgumentException::class);
+        self::expectExceptionMessage('Invalid action');
+
+        $repository->findWithFilters($filters);
     }
 
     public function testMassIngestionDoS(): void
@@ -91,6 +94,7 @@ final class SecurityAuditTest extends AbstractFunctionalTestCase
         $renderer = self::getContainer()->get(AuditRendererInterface::class);
         $sanitized = $renderer->formatValue($terminal);
         self::assertStringNotContainsString("\e[", $sanitized, 'Terminal escapes should be stripped');
+        self::assertStringNotContainsString("\n", $renderer->formatValue("evil\r\nnext"), 'Line breaks should be collapsed for CLI rendering');
 
         $details = $renderer->formatChangedDetails($stored);
         self::assertNotSame('', $details);

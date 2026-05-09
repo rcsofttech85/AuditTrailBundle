@@ -122,7 +122,7 @@ final class AuditLogQueryFilterApplier
     {
         return match (true) {
             $action instanceof AuditAction => $action,
-            is_string($action) => AuditAction::from($action),
+            is_string($action) => AuditAction::fromScalar($action),
             default => throw new InvalidArgumentException('Invalid action filter value.'),
         };
     }

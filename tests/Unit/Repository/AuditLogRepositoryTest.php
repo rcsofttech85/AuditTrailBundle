@@ -418,6 +418,16 @@ final class AuditLogRepositoryTest extends TestCase
         $repository->findWithFilters([]);
     }
 
+    public function testFindWithFiltersRejectsInvalidActionString(): void
+    {
+        $repository = $this->createRepository();
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid action');
+
+        $repository->findWithFilters(['action' => "create'--"]);
+    }
+
     public function testCountWithFiltersUsesDatabaseCountQuery(): void
     {
         [$repository, $qb, $query] = $this->createQueryHarness();

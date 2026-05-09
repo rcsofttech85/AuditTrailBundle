@@ -198,7 +198,7 @@ class AuditMessengerSubscriber implements EventSubscriberInterface
 
 ### Queue Payload Signing
 
-When `audit_trail.integrity.enabled` is true, the bundle signs the serialized `AuditLogMessage` to ensure authenticity in transit. That transport signature is added as a `SignatureStamp` on the Messenger envelope.
+When `audit_trail.integrity.enabled` is true, the bundle signs the exact JSON body emitted by `AuditLogMessageSerializer` to ensure authenticity in transit. That transport signature is added as a `SignatureStamp` on the Messenger envelope.
 
 This is separate from the audit log's own `signature` field, which may still be present inside the JSON body when entity integrity signing is enabled.
 
@@ -384,6 +384,11 @@ The async database path also preserves the original audit-log UUID when the
 message is created, then reuses that UUID in the worker. This keeps keyset
 pagination, latest-first reads, and transaction drilldowns aligned with audit
 creation order instead of worker-consumption timing.
+
+If integrity signing is enabled, the async worker also verifies the carried
+entity signature before inserting the row. Tampered messages therefore fail as
+unrecoverable Messenger handling errors instead of being retried into the
+database.
 
 ---
 

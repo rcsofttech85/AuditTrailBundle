@@ -9,11 +9,13 @@ use Doctrine\Persistence\ManagerRegistry;
 use LogicException;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Message\PersistAuditLogMessage;
 use Rcsofttech\AuditTrailBundle\MessageHandler\PersistAuditLogHandler;
+use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 
 final class PersistAuditLogHandlerTest extends TestCase
 {
@@ -23,11 +25,16 @@ final class PersistAuditLogHandlerTest extends TestCase
 
     private AuditLogWriterInterface&MockObject $auditLogWriter;
 
+    /** @var AuditIntegrityServiceInterface&\PHPUnit\Framework\MockObject\Stub */
+    private AuditIntegrityServiceInterface $integrityService;
+
     protected function setUp(): void
     {
         $this->registry = $this->createMock(ManagerRegistry::class);
         $this->auditLogWriter = $this->createMock(AuditLogWriterInterface::class);
-        $this->handler = new PersistAuditLogHandler($this->registry, $this->auditLogWriter);
+        $this->integrityService = self::createStub(AuditIntegrityServiceInterface::class);
+        $this->integrityService->method('isEnabled')->willReturn(false);
+        $this->resetHandler();
     }
 
     public function testInvokePersistsAuditLog(): void
@@ -133,6 +140,70 @@ final class PersistAuditLogHandlerTest extends TestCase
         self::expectExceptionMessage('No EntityManager is configured');
 
         ($this->handler)($this->createMessage(entityId: '1'));
+    }
+
+    public function testInvokeRejectsUnsignedMessageWhenIntegrityVerificationIsEnabled(): void
+    {
+        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
+        $integrityService->expects($this->once())->method('isEnabled')->willReturn(true);
+        $this->resetHandler($integrityService);
+        $this->expectEntityManager();
+        $this->auditLogWriter->expects($this->never())->method('insert');
+
+        self::expectException(UnrecoverableMessageHandlingException::class);
+        self::expectExceptionMessage('must include a signature');
+
+        ($this->handler)($this->createMessage(signature: null));
+    }
+
+    public function testInvokeRejectsInvalidSignatureWhenIntegrityVerificationIsEnabled(): void
+    {
+        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
+        $integrityService->expects($this->once())->method('isEnabled')->willReturn(true);
+        $integrityService->expects($this->once())
+            ->method('verifySignature')
+            ->with(self::isInstanceOf(AuditLog::class))
+            ->willReturn(false);
+        $this->resetHandler($integrityService);
+        $this->expectEntityManager();
+        $this->auditLogWriter->expects($this->never())->method('insert');
+
+        self::expectException(UnrecoverableMessageHandlingException::class);
+        self::expectExceptionMessage('verification failed');
+
+        ($this->handler)($this->createMessage(signature: 'tampered-signature'));
+    }
+
+    public function testInvokePersistsVerifiedSignedMessageWhenIntegrityVerificationIsEnabled(): void
+    {
+        $message = $this->createMessage(signature: 'verified-signature');
+        $em = $this->expectEntityManager();
+        $integrityService = $this->createMock(AuditIntegrityServiceInterface::class);
+        $integrityService->expects($this->once())->method('isEnabled')->willReturn(true);
+        $integrityService->expects($this->once())
+            ->method('verifySignature')
+            ->with(self::callback(static function (AuditLog $log): bool {
+                return $log->signature === 'verified-signature'
+                    && $log->entityClass === 'App\Entity\Order'
+                    && $log->entityId === '99';
+            }))
+            ->willReturn(true);
+        $this->resetHandler($integrityService);
+
+        $this->auditLogWriter->expects($this->once())
+            ->method('insert')
+            ->with(self::isInstanceOf(AuditLog::class), $em);
+
+        ($this->handler)($message);
+    }
+
+    private function resetHandler(?AuditIntegrityServiceInterface $integrityService = null): void
+    {
+        $this->handler = new PersistAuditLogHandler(
+            $this->registry,
+            $this->auditLogWriter,
+            $integrityService ?? $this->integrityService,
+        );
     }
 
     private function expectEntityManager(): EntityManagerInterface

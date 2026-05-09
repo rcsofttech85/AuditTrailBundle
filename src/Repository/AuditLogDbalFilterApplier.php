@@ -162,7 +162,7 @@ final class AuditLogDbalFilterApplier
     {
         return match (true) {
             $action instanceof AuditAction => $action->value,
-            is_string($action) => AuditAction::from($action)->value,
+            is_string($action) => AuditAction::fromScalar($action)->value,
             default => throw new InvalidArgumentException('Invalid action filter value.'),
         };
     }

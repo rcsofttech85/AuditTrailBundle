@@ -16,10 +16,6 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 use function sprintf;
 
-use const JSON_THROW_ON_ERROR;
-use const JSON_UNESCAPED_SLASHES;
-use const JSON_UNESCAPED_UNICODE;
-
 /**
  * Serializer for publishing audit logs to external SaaS dashboard.
  * Supports cross-platform JSON format and maps stamps to headers.
@@ -31,6 +27,11 @@ final readonly class AuditLogMessageSerializer implements SerializerInterface
     private const API_KEY_HEADER = 'X-Audit-Api-Key';
 
     private const SIGNATURE_HEADER = 'X-Audit-Signature';
+
+    public function __construct(
+        private AuditLogMessagePayloadEncoder $payloadEncoder = new AuditLogMessagePayloadEncoder(),
+    ) {
+    }
 
     /**
      * @return array{body: string, headers: array<string, string>}
@@ -45,7 +46,7 @@ final readonly class AuditLogMessageSerializer implements SerializerInterface
         }
 
         return [
-            'body' => json_encode($message, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'body' => $this->payloadEncoder->encode($message),
             'headers' => $this->buildHeaders($envelope),
         ];
     }

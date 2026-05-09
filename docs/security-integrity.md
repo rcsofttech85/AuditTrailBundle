@@ -81,7 +81,7 @@ Content-Type: application/json
 
 ### Queue Transport
 
-The bundle adds a `SignatureStamp` to the Messenger envelope containing the signature of the serialized `AuditLogMessage`.
+The bundle adds a `SignatureStamp` to the Messenger envelope containing the HMAC of the exact JSON body emitted by `AuditLogMessageSerializer`.
 
 That transport signature is distinct from the audit log's own `signature` field in the JSON body. Queue payloads can carry the persisted entity signature while `SignatureStamp` protects the serialized message in transit.
 

@@ -8,11 +8,13 @@ use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use LogicException;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Message\PersistAuditLogMessage;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 use Symfony\Component\Uid\Uuid;
 
 use function sprintf;
@@ -30,6 +32,7 @@ final readonly class PersistAuditLogHandler
     public function __construct(
         private ManagerRegistry $registry,
         private AuditLogWriterInterface $auditLogWriter,
+        private ?AuditIntegrityServiceInterface $integrityService = null,
     ) {
     }
 
@@ -60,7 +63,23 @@ final readonly class PersistAuditLogHandler
             $log->initializeIdIfMissing(Uuid::fromString($message->auditId));
         }
 
+        $this->assertIntegrity($log, $message);
         $this->auditLogWriter->insert($log, $em);
+    }
+
+    private function assertIntegrity(AuditLog $log, PersistAuditLogMessage $message): void
+    {
+        if ($this->integrityService?->isEnabled() !== true) {
+            return;
+        }
+
+        if ($message->signature === null) {
+            throw new UnrecoverableMessageHandlingException('Async audit messages must include a signature when integrity verification is enabled.');
+        }
+
+        if (!$this->integrityService->verifySignature($log)) {
+            throw new UnrecoverableMessageHandlingException('Async audit message signature verification failed.');
+        }
     }
 
     private function getEntityManager(): EntityManagerInterface
