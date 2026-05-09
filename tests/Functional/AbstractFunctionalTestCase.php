@@ -20,6 +20,7 @@ abstract class AbstractFunctionalTestCase extends KernelTestCase
 
         TestKernel::$useThrowingTransport = false;
         TestKernel::$throwingTransportSupportedPhases = null;
+        TestKernel::$publicServiceIds = [];
 
         $this->clearTestCache();
     }
@@ -29,6 +30,7 @@ abstract class AbstractFunctionalTestCase extends KernelTestCase
         // Reset any static state on the TestKernel
         TestKernel::$useThrowingTransport = false;
         TestKernel::$throwingTransportSupportedPhases = null;
+        TestKernel::$publicServiceIds = [];
 
         parent::tearDown();
     }
@@ -56,6 +58,12 @@ abstract class AbstractFunctionalTestCase extends KernelTestCase
                 /** @var array<string, mixed> $doctrineConfig */
                 $doctrineConfig = $options['doctrine_config'];
                 $kernel->setDoctrineConfig($doctrineConfig);
+            }
+            if (isset($options['framework_config'])) {
+                assert(is_array($options['framework_config']));
+                /** @var array<string, mixed> $frameworkConfig */
+                $frameworkConfig = $options['framework_config'];
+                $kernel->setFrameworkConfig($frameworkConfig);
             }
         }
 

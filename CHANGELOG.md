@@ -88,6 +88,10 @@ See `docs/upgrade-v4.md` for the full migration guide.
   now preserves the original audit-log UUID across dispatch and worker insert,
   keeping latest-first reads, cursor pagination, exports, and transaction
   drilldowns aligned with audit creation order.
+- **Audit log UUID policy isolation**: the bundle's container-managed
+  ordering-sensitive audit row IDs remain UUID v7 even when the host
+  application overrides Symfony's global default UUID version for unrelated
+  app-level identifiers.
 - **Transport integrity hardening**: queue transport signatures now cover the
   exact serialized JSON body, and the async database worker rejects tampered
   signed messages before they reach the audit table.

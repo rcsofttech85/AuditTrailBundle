@@ -385,6 +385,13 @@ message is created, then reuses that UUID in the worker. This keeps keyset
 pagination, latest-first reads, and transaction drilldowns aligned with audit
 creation order instead of worker-consumption timing.
 
+With the bundle's built-in container wiring, those audit row UUIDs stay on
+UUID v7 semantics even if the host application changes Symfony's global
+default UUID version for unrelated identifiers. If you manually instantiate
+ordering-sensitive services such as `AuditLogMessageFactory` or
+`AuditLogWriter` outside the container, provide a `UuidFactory` configured for
+UUID v7 semantics.
+
 If integrity signing is enabled, the async worker also verifies the carried
 entity signature before inserting the row. Tampered messages therefore fail as
 unrecoverable Messenger handling errors instead of being retried into the

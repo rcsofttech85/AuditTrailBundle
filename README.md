@@ -192,6 +192,9 @@ Operational notes:
 
 - Audit query limits must be positive integers. `AuditReader`, `AuditQuery`, and the repository reject `0` or negative limits.
 - Cursor pagination uses audit-log UUIDs. Invalid cursors are rejected.
+- When you use the bundle's container-managed services, audit-log row IDs stay
+  UUID v7 even if the host application changes Symfony's global default UUID
+  version for unrelated identifiers.
 - Async database persistence preserves the original audit-log UUID across Messenger dispatch and worker persistence, so UUID cursor ordering and transaction drilldowns stay stable even if workers consume messages out of order.
 - `AuditReader` / `AuditQuery` `changedField()` uses database JSON checks on MySQL, PostgreSQL, and SQLite. On other platforms it falls back to batched in-memory matching.
 - When you use object-based lookups or `ignored_entities`, configure the real mapped class such as `App\Entity\Order`. The bundle maps proxies and lazy subclasses back to that class.

@@ -77,11 +77,6 @@ services:
   Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface:
     alias: Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository
 
-  Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository:
-    arguments:
-      $filterApplier: '@Rcsofttech\AuditTrailBundle\Repository\AuditLogQueryFilterApplier'
-      $changedFieldQueryExecutor: '@Rcsofttech\AuditTrailBundle\Repository\AuditLogChangedFieldQueryExecutor'
-
   Rcsofttech\AuditTrailBundle\Contract\AuditReaderInterface:
     alias: Rcsofttech\AuditTrailBundle\Query\AuditReader
 
@@ -106,14 +101,11 @@ services:
   Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\ValueSerializer
 
-  Rcsofttech\AuditTrailBundle\Query\AuditReader:
-    lazy: true
-
-  Rcsofttech\AuditTrailBundle\Service\AuditRenderer:
-    lazy: true
-
-  Rcsofttech\AuditTrailBundle\Service\AuditExporter:
-    lazy: true
+  rcsofttech_audit_trail.uid.audit_log_uuid_factory:
+    class: Symfony\Component\Uid\Factory\UuidFactory
+    arguments:
+      $defaultClass: 7
+      $timeBasedClass: 7
 
   Symfony\Component\ExpressionLanguage\ExpressionLanguage:
     ~
@@ -132,3 +124,27 @@ services:
       - '../../Service/AuditIntegrityService.php'
       - '../../Transport/'
       - '../../Controller/'
+
+  # Explicit overrides must be declared after the prototype resource so they
+  # keep their custom arguments and lazy settings.
+  Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository:
+    arguments:
+      $filterApplier: '@Rcsofttech\AuditTrailBundle\Repository\AuditLogQueryFilterApplier'
+      $changedFieldQueryExecutor: '@Rcsofttech\AuditTrailBundle\Repository\AuditLogChangedFieldQueryExecutor'
+
+  Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory:
+    arguments:
+      $uuidFactory: '@rcsofttech_audit_trail.uid.audit_log_uuid_factory'
+
+  Rcsofttech\AuditTrailBundle\Service\AuditLogWriter:
+    arguments:
+      $uuidFactory: '@rcsofttech_audit_trail.uid.audit_log_uuid_factory'
+
+  Rcsofttech\AuditTrailBundle\Query\AuditReader:
+    lazy: true
+
+  Rcsofttech\AuditTrailBundle\Service\AuditRenderer:
+    lazy: true
+
+  Rcsofttech\AuditTrailBundle\Service\AuditExporter:
+    lazy: true

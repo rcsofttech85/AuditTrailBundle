@@ -54,19 +54,23 @@ Before deploying v4:
 10. If you manually instantiate `AuditQuery` or `AuditReader`, update that
     wiring to match the new concrete constructors or prefer DI /
     `AuditReaderInterface`.
-11. If you implement `AuditLogInterface` or `EntityIdResolverInterface`,
+11. If you manually instantiate `AuditLogMessageFactory` or `AuditLogWriter`
+    outside the container, provide a `UuidFactory` configured for UUID v7
+    semantics so ordering-sensitive audit IDs keep the documented cursor and
+    latest-first ordering guarantees.
+12. If you implement `AuditLogInterface` or `EntityIdResolverInterface`,
     update unresolved ID handling:
     - `AuditLogInterface::$entityId` is now nullable
     - unresolved IDs now use `null` instead of placeholder strings
     - callers that require a concrete ID should use
       `hasResolvedEntityId()` / `requireEntityId()`
-12. If you implement `AuditExporterInterface`, update `exportToStream()` to
+13. If you implement `AuditExporterInterface`, update `exportToStream()` to
     return the exported record count as `int`.
-13. Run your schema migration before production traffic so the new v4 audit-log
+14. Run your schema migration before production traffic so the new v4 audit-log
     columns and indexes exist. Historical revert rows created on v3 remain
     recognized after upgrade even if they only stored `reverted_log_id` inside
     `context`.
-14. If you enable HTTP or queue transport and relied on implicit failure
+15. If you enable HTTP or queue transport and relied on implicit failure
     defaults, review `fail_on_transport_error` and `fallback_to_database`.
     When those remote transports are enabled and the flags are left unset, v4
     sets them to `true` and `false` respectively.

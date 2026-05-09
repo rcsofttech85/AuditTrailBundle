@@ -28,10 +28,16 @@ class TestKernel extends Kernel implements CompilerPassInterface
     /** @var array<string, mixed> */
     private array $doctrineConfig = [];
 
+    /** @var array<string, mixed> */
+    private array $frameworkConfig = [];
+
     public static bool $useThrowingTransport = false;
 
     /** @var list<string>|null */
     public static ?array $throwingTransportSupportedPhases = null;
+
+    /** @var list<string> */
+    public static array $publicServiceIds = [];
 
     public function build(ContainerBuilder $container): void
     {
@@ -49,6 +55,16 @@ class TestKernel extends Kernel implements CompilerPassInterface
 
             // Silence logger during expected failures
             $container->register('logger', NullLogger::class);
+        }
+
+        foreach (self::$publicServiceIds as $serviceId) {
+            if ($container->hasDefinition($serviceId)) {
+                $container->getDefinition($serviceId)->setPublic(true);
+            }
+
+            if ($container->hasAlias($serviceId)) {
+                $container->getAlias($serviceId)->setPublic(true);
+            }
         }
     }
 
@@ -68,14 +84,24 @@ class TestKernel extends Kernel implements CompilerPassInterface
         $this->doctrineConfig = $config;
     }
 
+    /**
+     * @param array<string, mixed> $config
+     */
+    public function setFrameworkConfig(array $config): void
+    {
+        $this->frameworkConfig = $config;
+    }
+
     public function getCacheDir(): string
     {
         return sys_get_temp_dir().'/audit_trail_test/cache/'.
             md5(serialize([
                 $this->auditConfig,
                 $this->doctrineConfig,
+                $this->frameworkConfig,
                 self::$useThrowingTransport,
                 self::$throwingTransportSupportedPhases,
+                self::$publicServiceIds,
             ]));
     }
 
@@ -100,7 +126,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
         $c->setParameter('env(AUDIT_INTEGRITY_SECRET)', 'test-integrity-secret-for-suite-123');
         $c->setParameter('env(AUDIT_INTEGRITY_PRESSURE_SECRET)', 'pressure-secret-for-suite-verify-123');
 
-        $c->loadFromExtension('framework', [
+        $defaultFrameworkConfig = [
             'test' => true,
             'secret' => 'test-integrity-secret-for-kernel-123',
             'php_errors' => ['log' => false, 'throw' => false],
@@ -110,7 +136,12 @@ class TestKernel extends Kernel implements CompilerPassInterface
                     'audit_test.cache' => ['adapter' => 'cache.adapter.filesystem'],
                 ],
             ],
-        ]);
+        ];
+
+        /** @var array<string, mixed> $frameworkConfig */
+        $frameworkConfig = array_replace_recursive($defaultFrameworkConfig, $this->frameworkConfig);
+
+        $c->loadFromExtension('framework', $frameworkConfig);
 
         $c->loadFromExtension('security', [
             'firewalls' => [

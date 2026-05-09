@@ -11,12 +11,18 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\DependencyInjection\AuditTrailExtension;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
+use Rcsofttech\AuditTrailBundle\Query\AuditReader;
+use Rcsofttech\AuditTrailBundle\Service\AuditExporter;
+use Rcsofttech\AuditTrailBundle\Service\AuditLogWriter;
+use Rcsofttech\AuditTrailBundle\Service\AuditRenderer;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Transport\NullAuditTransport;
 use stdClass;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
+use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Uid\Factory\UuidFactory;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -528,6 +534,35 @@ final class AuditTrailExtensionTest extends TestCase
 
         self::assertTrue($container->hasAlias('rcsofttech_audit_trail.cache'));
         self::assertSame('cache.app', (string) $container->getAlias('rcsofttech_audit_trail.cache'));
+    }
+
+    public function testAuditUuidFactoryOverridesArePreservedAfterPrototypeRegistration(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([], $container);
+
+        self::assertEquals(
+            new Reference('rcsofttech_audit_trail.uid.audit_log_uuid_factory'),
+            $container->getDefinition(AuditLogMessageFactory::class)->getArgument('$uuidFactory'),
+        );
+        self::assertEquals(
+            new Reference('rcsofttech_audit_trail.uid.audit_log_uuid_factory'),
+            $container->getDefinition(AuditLogWriter::class)->getArgument('$uuidFactory'),
+        );
+    }
+
+    public function testExplicitLazyServiceOverridesSurvivePrototypeRegistration(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $extension->load([], $container);
+
+        self::assertTrue($container->getDefinition(AuditReader::class)->isLazy());
+        self::assertTrue($container->getDefinition(AuditRenderer::class)->isLazy());
+        self::assertTrue($container->getDefinition(AuditExporter::class)->isLazy());
     }
 
     public function testPrependDoesNothingWhenDoctrineExtensionIsMissing(): void
