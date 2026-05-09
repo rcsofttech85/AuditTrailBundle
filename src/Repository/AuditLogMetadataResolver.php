@@ -10,7 +10,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 
 use function is_string;
 
-final class AuditLogMetadataResolver
+final readonly class AuditLogMetadataResolver
 {
     /**
      * @return array{

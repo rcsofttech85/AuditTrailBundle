@@ -13,6 +13,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\ValueObject\AssociationImpact;
 
+use function array_all;
 use function array_key_exists;
 use function is_array;
 
@@ -113,10 +114,13 @@ final readonly class EntityDeletionProcessor
             return false;
         }
 
-        foreach ($changeSet as $change) {
-            if (!is_array($change) || !array_key_exists(0, $change) || !array_key_exists(1, $change)) {
-                return false;
-            }
+        if (!array_all(
+            $changeSet,
+            static fn (mixed $change): bool => is_array($change)
+                && array_key_exists(0, $change)
+                && array_key_exists(1, $change),
+        )) {
+            return false;
         }
 
         /** @var array<string, array{0: mixed, 1: mixed}> $changeSet */

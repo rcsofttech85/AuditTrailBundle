@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\DataMaskerInterface;
 
+use function array_any;
 use function array_diff;
 use function array_fill_keys;
 use function array_intersect;
@@ -168,17 +169,11 @@ final class DataMasker implements DataMaskerInterface
      */
     private function containsSensitiveSegments(array $segments): bool
     {
-        foreach ($segments as $index => $segment) {
-            if (isset($this->alwaysSensitiveKeyLookup[$segment])) {
-                return true;
-            }
-
-            if ($this->isContextuallySensitiveSegment($segments, $index, $segment)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any(
+            $segments,
+            fn (string $segment, int $index): bool => isset($this->alwaysSensitiveKeyLookup[$segment])
+                || $this->isContextuallySensitiveSegment($segments, $index, $segment),
+        );
     }
 
     /**

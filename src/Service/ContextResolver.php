@@ -20,18 +20,18 @@ use Throwable;
 
 use function is_scalar;
 
-final class ContextResolver implements ContextResolverInterface
+final readonly class ContextResolver implements ContextResolverInterface
 {
     /**
      * @param iterable<AuditContextContributorInterface> $contributors
      */
     public function __construct(
-        private readonly UserResolverInterface $userResolver,
-        private readonly DataMaskerInterface $dataMasker,
-        private readonly ValueSerializerInterface $serializer,
+        private UserResolverInterface $userResolver,
+        private DataMaskerInterface $dataMasker,
+        private ValueSerializerInterface $serializer,
         #[AutowireIterator('audit_trail.context_contributor')]
-        private readonly iterable $contributors = [],
-        private readonly ?LoggerInterface $logger = null,
+        private iterable $contributors = [],
+        private ?LoggerInterface $logger = null,
     ) {
     }
 

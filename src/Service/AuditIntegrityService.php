@@ -9,6 +9,7 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use RuntimeException;
 
+use function array_any;
 use function hash_equals;
 use function hash_hmac;
 use function json_encode;
@@ -72,18 +73,15 @@ final class AuditIntegrityService implements AuditIntegrityServiceInterface
             return false;
         }
 
-        foreach (self::SIGNATURE_VARIANTS as $variant) {
-            if ($this->signatureMatches(
+        return array_any(
+            self::SIGNATURE_VARIANTS,
+            fn (array $variant): bool => $this->signatureMatches(
                 $log,
                 $storedSignature,
                 $variant['includeChangedFields'],
                 $variant['includeRevertedLogId'],
-            )) {
-                return true;
-            }
-        }
-
-        return false;
+            ),
+        );
     }
 
     #[Override]

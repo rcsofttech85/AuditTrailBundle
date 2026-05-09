@@ -11,7 +11,7 @@ use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use function array_filter;
 use function count;
 
-final class AuditQueryFilterFactory
+final readonly class AuditQueryFilterFactory
 {
     /**
      * @param list<AuditAction> $actions

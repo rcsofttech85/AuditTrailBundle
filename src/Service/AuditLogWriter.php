@@ -11,7 +11,7 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use LogicException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Symfony\Component\Uid\Uuid;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 use function array_map;
 use function array_merge;
@@ -24,6 +24,11 @@ use function str_contains;
 
 final class AuditLogWriter implements AuditLogWriterInterface
 {
+    public function __construct(
+        private UuidFactory $uuidFactory,
+    ) {
+    }
+
     public function insert(AuditLog $audit, EntityManagerInterface $em): void
     {
         if (!$audit->hasResolvedEntityId()) {
@@ -72,7 +77,7 @@ final class AuditLogWriter implements AuditLogWriterInterface
 
     private function assignIdentifierIfMissing(AuditLog $audit): void
     {
-        $audit->initializeIdIfMissing(Uuid::v7());
+        $audit->initializeIdIfMissing($this->uuidFactory->create());
     }
 
     /**

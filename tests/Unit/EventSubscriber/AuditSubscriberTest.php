@@ -36,6 +36,7 @@ use Rcsofttech\AuditTrailBundle\ValueObject\PendingAuditPlan;
 use ReflectionAttribute;
 use ReflectionClass;
 use stdClass;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 final class AuditSubscriberTest extends TestCase
 {
@@ -63,7 +64,7 @@ final class AuditSubscriberTest extends TestCase
         $this->dispatcher = self::createStub(AuditDispatcherInterface::class);
         $this->auditManager = new MockScheduledAuditManager();
         $this->entityProcessor = self::createStub(EntityProcessorInterface::class);
-        $this->transactionIdGenerator = new TransactionIdGenerator();
+        $this->transactionIdGenerator = new TransactionIdGenerator(new UuidFactory());
         $this->logger = self::createStub(LoggerInterface::class);
         $this->accessHandler = self::createStub(AuditAccessHandlerInterface::class);
         $this->idResolver = self::createStub(EntityIdResolverInterface::class);

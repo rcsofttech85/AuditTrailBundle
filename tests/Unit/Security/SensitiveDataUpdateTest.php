@@ -30,6 +30,7 @@ use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\SensitiveUser;
 use Rcsofttech\AuditTrailBundle\Transport\AuditDeliveryResult;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 final class SensitiveDataUpdateTest extends AbstractAuditTestCase
 {
@@ -48,7 +49,7 @@ final class SensitiveDataUpdateTest extends AbstractAuditTestCase
         $this->transport->method('supports')->willReturn(true);
         $this->transport->method('send')->willReturn(AuditDeliveryResult::delivered());
 
-        $this->transactionIdGenerator = new TransactionIdGenerator();
+        $this->transactionIdGenerator = new TransactionIdGenerator(new UuidFactory());
     }
 
     public function testUpdateMasksSensitiveData(): void

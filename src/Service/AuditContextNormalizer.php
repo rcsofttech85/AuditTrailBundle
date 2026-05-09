@@ -14,12 +14,12 @@ use function strlen;
 
 use const JSON_THROW_ON_ERROR;
 
-final class AuditContextNormalizer
+final readonly class AuditContextNormalizer
 {
     public function __construct(
-        private readonly ContextSanitizer $contextSanitizer,
-        private readonly ?DataMaskerInterface $dataMasker = null,
-        private readonly ?LoggerInterface $logger = null,
+        private ContextSanitizer $contextSanitizer,
+        private ?DataMaskerInterface $dataMasker = null,
+        private ?LoggerInterface $logger = null,
     ) {
     }
 

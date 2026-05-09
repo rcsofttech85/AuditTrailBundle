@@ -13,11 +13,11 @@ use function array_filter;
 use function implode;
 
 #[AsDoctrineListener(event: Events::loadClassMetadata)]
-final class TablePrefixSubscriber
+final readonly class TablePrefixSubscriber
 {
     public function __construct(
-        private readonly string $tablePrefix,
-        private readonly string $tableSuffix,
+        private string $tablePrefix,
+        private string $tableSuffix,
     ) {
     }
 

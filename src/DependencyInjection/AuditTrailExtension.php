@@ -122,6 +122,12 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     #[Override]
     public function prepend(ContainerBuilder $container): void
     {
+        if ($container->hasExtension('framework')) {
+            $container->prependExtensionConfig('framework', [
+                'uid' => [],
+            ]);
+        }
+
         if (!$container->hasExtension('doctrine')) {
             return;
         }

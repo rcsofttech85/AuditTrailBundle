@@ -28,6 +28,7 @@ use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use RuntimeException;
 use stdClass;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 use function fclose;
 use function tmpfile;
@@ -66,7 +67,7 @@ final class AuditServiceTest extends AbstractAuditTestCase
         $this->entityManager = self::createStub(EntityManagerInterface::class);
         $this->clock = self::createStub(ClockInterface::class);
         $this->logger = self::createStub(LoggerInterface::class);
-        $this->transactionIdGenerator = new TransactionIdGenerator();
+        $this->transactionIdGenerator = new TransactionIdGenerator(new UuidFactory());
         $this->dataExtractor = self::createStub(EntityDataExtractorInterface::class);
         $this->metadataManager = self::createStub(AuditMetadataManagerInterface::class);
         $this->contextResolver = self::createStub(ContextResolverInterface::class);

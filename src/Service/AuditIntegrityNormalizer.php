@@ -24,7 +24,7 @@ use function sprintf;
 
 use const SORT_STRING;
 
-final class AuditIntegrityNormalizer
+final readonly class AuditIntegrityNormalizer
 {
     private const int MAX_NORMALIZATION_DEPTH = 5;
 
@@ -40,11 +40,9 @@ final class AuditIntegrityNormalizer
         'Y-m-d\TH:i:s.uP',
     ];
 
-    private readonly DateTimeZone $utc;
-
-    public function __construct()
-    {
-        $this->utc = new DateTimeZone('UTC');
+    public function __construct(
+        private DateTimeZone $utc = new DateTimeZone('UTC'),
+    ) {
     }
 
     /**

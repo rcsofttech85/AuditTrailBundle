@@ -7,10 +7,11 @@ namespace Rcsofttech\AuditTrailBundle\Factory;
 use LogicException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogMessageFactoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\PersistAuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
-use Symfony\Component\Uid\Uuid;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 /**
  * Centralises the creation of message DTOs from AuditLog entities.
@@ -22,6 +23,7 @@ final readonly class AuditLogMessageFactory implements AuditLogMessageFactoryInt
 {
     public function __construct(
         private EntityIdResolverInterface $idResolver,
+        private UuidFactory $uuidFactory,
     ) {
     }
 
@@ -41,7 +43,7 @@ final readonly class AuditLogMessageFactory implements AuditLogMessageFactoryInt
     public function createPersistMessage(AuditTransportContext $context): PersistAuditLogMessage
     {
         $entityId = $this->resolveEntityId($context);
-        $context->audit->initializeIdIfMissing(Uuid::v7());
+        $this->ensurePersistIdentifiers($context->audit);
 
         return PersistAuditLogMessage::createFromAuditLog($context->audit, $entityId);
     }
@@ -54,5 +56,11 @@ final readonly class AuditLogMessageFactory implements AuditLogMessageFactoryInt
         }
 
         throw new LogicException('Cannot create an audit transport message before the entity ID has been resolved.');
+    }
+
+    private function ensurePersistIdentifiers(AuditLog $audit): void
+    {
+        $audit->initializeIdIfMissing($this->uuidFactory->create());
+        $audit->deliveryId ??= $this->uuidFactory->create()->toRfc4122();
     }
 }

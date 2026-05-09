@@ -189,12 +189,11 @@ final readonly class AuditRenderer implements AuditRendererInterface
     {
         $str = $this->sanitizeInlineText($str);
 
-        return mb_strlen($str) > 50 ? mb_substr($str, 0, 47) . '...' : $str;
+        return mb_strlen($str) > 50 ? mb_substr($str, 0, 47).'...' : $str;
     }
 
     private function sanitizeInlineText(string $str): string
     {
-
         $str = preg_replace('/\x1b\[[0-9;]*[a-zA-Z]/', '', $str) ?? $str;
 
         return preg_replace('/\r\n?|\n/', ' ', $str) ?? $str;

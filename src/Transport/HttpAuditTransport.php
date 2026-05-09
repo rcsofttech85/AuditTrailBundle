@@ -17,19 +17,19 @@ use function sprintf;
 
 use const JSON_THROW_ON_ERROR;
 
-final class HttpAuditTransport implements AuditTransportInterface
+final readonly class HttpAuditTransport implements AuditTransportInterface
 {
     /**
      * @param array<string, string> $headers
      */
     public function __construct(
-        private readonly HttpClientInterface $client,
-        private readonly string $endpoint,
-        private readonly AuditIntegrityServiceInterface $integrityService,
-        private readonly EntityIdResolverInterface $idResolver,
-        private readonly ?LoggerInterface $logger = null,
-        private readonly array $headers = [],
-        private readonly int $timeout = 5,
+        private HttpClientInterface $client,
+        private string $endpoint,
+        private AuditIntegrityServiceInterface $integrityService,
+        private EntityIdResolverInterface $idResolver,
+        private ?LoggerInterface $logger = null,
+        private array $headers = [],
+        private int $timeout = 5,
     ) {
     }
 

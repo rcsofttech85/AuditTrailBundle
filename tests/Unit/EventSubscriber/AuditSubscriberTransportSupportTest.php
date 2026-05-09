@@ -34,6 +34,7 @@ use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use Rcsofttech\AuditTrailBundle\Transport\AuditDeliveryResult;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use stdClass;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 final class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
 {
@@ -120,7 +121,7 @@ final class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
                     $auditService,
                     new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)),
                 ),
-                new TransactionIdGenerator(),
+                new TransactionIdGenerator(new UuidFactory()),
                 new AuditedEntityMarker(
                     self::createStub(AuditAccessHandlerInterface::class),
                     self::createStub(EntityIdResolverInterface::class),

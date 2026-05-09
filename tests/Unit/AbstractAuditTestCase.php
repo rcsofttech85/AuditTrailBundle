@@ -54,6 +54,7 @@ use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use ReflectionClass;
 use ReflectionProperty;
 use Symfony\Component\Clock\MockClock;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 abstract class AbstractAuditTestCase extends TestCase
 {
@@ -107,7 +108,8 @@ abstract class AbstractAuditTestCase extends TestCase
         return new AuditDispatcher(
             $transport,
             new AuditLogContextProcessor(new ContextSanitizer(), new AuditContextNormalizer(new ContextSanitizer())),
-            new AuditFallbackPersister(new AuditLogWriter()),
+            new AuditFallbackPersister(new AuditLogWriter(new UuidFactory())),
+            new UuidFactory(),
             null, // eventDispatcher
             $integrityService ?? self::createStub(AuditIntegrityServiceInterface::class),
         );

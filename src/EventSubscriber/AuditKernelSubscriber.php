@@ -10,7 +10,7 @@ use Symfony\Component\HttpKernel\Event\TerminateEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 
 #[AsEventListener(event: KernelEvents::TERMINATE)]
-final class AuditKernelSubscriber
+final readonly class AuditKernelSubscriber
 {
     public function __construct(
         private AuditAccessHandlerInterface $accessHandler,

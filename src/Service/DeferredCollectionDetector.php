@@ -6,6 +6,8 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 
+use function array_any;
+
 final readonly class DeferredCollectionDetector
 {
     public function __construct(
@@ -17,17 +19,11 @@ final readonly class DeferredCollectionDetector
     {
         $metadata = $em->getClassMetadata($entity::class);
 
-        foreach ($metadata->getAssociationNames() as $field) {
-            if (!$metadata->isCollectionValuedAssociation($field)) {
-                continue;
-            }
-
-            if ($this->shouldDeferCollectionFieldMaterialization($entity, $field, $em)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any(
+            $metadata->getAssociationNames(),
+            fn (string $field): bool => $metadata->isCollectionValuedAssociation($field)
+                && $this->shouldDeferCollectionFieldMaterialization($entity, $field, $em),
+        );
     }
 
     public function shouldDeferCollectionFieldMaterialization(

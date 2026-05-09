@@ -18,6 +18,7 @@ use Symfony\Component\ExpressionLanguage\Node\NullCoalesceNode;
 use Symfony\Component\ExpressionLanguage\Node\UnaryNode;
 use Symfony\Component\ExpressionLanguage\ParsedExpression;
 
+use function array_all;
 use function array_is_list;
 use function count;
 use function in_array;
@@ -84,17 +85,10 @@ final class AuditConditionExpressionValidator
      */
     private function areSafeNodeArrayChildren(array $children, Node $parent): bool
     {
-        if (!array_is_list($children)) {
-            return false;
-        }
-
-        foreach ($children as $child) {
-            if (!$child instanceof Node || !$this->isSafeNode($child, $parent)) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_is_list($children) && array_all(
+            $children,
+            fn (mixed $child): bool => $child instanceof Node && $this->isSafeNode($child, $parent),
+        );
     }
 
     private function isSupportedNode(Node $node): bool

@@ -16,15 +16,17 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogWriter;
 use ReflectionProperty;
 use stdClass;
+use Symfony\Component\Uid\Factory\MockUuidFactory;
+use Symfony\Component\Uid\Factory\UuidFactory;
 use Symfony\Component\Uid\Uuid;
-
-use function is_string;
 
 final class AuditLogWriterTest extends TestCase
 {
     public function testInsertAssignsIdAndWritesConvertedData(): void
     {
-        $writer = new AuditLogWriter();
+        $writer = new AuditLogWriter(
+            new MockUuidFactory(['0195f4d8-b087-7d44-9c4f-a5c6d4aa0001']),
+        );
         $audit = new AuditLog(stdClass::class, '123', 'create');
 
         $metadata = $this->createMetadataStub(['entityClass']);
@@ -35,10 +37,9 @@ final class AuditLogWriterTest extends TestCase
             ->method('insert')
             ->with(
                 'audit_log',
-                self::callback(static function (array $data): bool {
+                self::callback(static function (array $data) use ($audit): bool {
                     return isset($data['id'], $data['entity_class'])
-                        && is_string($data['id'])
-                        && $data['id'] !== ''
+                        && $audit->id?->toRfc4122() === '0195f4d8-b087-7d44-9c4f-a5c6d4aa0001'
                         && $data['entity_class'] === stdClass::class;
                 })
             );
@@ -57,7 +58,7 @@ final class AuditLogWriterTest extends TestCase
 
     public function testInsertTreatsDuplicateDeliveryAsIdempotentSuccess(): void
     {
-        $writer = new AuditLogWriter();
+        $writer = new AuditLogWriter(new UuidFactory());
         $audit = new AuditLog(stdClass::class, '123', 'create', deliveryId: '0195f4d8-b087-7d44-9c4f-a5c6d4aa5555');
 
         $metadata = $this->createMetadataStub(['entityClass', 'deliveryId']);

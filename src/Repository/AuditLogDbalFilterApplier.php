@@ -19,7 +19,7 @@ use function is_string;
 use function sprintf;
 use function str_contains;
 
-final class AuditLogDbalFilterApplier
+final readonly class AuditLogDbalFilterApplier
 {
     /**
      * @param array<string, mixed>  $filters

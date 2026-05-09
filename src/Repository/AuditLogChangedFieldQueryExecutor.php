@@ -18,13 +18,13 @@ use Symfony\Component\Uid\Uuid;
 use function array_reverse;
 use function is_string;
 
-final class AuditLogChangedFieldQueryExecutor
+final readonly class AuditLogChangedFieldQueryExecutor
 {
     public function __construct(
-        private readonly AuditLogDbalFilterApplier $dbalFilterApplier,
-        private readonly AuditLogChangedFieldConstraintBuilder $changedFieldConstraintBuilder,
-        private readonly AuditLogMetadataResolver $metadataResolver,
-        private readonly AuditLogEntityFetcher $entityFetcher,
+        private AuditLogDbalFilterApplier $dbalFilterApplier,
+        private AuditLogChangedFieldConstraintBuilder $changedFieldConstraintBuilder,
+        private AuditLogMetadataResolver $metadataResolver,
+        private AuditLogEntityFetcher $entityFetcher,
     ) {
     }
 

@@ -25,6 +25,7 @@ use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 final class AsyncDatabaseAndQueueConflictTest extends AbstractFunctionalTestCase
 {
@@ -33,31 +34,44 @@ final class AsyncDatabaseAndQueueConflictTest extends AbstractFunctionalTestCase
         $em = self::createStub(EntityManagerInterface::class);
         $idResolver = self::createStub(EntityIdResolverInterface::class);
         $idResolver->method('resolve')->willReturn('1');
+        $uuidFactory = self::getContainer()->get(UuidFactory::class);
+        self::assertInstanceOf(UuidFactory::class, $uuidFactory);
 
-        $factory = new AuditLogMessageFactory($idResolver);
+        $factory = new AuditLogMessageFactory($idResolver, $uuidFactory);
         $eventDispatcher = new EventDispatcher();
         $integrityService = self::createStub(AuditIntegrityServiceInterface::class);
         $integrityService->method('isEnabled')->willReturn(false);
 
-        $mockBus = $this->createMock(MessageBusInterface::class);
-        $dispatchedMessages = [];
+        $spyBus = new class implements MessageBusInterface {
+            public int $dispatchCount = 0;
 
-        $mockBus->expects($this->exactly(2))
-            ->method('dispatch')
-            ->willReturnCallback(static function (object $message) use (&$dispatchedMessages) {
-                $dispatchedMessages[] = $message;
+            public ?PersistAuditLogMessage $persistMessage = null;
+
+            public ?AuditLogMessage $queueMessage = null;
+
+            public function dispatch(object $message, array $stamps = []): Envelope
+            {
+                ++$this->dispatchCount;
+
+                if ($message instanceof PersistAuditLogMessage) {
+                    $this->persistMessage = $message;
+                } elseif ($message instanceof AuditLogMessage) {
+                    $this->queueMessage = $message;
+                }
 
                 return new Envelope($message);
-            });
+            }
+        };
 
-        $asyncDbTransport = new AsyncDatabaseAuditTransport($mockBus, $factory);
-        $queueTransport = new QueueAuditTransport($mockBus, $eventDispatcher, $integrityService, $factory);
+        $asyncDbTransport = new AsyncDatabaseAuditTransport($spyBus, $factory);
+        $queueTransport = new QueueAuditTransport($spyBus, $eventDispatcher, $integrityService, $factory);
 
         $chainTransport = new ChainAuditTransport([$asyncDbTransport, $queueTransport]);
         $auditDispatcher = new AuditDispatcher(
             $chainTransport,
             new AuditLogContextProcessor(new ContextSanitizer(), new AuditContextNormalizer(new ContextSanitizer())),
-            new AuditFallbackPersister(new AuditLogWriter()),
+            new AuditFallbackPersister(new AuditLogWriter($uuidFactory)),
+            $uuidFactory,
             null,
             null,
             null,
@@ -69,26 +83,14 @@ final class AsyncDatabaseAndQueueConflictTest extends AbstractFunctionalTestCase
         $log->context = ['test' => true];
 
         $auditDispatcher->dispatch($log, $em, AuditPhase::PostFlush);
-        self::assertCount(2, $dispatchedMessages, 'Exactly two messages should be dispatched to the bus.');
+        self::assertSame(2, $spyBus->dispatchCount, 'Exactly two messages should be dispatched to the bus.');
+        self::assertInstanceOf(PersistAuditLogMessage::class, $spyBus->persistMessage, 'A PersistAuditLogMessage must be dispatched to save the data in the DB worker.');
+        self::assertInstanceOf(AuditLogMessage::class, $spyBus->queueMessage, 'An AuditLogMessage must be dispatched to send the data to the external Queue worker.');
 
-        $hasPersistMessage = false;
-        $hasQueueMessage = false;
-
-        foreach ($dispatchedMessages as $message) {
-            if ($message instanceof PersistAuditLogMessage) {
-                $hasPersistMessage = true;
-                self::assertSame('create', $message->action, 'Persist message should retain the action.');
-                self::assertSame($log->id?->toRfc4122(), $message->auditId, 'Persist message should preserve the original audit UUID.');
-                self::assertSame('mock-signature-hash', $message->signature, 'Persist message MUST carry the signature to the database.');
-                self::assertSame(['test' => true], $message->context, 'Persist message MUST carry context.');
-            }
-            if ($message instanceof AuditLogMessage) {
-                $hasQueueMessage = true;
-                self::assertSame('create', $message->action, 'Queue message should retain the action.');
-            }
-        }
-
-        self::assertTrue($hasPersistMessage, 'A PersistAuditLogMessage must be dispatched to save the data in the DB worker.');
-        self::assertTrue($hasQueueMessage, 'An AuditLogMessage must be dispatched to send the data to the external Queue worker.');
+        self::assertSame('create', $spyBus->persistMessage->action, 'Persist message should retain the action.');
+        self::assertSame($log->id?->toRfc4122(), $spyBus->persistMessage->auditId, 'Persist message should preserve the original audit UUID.');
+        self::assertSame('mock-signature-hash', $spyBus->persistMessage->signature, 'Persist message MUST carry the signature to the database.');
+        self::assertSame(['test' => true], $spyBus->persistMessage->context, 'Persist message MUST carry context.');
+        self::assertSame('create', $spyBus->queueMessage->action, 'Queue message should retain the action.');
     }
 }

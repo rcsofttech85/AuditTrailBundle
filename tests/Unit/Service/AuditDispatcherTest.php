@@ -30,6 +30,8 @@ use Rcsofttech\AuditTrailBundle\Transport\AuditDeliveryResult;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use stdClass;
 use Stringable;
+use Symfony\Component\Uid\Factory\MockUuidFactory;
+use Symfony\Component\Uid\Factory\UuidFactory;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 use function fclose;
@@ -116,6 +118,7 @@ final class AuditDispatcherTest extends TestCase
         bool $fallbackToDatabase = true,
         ?iterable $aiProcessors = null,
         ?AuditLogWriterInterface $auditLogWriter = null,
+        ?UuidFactory $uuidFactory = null,
     ): AuditDispatcher {
         $contextProcessor = new AuditLogContextProcessor(
             new ContextSanitizer(),
@@ -137,6 +140,7 @@ final class AuditDispatcherTest extends TestCase
             $transport ?? $this->transport,
             $contextProcessor,
             $fallbackPersister,
+            $uuidFactory ?? new UuidFactory(),
             $eventDispatcher,
             $integrityService,
             $logger,
@@ -176,6 +180,26 @@ final class AuditDispatcherTest extends TestCase
             ->willReturnCallback(static fn (AuditLogCreatedEvent $event): AuditLogCreatedEvent => $event);
 
         $dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush, null, $entity);
+    }
+
+    public function testDispatchGeneratesDeterministicDeliveryIdThroughUuidFactory(): void
+    {
+        $transport = $this->useTransportMock();
+        $dispatcher = $this->createDispatcher(
+            $transport,
+            uuidFactory: new MockUuidFactory(['0195f4d8-b087-7d44-9c4f-a5c6d4aa0001']),
+        );
+
+        $transport->method('supports')->willReturn(true);
+        $transport->expects($this->once())
+            ->method('send')
+            ->with(self::callback(static function (AuditTransportContext $context): bool {
+                return $context->audit->deliveryId === '0195f4d8-b087-7d44-9c4f-a5c6d4aa0001';
+            }))
+            ->willReturn(AuditDeliveryResult::delivered());
+
+        self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
+        self::assertSame('0195f4d8-b087-7d44-9c4f-a5c6d4aa0001', $this->audit->deliveryId);
     }
 
     public function testDispatchRedactsEventMutationsBeforeSigningAndSending(): void

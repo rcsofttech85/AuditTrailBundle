@@ -13,7 +13,7 @@ use const JSON_UNESCAPED_UNICODE;
 /**
  * Encodes queue audit messages into the canonical JSON body used for transport.
  */
-final class AuditLogMessagePayloadEncoder
+final readonly class AuditLogMessagePayloadEncoder
 {
     public function encode(AuditLogMessage $message): string
     {

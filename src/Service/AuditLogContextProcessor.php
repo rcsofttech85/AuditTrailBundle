@@ -16,17 +16,17 @@ use function is_array;
 use function sprintf;
 use function trim;
 
-final class AuditLogContextProcessor
+final readonly class AuditLogContextProcessor
 {
     /**
      * @param iterable<AuditLogAiProcessorInterface> $aiProcessors
      */
     public function __construct(
-        private readonly ContextSanitizer $contextSanitizer,
-        private readonly AuditContextNormalizer $contextNormalizer,
-        private readonly ?LoggerInterface $logger = null,
+        private ContextSanitizer $contextSanitizer,
+        private AuditContextNormalizer $contextNormalizer,
+        private ?LoggerInterface $logger = null,
         #[AutowireIterator('audit_trail.ai_processor')]
-        private readonly iterable $aiProcessors = [],
+        private iterable $aiProcessors = [],
     ) {
     }
 

@@ -6,12 +6,14 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+use Symfony\Component\Uid\Factory\MockUuidFactory;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 final class TransactionIdGeneratorTest extends TestCase
 {
     public function testGetTransactionIdReturnsUuid(): void
     {
-        $generator = new TransactionIdGenerator();
+        $generator = new TransactionIdGenerator(new UuidFactory());
         $id = $generator->getTransactionId();
 
         self::assertNotEmpty($id);
@@ -23,7 +25,7 @@ final class TransactionIdGeneratorTest extends TestCase
 
     public function testGetTransactionIdReturnsSameIdForSameInstance(): void
     {
-        $generator = new TransactionIdGenerator();
+        $generator = new TransactionIdGenerator(new UuidFactory());
         $id1 = $generator->getTransactionId();
         $id2 = $generator->getTransactionId();
 
@@ -32,21 +34,26 @@ final class TransactionIdGeneratorTest extends TestCase
 
     public function testDifferentInstancesReturnDifferentIds(): void
     {
-        $generator1 = new TransactionIdGenerator();
-        $generator2 = new TransactionIdGenerator();
+        $generator1 = new TransactionIdGenerator(new UuidFactory());
+        $generator2 = new TransactionIdGenerator(new UuidFactory());
 
         self::assertNotSame($generator1->getTransactionId(), $generator2->getTransactionId());
     }
 
     public function testResetGeneratesNewId(): void
     {
-        $generator = new TransactionIdGenerator();
+        $generator = new TransactionIdGenerator(
+            new MockUuidFactory([
+                '0195f4d8-b087-7d44-9c4f-a5c6d4aa0001',
+                '0195f4d8-b087-7d44-9c4f-a5c6d4aa0002',
+            ]),
+        );
         $id1 = $generator->getTransactionId();
 
         $generator->reset();
         $id2 = $generator->getTransactionId();
 
-        self::assertNotSame($id1, $id2);
-        self::assertNotEmpty($id2);
+        self::assertSame('0195f4d8-b087-7d44-9c4f-a5c6d4aa0001', $id1);
+        self::assertSame('0195f4d8-b087-7d44-9c4f-a5c6d4aa0002', $id2);
     }
 }

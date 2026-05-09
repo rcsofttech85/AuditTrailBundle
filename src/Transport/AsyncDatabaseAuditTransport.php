@@ -15,11 +15,11 @@ use Symfony\Component\Messenger\MessageBusInterface;
  * The message is consumed by PersistAuditLogHandler, which hydrates
  * and persists the AuditLog entity in a separate worker process.
  */
-final class AsyncDatabaseAuditTransport implements AuditTransportInterface
+final readonly class AsyncDatabaseAuditTransport implements AuditTransportInterface
 {
     public function __construct(
-        private readonly MessageBusInterface $bus,
-        private readonly AuditLogMessageFactoryInterface $messageFactory,
+        private MessageBusInterface $bus,
+        private AuditLogMessageFactoryInterface $messageFactory,
     ) {
     }
 

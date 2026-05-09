@@ -16,7 +16,7 @@ use function sprintf;
 
 use const JSON_THROW_ON_ERROR;
 
-final class AuditLogChangedFieldConstraintBuilder
+final readonly class AuditLogChangedFieldConstraintBuilder
 {
     /**
      * @param list<string> $changedFields

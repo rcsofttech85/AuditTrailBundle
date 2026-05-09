@@ -19,6 +19,7 @@ use Rcsofttech\AuditTrailBundle\Service\AuditLogWriter;
 use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\AbstractFunctionalTestCase;
 use Symfony\Component\EventDispatcher\EventDispatcher;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 final class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
 {
@@ -41,6 +42,8 @@ final class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
 
         $transport = $container->get('rcsofttech_audit_trail.transport.database');
         self::assertInstanceOf(AuditTransportInterface::class, $transport);
+        $uuidFactory = $container->get(UuidFactory::class);
+        self::assertInstanceOf(UuidFactory::class, $uuidFactory);
 
         $eventDispatcher = new EventDispatcher();
 
@@ -52,7 +55,8 @@ final class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
         $dispatcher = new AuditDispatcher(
             $transport,
             new AuditLogContextProcessor(new ContextSanitizer(), new AuditContextNormalizer(new ContextSanitizer())),
-            new AuditFallbackPersister(new AuditLogWriter(), $eventDispatcher),
+            new AuditFallbackPersister(new AuditLogWriter($uuidFactory), $eventDispatcher),
+            $uuidFactory,
             $eventDispatcher,
             $integrityService,
             null,

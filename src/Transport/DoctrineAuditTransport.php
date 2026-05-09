@@ -10,11 +10,11 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 
-final class DoctrineAuditTransport implements AuditTransportInterface
+final readonly class DoctrineAuditTransport implements AuditTransportInterface
 {
     public function __construct(
-        private readonly EntityIdResolverInterface $idResolver,
-        private readonly AuditLogWriterInterface $auditLogWriter,
+        private EntityIdResolverInterface $idResolver,
+        private AuditLogWriterInterface $auditLogWriter,
     ) {
     }
 

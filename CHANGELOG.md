@@ -53,6 +53,11 @@ collection auditing.
   the fluent `AuditQuery` API and `AuditReaderInterface` behavior stay the
   same, but direct manual construction of the concrete `AuditQuery` or
   `AuditReader` classes must be updated for v4.
+- **UUID generation now flows through Symfony UID services**: direct manual
+  construction of `AuditDispatcher`, `AuditLogMessageFactory`,
+  `AuditLogWriter`, and `TransactionIdGenerator` must now provide Symfony's
+  `UuidFactory` explicitly when those concrete classes are instantiated
+  outside the container.
 - **Audit export now uses one streaming pipeline**: file and non-file exports
   now share the same streaming path. Custom `AuditExporterInterface`
   implementations must update `exportToStream()` to return the exported record

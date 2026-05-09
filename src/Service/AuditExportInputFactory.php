@@ -16,7 +16,7 @@ use function is_string;
 use function sprintf;
 use function strtolower;
 
-final class AuditExportInputFactory
+final readonly class AuditExportInputFactory
 {
     private const string FORMAT_JSON = 'json';
 

@@ -18,12 +18,17 @@ use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Uid\Factory\UuidFactory;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final class AuditTrailExtensionTest extends TestCase
 {
     private function buildScheduledAuditManagerFromContainer(ContainerBuilder $container): ScheduledAuditManager
     {
+        if (!$container->hasDefinition(UuidFactory::class) && !$container->hasAlias(UuidFactory::class)) {
+            $container->register(UuidFactory::class, UuidFactory::class);
+        }
+
         $container->getDefinition(ScheduledAuditManager::class)->setPublic(true);
         $container->compile();
 
@@ -568,6 +573,36 @@ final class AuditTrailExtensionTest extends TestCase
             'Rcsofttech\\AuditTrailBundle\\Entity',
             $configs[0]['orm']['mappings']['RcsofttechAuditTrailBundle']['prefix'] ?? null
         );
+    }
+
+    public function testPrependEnablesFrameworkUidWhenFrameworkExtensionExists(): void
+    {
+        $container = new ContainerBuilder();
+        $container->registerExtension(new class implements ExtensionInterface {
+            public function getAlias(): string
+            {
+                return 'framework';
+            }
+
+            public function getNamespace(): string
+            {
+                return '';
+            }
+
+            public function getXsdValidationBasePath(): false
+            {
+                return false;
+            }
+
+            public function load(array $configs, ContainerBuilder $container): void
+            {
+            }
+        });
+
+        $extension = new AuditTrailExtension();
+        $extension->prepend($container);
+
+        self::assertSame([['uid' => []]], $container->getExtensionConfig('framework'));
     }
 
     public function testGetAliasReturnsAuditTrail(): void

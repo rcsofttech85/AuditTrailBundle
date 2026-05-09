@@ -9,10 +9,10 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use RuntimeException;
 use Throwable;
 
-final class ChainAuditTransport implements AuditTransportInterface
+final readonly class ChainAuditTransport implements AuditTransportInterface
 {
     /** @var list<AuditTransportInterface> */
-    private readonly array $transports;
+    private array $transports;
 
     /**
      * @param iterable<AuditTransportInterface> $transports

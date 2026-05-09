@@ -14,10 +14,10 @@ use function count;
 use function end;
 use function reset;
 
-final class TransactionDrilldownService
+final readonly class TransactionDrilldownService
 {
     public function __construct(
-        private readonly AuditLogRepositoryInterface $repository,
+        private AuditLogRepositoryInterface $repository,
     ) {
     }
 

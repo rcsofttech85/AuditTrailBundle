@@ -17,6 +17,7 @@ use Rcsofttech\AuditTrailBundle\MessageHandler\PersistAuditLogHandler;
 use Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 use function usleep;
 
@@ -32,8 +33,10 @@ final class AsyncPersistOrderingTest extends AbstractFunctionalTestCase
 
         $idResolver = self::createStub(EntityIdResolverInterface::class);
         $idResolver->method('resolve')->willReturn(null);
+        $uuidFactory = self::getContainer()->get(UuidFactory::class);
+        self::assertInstanceOf(UuidFactory::class, $uuidFactory);
 
-        $factory = new AuditLogMessageFactory($idResolver);
+        $factory = new AuditLogMessageFactory($idResolver, $uuidFactory);
         $handler = new PersistAuditLogHandler($registry, $this->getAuditLogWriter());
 
         $firstLog = new AuditLog(

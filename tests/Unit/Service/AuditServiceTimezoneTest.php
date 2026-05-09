@@ -20,6 +20,7 @@ use Rcsofttech\AuditTrailBundle\Service\AuditLogFactory;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 final class AuditServiceTimezoneTest extends TestCase
 {
@@ -50,7 +51,7 @@ final class AuditServiceTimezoneTest extends TestCase
             $metadataManager,
             new AuditLogFactory(
                 $clock,
-                new TransactionIdGenerator(),
+                new TransactionIdGenerator(new UuidFactory()),
                 $contextResolver,
                 $idResolver,
                 new ContextSanitizer(),
@@ -103,7 +104,7 @@ final class AuditServiceTimezoneTest extends TestCase
             $metadataManager,
             new AuditLogFactory(
                 $clock,
-                new TransactionIdGenerator(),
+                new TransactionIdGenerator(new UuidFactory()),
                 $contextResolver,
                 $idResolver,
                 new ContextSanitizer(),

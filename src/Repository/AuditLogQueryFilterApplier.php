@@ -12,7 +12,7 @@ use function array_map;
 use function is_array;
 use function is_string;
 
-final class AuditLogQueryFilterApplier
+final readonly class AuditLogQueryFilterApplier
 {
     /**
      * @param array<string, mixed> $filters

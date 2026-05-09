@@ -22,6 +22,7 @@ use Rcsofttech\AuditTrailBundle\Service\EntityClassResolver;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use RuntimeException;
 use stdClass;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 final class AuditLogFactoryTest extends TestCase
 {
@@ -190,7 +191,7 @@ final class AuditLogFactoryTest extends TestCase
     ): AuditLogFactory {
         return new AuditLogFactory(
             $this->clock,
-            new TransactionIdGenerator(),
+            new TransactionIdGenerator(new UuidFactory()),
             $contextResolver ?? $this->contextResolver,
             $this->idResolver,
             new ContextSanitizer(),

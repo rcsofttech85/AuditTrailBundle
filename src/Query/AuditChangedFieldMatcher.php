@@ -12,7 +12,7 @@ use function array_filter;
 use function array_values;
 use function count;
 
-final class AuditChangedFieldMatcher
+final readonly class AuditChangedFieldMatcher
 {
     /**
      * @param array<AuditLog> $logs

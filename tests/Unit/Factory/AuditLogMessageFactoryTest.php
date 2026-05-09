@@ -14,6 +14,8 @@ use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use stdClass;
+use Symfony\Component\Uid\Factory\MockUuidFactory;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 final class AuditLogMessageFactoryTest extends TestCase
 {
@@ -24,7 +26,7 @@ final class AuditLogMessageFactoryTest extends TestCase
     protected function setUp(): void
     {
         $this->idResolver = self::createStub(EntityIdResolverInterface::class);
-        $this->factory = new AuditLogMessageFactory($this->idResolver);
+        $this->factory = new AuditLogMessageFactory($this->idResolver, new UuidFactory());
     }
 
     public function testCreateQueueMessageResolvesEntityId(): void
@@ -32,7 +34,7 @@ final class AuditLogMessageFactoryTest extends TestCase
         $idResolver = self::createStub(EntityIdResolverInterface::class);
         $idResolver->method('resolve')->willReturn('42');
         $this->idResolver = $idResolver;
-        $this->factory = new AuditLogMessageFactory($idResolver);
+        $this->factory = new AuditLogMessageFactory($idResolver, new UuidFactory());
 
         $log = new AuditLog(stdClass::class, null, AuditAction::Create);
 
@@ -48,7 +50,7 @@ final class AuditLogMessageFactoryTest extends TestCase
         $idResolver = self::createStub(EntityIdResolverInterface::class);
         $idResolver->method('resolve')->willReturn('42');
         $this->idResolver = $idResolver;
-        $this->factory = new AuditLogMessageFactory($idResolver);
+        $this->factory = new AuditLogMessageFactory($idResolver, new UuidFactory());
 
         $log = new AuditLog(stdClass::class, null, AuditAction::Create);
 
@@ -64,7 +66,7 @@ final class AuditLogMessageFactoryTest extends TestCase
         $idResolver = self::createStub(EntityIdResolverInterface::class);
         $idResolver->method('resolve')->willReturn(null);
         $this->idResolver = $idResolver;
-        $this->factory = new AuditLogMessageFactory($idResolver);
+        $this->factory = new AuditLogMessageFactory($idResolver, new UuidFactory());
 
         $log = new AuditLog(stdClass::class, '100', AuditAction::Update);
 
@@ -78,7 +80,7 @@ final class AuditLogMessageFactoryTest extends TestCase
         $idResolver = self::createStub(EntityIdResolverInterface::class);
         $idResolver->method('resolve')->willReturn(null);
         $this->idResolver = $idResolver;
-        $this->factory = new AuditLogMessageFactory($idResolver);
+        $this->factory = new AuditLogMessageFactory($idResolver, new UuidFactory());
 
         $log = new AuditLog(stdClass::class, '100', AuditAction::Update);
 
@@ -99,15 +101,25 @@ final class AuditLogMessageFactoryTest extends TestCase
 
     public function testCreatePersistMessageInitializesAndReusesTheAuditId(): void
     {
+        $this->factory = new AuditLogMessageFactory(
+            $this->idResolver,
+            $this->createUuidFactory(
+                '0195f4d8-b087-7d44-9c4f-a5c6d4aa0001',
+                '0195f4d8-b087-7d44-9c4f-a5c6d4aa0002',
+                '0195f4d8-b087-7d44-9c4f-a5c6d4aa0003',
+            ),
+        );
         $log = new AuditLog(stdClass::class, '1', AuditAction::Create);
         $context = $this->createContext($log);
 
         $firstMessage = $this->factory->createPersistMessage($context);
         $secondMessage = $this->factory->createPersistMessage($context);
 
-        self::assertNotNull($firstMessage->auditId);
+        self::assertSame('0195f4d8-b087-7d44-9c4f-a5c6d4aa0001', $firstMessage->auditId);
+        self::assertSame('0195f4d8-b087-7d44-9c4f-a5c6d4aa0002', $firstMessage->deliveryId);
         self::assertSame($log->id?->toRfc4122(), $firstMessage->auditId);
         self::assertSame($firstMessage->auditId, $secondMessage->auditId);
+        self::assertSame($firstMessage->deliveryId, $secondMessage->deliveryId);
     }
 
     public function testCreateQueueMessageIncludesSignatureAndDeliveryId(): void
@@ -148,7 +160,7 @@ final class AuditLogMessageFactoryTest extends TestCase
     {
         $idResolver = $this->createMock(EntityIdResolverInterface::class);
         $this->idResolver = $idResolver;
-        $this->factory = new AuditLogMessageFactory($idResolver);
+        $this->factory = new AuditLogMessageFactory($idResolver, new UuidFactory());
 
         return $idResolver;
     }
@@ -160,5 +172,10 @@ final class AuditLogMessageFactoryTest extends TestCase
             self::createStub(EntityManagerInterface::class),
             $log,
         );
+    }
+
+    private function createUuidFactory(string ...$uuids): MockUuidFactory
+    {
+        return new MockUuidFactory($uuids);
     }
 }

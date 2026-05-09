@@ -11,7 +11,7 @@ use function array_flip;
 use function implode;
 use function sprintf;
 
-final class AuditLogEntityFetcher
+final readonly class AuditLogEntityFetcher
 {
     /**
      * @param list<string> $ids

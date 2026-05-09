@@ -17,23 +17,24 @@ use Rcsofttech\AuditTrailBundle\Event\AuditDeliveryFailedEvent;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use RuntimeException;
-use Symfony\Component\Uid\Uuid;
+use Symfony\Component\Uid\Factory\UuidFactory;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 use Throwable;
 
 use function sprintf;
 
-final class AuditDispatcher implements AuditDispatcherInterface
+final readonly class AuditDispatcher implements AuditDispatcherInterface
 {
     public function __construct(
-        private readonly AuditTransportInterface $transport,
-        private readonly AuditLogContextProcessor $contextProcessor,
-        private readonly AuditFallbackPersister $fallbackPersister,
-        private readonly ?EventDispatcherInterface $eventDispatcher = null,
-        private readonly ?AuditIntegrityServiceInterface $integrityService = null,
-        private readonly ?LoggerInterface $logger = null,
-        private readonly bool $failOnTransportError = false,
-        private readonly bool $fallbackToDatabase = true,
+        private AuditTransportInterface $transport,
+        private AuditLogContextProcessor $contextProcessor,
+        private AuditFallbackPersister $fallbackPersister,
+        private UuidFactory $uuidFactory,
+        private ?EventDispatcherInterface $eventDispatcher = null,
+        private ?AuditIntegrityServiceInterface $integrityService = null,
+        private ?LoggerInterface $logger = null,
+        private bool $failOnTransportError = false,
+        private bool $fallbackToDatabase = true,
     ) {
     }
 
@@ -122,7 +123,7 @@ final class AuditDispatcher implements AuditDispatcherInterface
     private function ensureDeliveryId(AuditLog $audit): void
     {
         if ($audit->deliveryId === null) {
-            $audit->deliveryId = Uuid::v7()->toRfc4122();
+            $audit->deliveryId = $this->uuidFactory->create()->toRfc4122();
         }
     }
 
