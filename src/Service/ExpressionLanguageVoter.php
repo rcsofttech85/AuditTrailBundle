@@ -47,48 +47,16 @@ final class ExpressionLanguageVoter implements AuditVoterInterface
             return true;
         }
 
-        $expression = $condition->expression;
+        $parsedExpression = $this->resolveParsedExpression($entity::class, $condition->expression);
+        if (!$parsedExpression instanceof ParsedExpression) {
+            return false;
+        }
 
         try {
-            if (!isset($this->cache[$expression])) {
-                $parsedExpression = $this->expressionLanguage->parse(
-                    $expression,
-                    self::ALLOWED_VARIABLES,
-                );
-
-                if (!$this->validator->isSafe($parsedExpression)) {
-                    $this->logger?->critical('Blocked unsafe AuditCondition expression.', [
-                        'entity' => $entity::class,
-                        'expression' => $expression,
-                    ]);
-
-                    return false;
-                }
-
-                $this->cache[$expression] = $parsedExpression;
-            }
-
-            return (bool) $this->expressionLanguage->evaluate($this->cache[$expression], [
-                'object' => $entity,
-                'action' => $action->value,
-                'changeSet' => $changeSet,
-                'user' => new readonly class($this->userResolver->getUserId(), $this->userResolver->getUsername(), $this->userResolver->getIpAddress()) {
-                    public function __construct(
-                        public ?string $id,
-                        public ?string $username,
-                        public ?string $ip,
-                    ) {
-                    }
-                },
-            ]);
-        } catch (SyntaxError $e) {
-            $this->logger?->error('AuditCondition expression syntax error.', [
-                'entity' => $entity::class,
-                'expression' => $expression,
-                'error' => $e->getMessage(),
-            ]);
-
-            return false;
+            return (bool) $this->expressionLanguage->evaluate(
+                $parsedExpression,
+                $this->buildEvaluationContext($entity, $action, $changeSet),
+            );
         } catch (Throwable $e) {
             $this->logger?->error('AuditCondition expression evaluation failed.', [
                 'entity' => $entity::class,
@@ -97,5 +65,59 @@ final class ExpressionLanguageVoter implements AuditVoterInterface
 
             return false;
         }
+    }
+
+    private function resolveParsedExpression(string $entityClass, string $expression): ?ParsedExpression
+    {
+        if (isset($this->cache[$expression])) {
+            return $this->cache[$expression];
+        }
+
+        try {
+            $parsedExpression = $this->expressionLanguage->parse($expression, self::ALLOWED_VARIABLES);
+        } catch (SyntaxError $e) {
+            $this->logger?->error('AuditCondition expression syntax error.', [
+                'entity' => $entityClass,
+                'expression' => $expression,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if (!$this->validator->isSafe($parsedExpression)) {
+            $this->logger?->critical('Blocked unsafe AuditCondition expression.', [
+                'entity' => $entityClass,
+                'expression' => $expression,
+            ]);
+
+            return null;
+        }
+
+        $this->cache[$expression] = $parsedExpression;
+
+        return $parsedExpression;
+    }
+
+    /**
+     * @param array<string, mixed> $changeSet
+     *
+     * @return array{object: object, action: string, changeSet: array<string, mixed>, user: object}
+     */
+    private function buildEvaluationContext(object $entity, AuditAction $action, array $changeSet): array
+    {
+        return [
+            'object' => $entity,
+            'action' => $action->value,
+            'changeSet' => $changeSet,
+            'user' => new readonly class($this->userResolver->getUserId(), $this->userResolver->getUsername(), $this->userResolver->getIpAddress()) {
+                public function __construct(
+                    public ?string $id,
+                    public ?string $username,
+                    public ?string $ip,
+                ) {
+                }
+            },
+        ];
     }
 }

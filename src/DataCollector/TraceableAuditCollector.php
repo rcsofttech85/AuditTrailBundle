@@ -23,6 +23,14 @@ use function is_string;
  */
 final class TraceableAuditCollector implements ResetInterface
 {
+    private const array DEFAULT_AI_NAMESPACE_METADATA = [
+        'summary' => null,
+        'severity' => null,
+        'anomaly_score' => null,
+        'anomaly_hints' => null,
+        'tags' => null,
+    ];
+
     /** @var list<AuditLog> */
     private array $auditObjects = [];
 
@@ -43,10 +51,13 @@ final class TraceableAuditCollector implements ResetInterface
      */
     public function refreshSnapshots(): void
     {
-        $this->collectedAudits = array_map(
-            static fn (AuditLog $audit): array => self::serializeAudit($audit),
-            $this->auditObjects,
-        );
+        $snapshots = [];
+
+        foreach ($this->auditObjects as $audit) {
+            $snapshots[] = self::serializeAudit($audit);
+        }
+
+        $this->collectedAudits = $snapshots;
     }
 
     public function reset(): void
@@ -94,56 +105,225 @@ final class TraceableAuditCollector implements ResetInterface
     private static function extractAiMetadata(array $context): array
     {
         $rawAi = $context['ai'] ?? null;
-
+        $metadata = self::emptyAiMetadata();
         if (!is_array($rawAi)) {
-            return [
-                'namespaces' => [],
-                'summary' => null,
-                'severity' => null,
-                'anomaly_score' => null,
-                'anomaly_hints' => [],
-                'tags' => [],
-            ];
+            return $metadata;
         }
 
-        $namespaces = [];
-        $summary = null;
-        $severity = null;
-        $anomalyScore = null;
-        $hints = [];
-        $tags = [];
-
-        foreach ($rawAi as $namespace => $metadata) {
-            if (!is_string($namespace) || !is_array($metadata)) {
+        foreach ($rawAi as $namespace => $namespaceMetadata) {
+            if (!is_string($namespace) || !is_array($namespaceMetadata)) {
                 continue;
             }
 
-            $namespaces[] = $namespace;
-            $summary ??= self::stringOrNull($metadata['summary'] ?? null);
-            $severity ??= self::stringOrNull($metadata['severity'] ?? null);
-            $anomalyScore ??= self::numericOrNull($metadata['anomaly_score'] ?? null);
-
-            foreach (self::stringList($metadata['anomaly_hints'] ?? null) as $hint) {
-                if (!in_array($hint, $hints, true)) {
-                    $hints[] = $hint;
-                }
-            }
-
-            foreach (self::stringList($metadata['tags'] ?? null) as $tag) {
-                if (!in_array($tag, $tags, true)) {
-                    $tags[] = $tag;
-                }
-            }
+            $metadata = self::mergeAiNamespaceMetadata($metadata, $namespace, $namespaceMetadata);
         }
 
+        return $metadata;
+    }
+
+    /**
+     * @return array{
+     *   namespaces: list<string>,
+     *   summary: ?string,
+     *   severity: ?string,
+     *   anomaly_score: float|int|null,
+     *   anomaly_hints: list<string>,
+     *   tags: list<string>
+     * }
+     */
+    private static function emptyAiMetadata(): array
+    {
         return [
-            'namespaces' => $namespaces,
-            'summary' => $summary,
-            'severity' => $severity,
-            'anomaly_score' => $anomalyScore,
-            'anomaly_hints' => $hints,
-            'tags' => $tags,
+            'namespaces' => [],
+            'summary' => null,
+            'severity' => null,
+            'anomaly_score' => null,
+            'anomaly_hints' => [],
+            'tags' => [],
         ];
+    }
+
+    /**
+     * @param array{
+     *   namespaces: list<string>,
+     *   summary: ?string,
+     *   severity: ?string,
+     *   anomaly_score: float|int|null,
+     *   anomaly_hints: list<string>,
+     *   tags: list<string>
+     * } $aggregatedMetadata
+     * @param array<string, mixed> $namespaceMetadata
+     *
+     * @return array{
+     *   namespaces: list<string>,
+     *   summary: ?string,
+     *   severity: ?string,
+     *   anomaly_score: float|int|null,
+     *   anomaly_hints: list<string>,
+     *   tags: list<string>
+     * }
+     */
+    private static function mergeAiNamespaceMetadata(array $aggregatedMetadata, string $namespace, array $namespaceMetadata): array
+    {
+        $normalizedMetadata = self::normalizeAiNamespaceMetadata($namespaceMetadata);
+        $aggregatedMetadata = self::withNamespace($aggregatedMetadata, $namespace);
+        $aggregatedMetadata = self::withSummary($aggregatedMetadata, $normalizedMetadata['summary']);
+        $aggregatedMetadata = self::withSeverity($aggregatedMetadata, $normalizedMetadata['severity']);
+        $aggregatedMetadata = self::withAnomalyScore($aggregatedMetadata, $normalizedMetadata['anomaly_score']);
+        self::mergeUniqueStrings($aggregatedMetadata['anomaly_hints'], $normalizedMetadata['anomaly_hints']);
+        self::mergeUniqueStrings($aggregatedMetadata['tags'], $normalizedMetadata['tags']);
+
+        return $aggregatedMetadata;
+    }
+
+    /**
+     * @param array<string, mixed> $namespaceMetadata
+     *
+     * @return array{
+     *   summary: ?string,
+     *   severity: ?string,
+     *   anomaly_score: float|int|null,
+     *   anomaly_hints: list<string>,
+     *   tags: list<string>
+     * }
+     */
+    private static function normalizeAiNamespaceMetadata(array $namespaceMetadata): array
+    {
+        $namespaceMetadata = [
+            ...self::DEFAULT_AI_NAMESPACE_METADATA,
+            ...$namespaceMetadata,
+        ];
+
+        return [
+            'summary' => self::stringOrNull($namespaceMetadata['summary']),
+            'severity' => self::stringOrNull($namespaceMetadata['severity']),
+            'anomaly_score' => self::numericOrNull($namespaceMetadata['anomaly_score']),
+            'anomaly_hints' => self::stringList($namespaceMetadata['anomaly_hints']),
+            'tags' => self::stringList($namespaceMetadata['tags']),
+        ];
+    }
+
+    /**
+     * @param array{
+     *   namespaces: list<string>,
+     *   summary: ?string,
+     *   severity: ?string,
+     *   anomaly_score: float|int|null,
+     *   anomaly_hints: list<string>,
+     *   tags: list<string>
+     * } $aggregatedMetadata
+     *
+     * @return array{
+     *   namespaces: list<string>,
+     *   summary: ?string,
+     *   severity: ?string,
+     *   anomaly_score: float|int|null,
+     *   anomaly_hints: list<string>,
+     *   tags: list<string>
+     * }
+     */
+    private static function withNamespace(array $aggregatedMetadata, string $namespace): array
+    {
+        $aggregatedMetadata['namespaces'][] = $namespace;
+
+        return $aggregatedMetadata;
+    }
+
+    /**
+     * @param array{
+     *   namespaces: list<string>,
+     *   summary: ?string,
+     *   severity: ?string,
+     *   anomaly_score: float|int|null,
+     *   anomaly_hints: list<string>,
+     *   tags: list<string>
+     * } $aggregatedMetadata
+     *
+     * @return array{
+     *   namespaces: list<string>,
+     *   summary: ?string,
+     *   severity: ?string,
+     *   anomaly_score: float|int|null,
+     *   anomaly_hints: list<string>,
+     *   tags: list<string>
+     * }
+     */
+    private static function withSummary(array $aggregatedMetadata, mixed $value): array
+    {
+        if ($aggregatedMetadata['summary'] === null) {
+            $aggregatedMetadata['summary'] = self::stringOrNull($value);
+        }
+
+        return $aggregatedMetadata;
+    }
+
+    /**
+     * @param array{
+     *   namespaces: list<string>,
+     *   summary: ?string,
+     *   severity: ?string,
+     *   anomaly_score: float|int|null,
+     *   anomaly_hints: list<string>,
+     *   tags: list<string>
+     * } $aggregatedMetadata
+     *
+     * @return array{
+     *   namespaces: list<string>,
+     *   summary: ?string,
+     *   severity: ?string,
+     *   anomaly_score: float|int|null,
+     *   anomaly_hints: list<string>,
+     *   tags: list<string>
+     * }
+     */
+    private static function withSeverity(array $aggregatedMetadata, mixed $value): array
+    {
+        if ($aggregatedMetadata['severity'] === null) {
+            $aggregatedMetadata['severity'] = self::stringOrNull($value);
+        }
+
+        return $aggregatedMetadata;
+    }
+
+    /**
+     * @param array{
+     *   namespaces: list<string>,
+     *   summary: ?string,
+     *   severity: ?string,
+     *   anomaly_score: float|int|null,
+     *   anomaly_hints: list<string>,
+     *   tags: list<string>
+     * } $aggregatedMetadata
+     *
+     * @return array{
+     *   namespaces: list<string>,
+     *   summary: ?string,
+     *   severity: ?string,
+     *   anomaly_score: float|int|null,
+     *   anomaly_hints: list<string>,
+     *   tags: list<string>
+     * }
+     */
+    private static function withAnomalyScore(array $aggregatedMetadata, mixed $value): array
+    {
+        if ($aggregatedMetadata['anomaly_score'] === null) {
+            $aggregatedMetadata['anomaly_score'] = self::numericOrNull($value);
+        }
+
+        return $aggregatedMetadata;
+    }
+
+    /**
+     * @param list<string> $target
+     * @param list<string> $values
+     */
+    private static function mergeUniqueStrings(array &$target, array $values): void
+    {
+        foreach ($values as $value) {
+            if (!in_array($value, $target, true)) {
+                $target[] = $value;
+            }
+        }
     }
 
     private static function stringOrNull(mixed $value): ?string

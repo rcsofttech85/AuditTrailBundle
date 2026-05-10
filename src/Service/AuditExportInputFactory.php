@@ -87,40 +87,67 @@ final readonly class AuditExportInputFactory
     private function buildFilters(InputInterface $input, SymfonyStyle $io): ?array
     {
         $filters = [];
+        $this->appendEntityFilter($filters, $input);
+        if (!$this->appendActionFilter($filters, $input, $io)) {
+            return null;
+        }
+
+        return $this->appendDateFilters($filters, $input, $io) ? $filters : null;
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     */
+    private function appendEntityFilter(array &$filters, InputInterface $input): void
+    {
         $entity = $input->getOption('entity');
 
         if (is_string($entity) && $entity !== '') {
             $filters['entityClass'] = $entity;
         }
+    }
 
+    /**
+     * @param array<string, mixed> $filters
+     */
+    private function appendActionFilter(array &$filters, InputInterface $input, SymfonyStyle $io): bool
+    {
         $action = $input->getOption('action');
-        if (is_string($action) && $action !== '') {
-            if (AuditAction::tryFrom($action) === null) {
-                $io->error(sprintf('Invalid action "%s". Available: %s', $action, implode(', ', AuditAction::values())));
-
-                return null;
-            }
-
-            $filters['action'] = AuditAction::from($action)->value;
+        if (!is_string($action) || $action === '') {
+            return true;
         }
 
+        if (AuditAction::tryFrom($action) === null) {
+            $io->error(sprintf('Invalid action "%s". Available: %s', $action, implode(', ', AuditAction::values())));
+
+            return false;
+        }
+
+        $filters['action'] = AuditAction::from($action)->value;
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     */
+    private function appendDateFilters(array &$filters, InputInterface $input, SymfonyStyle $io): bool
+    {
         foreach (['from', 'to'] as $parameter) {
             $date = $input->getOption($parameter);
-
             if (!is_string($date) || $date === '') {
                 continue;
             }
 
             $parsedDate = $this->parseDate($date, $parameter, $io);
-
             if ($parsedDate === null) {
-                return null;
+                return false;
             }
 
             $filters[$parameter] = $parsedDate;
         }
 
-        return $filters;
+        return true;
     }
 
     private function parseDate(string $date, string $parameter, SymfonyStyle $io): ?DateTimeImmutable

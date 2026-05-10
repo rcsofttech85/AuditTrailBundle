@@ -35,41 +35,75 @@ final readonly class EntityUpdateProcessor
         $collectionChangesByOwner = $this->updateTransitionResolver->indexCollectionChanges($em, $uow);
 
         foreach ($uow->getScheduledEntityUpdates() as $entity) {
-            $transition = $this->updateTransitionResolver->resolve(
+            $this->processScheduledEntityUpdate(
                 $entity,
+                $em,
                 $uow,
                 $deletedAssociationImpactsByOwner,
                 $collectionChangesByOwner,
             );
-            $old = $transition['old'];
-            $new = $transition['new'];
-
-            if ($old === [] && $new === []) {
-                continue;
-            }
-
-            $action = $transition['action'];
-            if (!$this->auditService->shouldAudit($entity, $action, $new)) {
-                continue;
-            }
-
-            $deferredCollectionFields = $this->resolveDeferredCollectionFields($entity, $new, $em);
-            if ($deferredCollectionFields === []) {
-                $audit = $this->auditService->createAuditLog($entity, $action, $old, $new, [], $em);
-                $this->dispatchManager->dispatchOrSchedule($audit, $entity, $em, $uow, false);
-
-                continue;
-            }
-
-            // Strip deferred collection fields from the immediate payload so only eagerly materialized changes are stored now.
-            foreach ($deferredCollectionFields as $field) {
-                unset($new[$field]);
-            }
-
-            $this->auditManager->schedulePendingAuditPlan(
-                PendingAuditPlan::forDeferredCollections($entity, $action, $old, $new, $deferredCollectionFields),
-            );
         }
+    }
+
+    /**
+     * @param array<int, array<string, array{old: array<int, int|string>, new: array<int, int|string>}>> $deletedAssociationImpactsByOwner
+     * @param array<int, array{old: array<string, mixed>, new: array<string, mixed>}>                    $collectionChangesByOwner
+     */
+    private function processScheduledEntityUpdate(
+        object $entity,
+        EntityManagerInterface $em,
+        UnitOfWork $uow,
+        array $deletedAssociationImpactsByOwner,
+        array $collectionChangesByOwner,
+    ): void {
+        $transition = $this->updateTransitionResolver->resolve(
+            $entity,
+            $uow,
+            $deletedAssociationImpactsByOwner,
+            $collectionChangesByOwner,
+        );
+        $old = $transition['old'];
+        $new = $transition['new'];
+        if ($old === [] && $new === []) {
+            return;
+        }
+
+        $action = $transition['action'];
+        if (!$this->auditService->shouldAudit($entity, $action, $new)) {
+            return;
+        }
+
+        $deferredCollectionFields = $this->resolveDeferredCollectionFields($entity, $new, $em);
+        if ($deferredCollectionFields === []) {
+            $audit = $this->auditService->createAuditLog($entity, $action, $old, $new, [], $em);
+            $this->dispatchManager->dispatchOrSchedule($audit, $entity, $em, $uow, false);
+
+            return;
+        }
+
+        $this->scheduleDeferredCollectionAuditPlan($entity, $action, $old, $new, $deferredCollectionFields);
+    }
+
+    /**
+     * @param array<string, mixed> $oldValues
+     * @param array<string, mixed> $newValues
+     * @param list<string>         $deferredCollectionFields
+     */
+    private function scheduleDeferredCollectionAuditPlan(
+        object $entity,
+        \Rcsofttech\AuditTrailBundle\Enum\AuditAction $action,
+        array $oldValues,
+        array $newValues,
+        array $deferredCollectionFields,
+    ): void {
+        // Strip deferred collection fields from the immediate payload so only eagerly materialized changes are stored now.
+        foreach ($deferredCollectionFields as $field) {
+            unset($newValues[$field]);
+        }
+
+        $this->auditManager->schedulePendingAuditPlan(
+            PendingAuditPlan::forDeferredCollections($entity, $action, $oldValues, $newValues, $deferredCollectionFields),
+        );
     }
 
     /**

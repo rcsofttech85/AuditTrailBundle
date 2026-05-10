@@ -28,15 +28,23 @@ final readonly class EntityAuditDispatchManager
         UnitOfWork $uow,
         bool $isInsert,
     ): void {
-        $hasResolvedEntityId = $audit->hasResolvedEntityId();
-        $canDispatchNow = (!$isInsert && !$this->deferTransportUntilCommit)
-            || ($isInsert && !$hasResolvedEntityId && !$this->deferTransportUntilCommit && $this->failOnTransportError)
-            || ($isInsert && $hasResolvedEntityId);
-
-        if ($canDispatchNow && $this->dispatcher->dispatch($audit, $em, AuditPhase::OnFlush, $uow, $entity)) {
+        if ($this->shouldDispatchNow($audit, $isInsert) && $this->dispatcher->dispatch($audit, $em, AuditPhase::OnFlush, $uow, $entity)) {
             return;
         }
 
         $this->auditManager->schedule($entity, $audit, $isInsert);
+    }
+
+    private function shouldDispatchNow(AuditLog $audit, bool $isInsert): bool
+    {
+        if (!$isInsert) {
+            return !$this->deferTransportUntilCommit;
+        }
+
+        if ($audit->hasResolvedEntityId()) {
+            return true;
+        }
+
+        return !$this->deferTransportUntilCommit && $this->failOnTransportError;
     }
 }

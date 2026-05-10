@@ -67,35 +67,52 @@ final readonly class AuditContextNormalizer
      */
     private function truncateOversizedContext(array $context, string $entityClass, ?string $entityId): array
     {
-        $encoded = json_encode($context, JSON_THROW_ON_ERROR);
-        $encodedSize = strlen($encoded);
-
-        if ($encodedSize <= ContextSanitizer::MAX_CONTEXT_BYTES) {
+        $encodedSize = $this->resolveContextSize($context);
+        if ($this->fitsWithinContextLimit($encodedSize)) {
             return $context;
         }
 
-        if (isset($context['ai'])) {
-            $preservedContext = $context;
-            unset($preservedContext['ai']);
-            $preservedContext['_ai_truncated'] = true;
-            $preservedContext['_original_size'] = $encodedSize;
+        return $this->resolveTruncatedContext($context, $encodedSize, $entityClass, $entityId);
+    }
 
-            $preservedEncoded = json_encode($preservedContext, JSON_THROW_ON_ERROR);
-            if (strlen($preservedEncoded) <= ContextSanitizer::MAX_CONTEXT_BYTES) {
-                $this->logger?->warning(
-                    sprintf(
-                        'Audit AI metadata for %s#%s truncated (%d bytes exceeded %d limit).',
-                        $entityClass,
-                        $entityId ?? '[unresolved]',
-                        $encodedSize,
-                        ContextSanitizer::MAX_CONTEXT_BYTES,
-                    ),
-                );
+    /**
+     * @param array<string, mixed> $context
+     *
+     * @return array<string, mixed>
+     */
+    private function resolveTruncatedContext(
+        array $context,
+        int $encodedSize,
+        string $entityClass,
+        ?string $entityId,
+    ): array {
+        $aiTruncatedContext = $this->truncateAiContextIfPossible($context, $encodedSize);
+        if ($aiTruncatedContext !== null) {
+            $this->logAiContextTruncation($entityClass, $entityId, $encodedSize);
 
-                return $preservedContext;
-            }
+            return $aiTruncatedContext;
         }
 
+        $this->logContextTruncation($entityClass, $entityId, $encodedSize);
+
+        return ['_truncated' => true, '_original_size' => $encodedSize];
+    }
+
+    private function logAiContextTruncation(string $entityClass, ?string $entityId, int $encodedSize): void
+    {
+        $this->logger?->warning(
+            sprintf(
+                'Audit AI metadata for %s#%s truncated (%d bytes exceeded %d limit).',
+                $entityClass,
+                $entityId ?? '[unresolved]',
+                $encodedSize,
+                ContextSanitizer::MAX_CONTEXT_BYTES,
+            ),
+        );
+    }
+
+    private function logContextTruncation(string $entityClass, ?string $entityId, int $encodedSize): void
+    {
         $this->logger?->warning(
             sprintf(
                 'Audit context for %s#%s truncated (%d bytes exceeded %d limit).',
@@ -105,7 +122,39 @@ final readonly class AuditContextNormalizer
                 ContextSanitizer::MAX_CONTEXT_BYTES,
             ),
         );
+    }
 
-        return ['_truncated' => true, '_original_size' => $encodedSize];
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function resolveContextSize(array $context): int
+    {
+        return strlen(json_encode($context, JSON_THROW_ON_ERROR));
+    }
+
+    private function fitsWithinContextLimit(int $encodedSize): bool
+    {
+        return $encodedSize <= ContextSanitizer::MAX_CONTEXT_BYTES;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     *
+     * @return array<string, mixed>|null
+     */
+    private function truncateAiContextIfPossible(array $context, int $encodedSize): ?array
+    {
+        if (!isset($context['ai'])) {
+            return null;
+        }
+
+        $preservedContext = $context;
+        unset($preservedContext['ai']);
+        $preservedContext['_ai_truncated'] = true;
+        $preservedContext['_original_size'] = $encodedSize;
+
+        return $this->fitsWithinContextLimit($this->resolveContextSize($preservedContext))
+            ? $preservedContext
+            : null;
     }
 }

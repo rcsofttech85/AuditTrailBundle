@@ -55,15 +55,25 @@ final readonly class SoftDeleteAuditListener
             return;
         }
 
+        $this->auditManager->addPendingDeletion(
+            $entity,
+            $this->buildOldData($entity, $oldChanges, $objectManager),
+            AuditAction::SoftDelete,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $oldChanges
+     *
+     * @return array<string, mixed>
+     */
+    private function buildOldData(object $entity, array $oldChanges, EntityManagerInterface $objectManager): array
+    {
         $oldData = $this->auditService->getEntityData($entity, [], $objectManager);
         foreach ($oldChanges as $field => $value) {
             $oldData[$field] = $value;
         }
 
-        $this->auditManager->addPendingDeletion(
-            $entity,
-            $oldData,
-            AuditAction::SoftDelete,
-        );
+        return $oldData;
     }
 }

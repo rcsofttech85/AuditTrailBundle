@@ -89,53 +89,164 @@ final readonly class EntityCollectionUpdateProcessor
         $ownerCanProcess = [];
 
         foreach ($collectionUpdates as $collection) {
-            if (!$this->collectionChangeResolver->isTrackableCollection($collection)) {
+            $resolvedTransition = $this->resolveOwnerTransition($collection, $em);
+            if ($resolvedTransition === null) {
                 continue;
             }
 
-            $owner = $this->collectionChangeResolver->getCollectionOwner($collection);
-            if ($owner === null) {
-                continue;
-            }
-
+            $owner = $resolvedTransition['owner'];
             $ownerId = spl_object_id($owner);
-            $ownerCanProcess[$ownerId] ??= !$uow->isScheduledForInsert($owner) && !$uow->isScheduledForUpdate($owner);
-            if (!$ownerCanProcess[$ownerId]) {
+            if (!$this->canProcessOwner($owner, $ownerId, $uow, $ownerCanProcess)) {
                 continue;
             }
 
-            $transition = $this->collectionChangeResolver->buildCollectionTransition($collection, $em);
-            if ($transition === null) {
-                continue;
-            }
-
-            $field = $transition['field'];
-            $aggregatedTransitions[$ownerId] ??= [
-                'entity' => $owner,
-                'old' => [],
-                'new' => [],
-            ];
-
-            $existingOldValue = $aggregatedTransitions[$ownerId]['old'][$field] ?? null;
-            $existingNewValue = $aggregatedTransitions[$ownerId]['new'][$field] ?? null;
-            if (!is_array($existingOldValue) || !is_array($existingNewValue)) {
-                $aggregatedTransitions[$ownerId]['old'][$field] = $transition['old'];
-                $aggregatedTransitions[$ownerId]['new'][$field] = $transition['new'];
-
-                continue;
-            }
-
-            $this->collectionTransitionMerger->mergeSingleFieldTransition(
-                $existingOldValue,
-                $existingNewValue,
-                $transition['old'],
-                $transition['new'],
+            $this->mergeOwnerTransition(
+                $aggregatedTransitions,
+                $ownerId,
+                $owner,
+                $resolvedTransition['transition'],
             );
-            $aggregatedTransitions[$ownerId]['old'][$field] = $existingOldValue;
-            $aggregatedTransitions[$ownerId]['new'][$field] = $existingNewValue;
         }
 
         return $aggregatedTransitions;
+    }
+
+    /**
+     * @return array{
+     *     owner: object,
+     *     transition: array{field: string, old: array<int, int|string>, new: array<int, int|string>}
+     * }|null
+     */
+    private function resolveOwnerTransition(object $collection, EntityManagerInterface $em): ?array
+    {
+        if (!$this->collectionChangeResolver->isTrackableCollection($collection)) {
+            return null;
+        }
+
+        $owner = $this->collectionChangeResolver->getCollectionOwner($collection);
+        if ($owner === null) {
+            return null;
+        }
+
+        $transition = $this->collectionChangeResolver->buildCollectionTransition($collection, $em);
+        if ($transition === null) {
+            return null;
+        }
+
+        return [
+            'owner' => $owner,
+            'transition' => $transition,
+        ];
+    }
+
+    /**
+     * @param array<int, bool> $ownerCanProcess
+     */
+    private function canProcessOwner(
+        object $owner,
+        int $ownerId,
+        UnitOfWork $uow,
+        array &$ownerCanProcess,
+    ): bool {
+        $ownerCanProcess[$ownerId] ??= !$uow->isScheduledForInsert($owner) && !$uow->isScheduledForUpdate($owner);
+
+        return $ownerCanProcess[$ownerId];
+    }
+
+    /**
+     * @param array<int, array{
+     *     entity: object,
+     *     old: array<string, mixed>,
+     *     new: array<string, mixed>
+     * }> $aggregatedTransitions
+     * @param array{field: string, old: array<int, int|string>, new: array<int, int|string>} $transition
+     */
+    private function mergeOwnerTransition(
+        array &$aggregatedTransitions,
+        int $ownerId,
+        object $owner,
+        array $transition,
+    ): void {
+        $field = $transition['field'];
+        $this->initializeOwnerTransitionBucket($aggregatedTransitions, $ownerId, $owner);
+
+        $existingOldValue = $aggregatedTransitions[$ownerId]['old'][$field] ?? null;
+        $existingNewValue = $aggregatedTransitions[$ownerId]['new'][$field] ?? null;
+        if ($this->shouldStoreUnmergedTransition($existingOldValue, $existingNewValue)) {
+            $this->storeOwnerTransitionField($aggregatedTransitions[$ownerId], $field, $transition);
+
+            return;
+        }
+
+        $this->mergeExistingOwnerTransitionField(
+            $aggregatedTransitions[$ownerId],
+            $field,
+            $existingOldValue,
+            $existingNewValue,
+            $transition,
+        );
+    }
+
+    /**
+     * @param array<int, array{
+     *     entity: object,
+     *     old: array<string, mixed>,
+     *     new: array<string, mixed>
+     * }> $aggregatedTransitions
+     */
+    private function initializeOwnerTransitionBucket(array &$aggregatedTransitions, int $ownerId, object $owner): void
+    {
+        $aggregatedTransitions[$ownerId] ??= [
+            'entity' => $owner,
+            'old' => [],
+            'new' => [],
+        ];
+    }
+
+    private function shouldStoreUnmergedTransition(mixed $existingOldValue, mixed $existingNewValue): bool
+    {
+        return !is_array($existingOldValue) || !is_array($existingNewValue);
+    }
+
+    /**
+     * @param array{
+     *     entity: object,
+     *     old: array<string, mixed>,
+     *     new: array<string, mixed>
+     * } $ownerTransitionBucket
+     * @param array{field: string, old: array<int, int|string>, new: array<int, int|string>} $transition
+     */
+    private function storeOwnerTransitionField(array &$ownerTransitionBucket, string $field, array $transition): void
+    {
+        $ownerTransitionBucket['old'][$field] = $transition['old'];
+        $ownerTransitionBucket['new'][$field] = $transition['new'];
+    }
+
+    /**
+     * @param array{
+     *     entity: object,
+     *     old: array<string, mixed>,
+     *     new: array<string, mixed>
+     * } $ownerTransitionBucket
+     * @param array<int, int|string>                                                         $existingOldValue
+     * @param array<int, int|string>                                                         $existingNewValue
+     * @param array{field: string, old: array<int, int|string>, new: array<int, int|string>} $transition
+     */
+    private function mergeExistingOwnerTransitionField(
+        array &$ownerTransitionBucket,
+        string $field,
+        array $existingOldValue,
+        array $existingNewValue,
+        array $transition,
+    ): void {
+        $this->collectionTransitionMerger->mergeSingleFieldTransition(
+            $existingOldValue,
+            $existingNewValue,
+            $transition['old'],
+            $transition['new'],
+        );
+        $ownerTransitionBucket['old'][$field] = $existingOldValue;
+        $ownerTransitionBucket['new'][$field] = $existingNewValue;
     }
 
     /**

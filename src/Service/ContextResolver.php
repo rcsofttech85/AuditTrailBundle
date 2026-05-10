@@ -50,14 +50,30 @@ final readonly class ContextResolver implements ContextResolverInterface
     #[Override]
     public function resolve(object $entity, AuditAction $action, array $newValues, array $extraContext): array
     {
-        $userId = $extraContext[AuditLogInterface::CONTEXT_USER_ID]
-            ?? $this->resolveUserContextValue('user_id', $this->userResolver->getUserId(...));
-        $username = $extraContext[AuditLogInterface::CONTEXT_USERNAME]
-            ?? $this->resolveUserContextValue('username', $this->userResolver->getUsername(...));
-        $ipAddress = $extraContext[AuditLogInterface::CONTEXT_IP_ADDRESS]
-            ?? $this->resolveUserContextValue('ip_address', $this->userResolver->getIpAddress(...));
-        $userAgent = $extraContext[AuditLogInterface::CONTEXT_USER_AGENT]
-            ?? $this->resolveUserContextValue('user_agent', $this->userResolver->getUserAgent(...));
+        $userId = $this->resolveContextValue(
+            $extraContext,
+            AuditLogInterface::CONTEXT_USER_ID,
+            'user_id',
+            $this->userResolver->getUserId(...),
+        );
+        $username = $this->resolveContextValue(
+            $extraContext,
+            AuditLogInterface::CONTEXT_USERNAME,
+            'username',
+            $this->userResolver->getUsername(...),
+        );
+        $ipAddress = $this->resolveContextValue(
+            $extraContext,
+            AuditLogInterface::CONTEXT_IP_ADDRESS,
+            'ip_address',
+            $this->userResolver->getIpAddress(...),
+        );
+        $userAgent = $this->resolveContextValue(
+            $extraContext,
+            AuditLogInterface::CONTEXT_USER_AGENT,
+            'user_agent',
+            $this->userResolver->getUserAgent(...),
+        );
         $context = $this->resolveContextPayload($extraContext, $entity, $action, $newValues);
 
         return [
@@ -76,6 +92,18 @@ final readonly class ContextResolver implements ContextResolverInterface
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $extraContext
+     */
+    private function resolveContextValue(
+        array $extraContext,
+        string $contextKey,
+        string $field,
+        Closure $resolver,
+    ): mixed {
+        return $extraContext[$contextKey] ?? $this->resolveUserContextValue($field, $resolver);
     }
 
     private function resolveUserContextValue(string $field, Closure $resolver): mixed

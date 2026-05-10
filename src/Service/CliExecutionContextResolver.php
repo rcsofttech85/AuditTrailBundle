@@ -33,13 +33,15 @@ final class CliExecutionContextResolver
             return null;
         }
 
-        return $this->readCliIpAddressValue('AUDIT_TRAIL_CLI_IP')
-            ?? $this->readCliIpAddressValue('SSH_CLIENT', 0)
-            ?? $this->readCliIpAddressValue('SSH_CONNECTION', 0)
-            ?? $this->readCliIpAddressValue('REMOTE_ADDR')
-            ?? $this->readCliIpAddressValue('SERVER_ADDR')
-            ?? $this->readCliIpAddressValue('LOCAL_ADDR')
-            ?? $this->readCliIpAddressValue('HOSTNAME');
+        return $this->resolveFirstValidIpAddress([
+            ['key' => 'AUDIT_TRAIL_CLI_IP'],
+            ['key' => 'SSH_CLIENT', 'segment' => 0],
+            ['key' => 'SSH_CONNECTION', 'segment' => 0],
+            ['key' => 'REMOTE_ADDR'],
+            ['key' => 'SERVER_ADDR'],
+            ['key' => 'LOCAL_ADDR'],
+            ['key' => 'HOSTNAME'],
+        ]);
     }
 
     public function resolveUserAgent(): ?string
@@ -81,6 +83,21 @@ final class CliExecutionContextResolver
         return $this->normalizeCliIpAddressValue(
             $this->resolveCliIpAddressCandidate($key, $segment),
         );
+    }
+
+    /**
+     * @param list<array{key: string, segment?: int}> $candidates
+     */
+    private function resolveFirstValidIpAddress(array $candidates): ?string
+    {
+        foreach ($candidates as $candidate) {
+            $ipAddress = $this->readCliIpAddressValue($candidate['key'], $candidate['segment'] ?? null);
+            if ($ipAddress !== null) {
+                return $ipAddress;
+            }
+        }
+
+        return null;
     }
 
     private function readCliValue(string $key): ?string

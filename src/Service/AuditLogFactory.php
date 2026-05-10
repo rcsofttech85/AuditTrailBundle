@@ -63,32 +63,132 @@ final readonly class AuditLogFactory
         $entityClass = $this->entityClassResolver->resolve($entity, $entityManager);
         $changedFields = $this->resolveChangedFields($action, $newValues);
         $resolvedContext = $this->resolveContext($entity, $action, $newValues ?? [], $context);
-        $ipAddress = $this->sanitizeOptionalString($resolvedContext['ipAddress']);
+        $ipAddress = $this->resolveValidatedIpAddress($resolvedContext['ipAddress']);
 
-        if ($ipAddress !== null && filter_var($ipAddress, FILTER_VALIDATE_IP) === false) {
-            $this->logger?->warning(sprintf('Invalid IP address format detected during audit: "%s". Nullifying.', $ipAddress));
-            $ipAddress = null;
-        }
+        return $this->buildAuditLog(
+            $entityClass,
+            $entityId,
+            $action,
+            $oldValues,
+            $newValues,
+            $changedFields,
+            $resolvedContext,
+            $ipAddress,
+        );
+    }
 
+    /**
+     * @param array<string, mixed>|null $oldValues
+     * @param array<string, mixed>|null $newValues
+     * @param array<int, string>|null   $changedFields
+     * @param array{
+     *     userId: mixed,
+     *     username: mixed,
+     *     ipAddress: mixed,
+     *     userAgent: mixed,
+     *     context: array<string, mixed>
+     * } $resolvedContext
+     */
+    private function buildAuditLog(
+        string $entityClass,
+        ?string $entityId,
+        AuditAction $action,
+        ?array $oldValues,
+        ?array $newValues,
+        ?array $changedFields,
+        array $resolvedContext,
+        ?string $ipAddress,
+    ): AuditLog {
         $auditLog = new AuditLog(
             entityClass: $entityClass,
             entityId: $entityId,
             action: $action,
             createdAt: $this->clock->now()->setTimezone($this->tz),
-            oldValues: $oldValues !== null ? $this->contextSanitizer->sanitizeArray($oldValues) : null,
-            newValues: $newValues !== null ? $this->contextSanitizer->sanitizeArray($newValues) : null,
-            changedFields: $changedFields !== null ? array_map($this->contextSanitizer->sanitizeString(...), $changedFields) : null,
+            oldValues: $this->sanitizeOptionalArray($oldValues),
+            newValues: $this->sanitizeOptionalArray($newValues),
+            changedFields: $this->sanitizeChangedFields($changedFields),
             transactionHash: $this->transactionIdGenerator->getTransactionId(),
-            userId: $this->sanitizeOptionalString($resolvedContext['userId']),
-            username: $this->sanitizeOptionalString($resolvedContext['username']),
+            userId: $this->sanitizeResolvedContextField($resolvedContext, 'userId'),
+            username: $this->sanitizeResolvedContextField($resolvedContext, 'username'),
             ipAddress: $ipAddress,
-            userAgent: $this->sanitizeOptionalString($resolvedContext['userAgent']),
-            context: $this->contextNormalizer->normalize($resolvedContext['context'], $entityClass, $entityId),
+            userAgent: $this->sanitizeResolvedContextField($resolvedContext, 'userAgent'),
+            context: $this->normalizeResolvedContext($resolvedContext, $entityClass, $entityId),
         );
 
         $auditLog->markContextNormalized();
 
         return $auditLog;
+    }
+
+    /**
+     * @param array<string, mixed>|null $values
+     *
+     * @return array<string, mixed>|null
+     */
+    private function sanitizeOptionalArray(?array $values): ?array
+    {
+        return $values === null ? null : $this->contextSanitizer->sanitizeArray($values);
+    }
+
+    /**
+     * @param array<int, string>|null $changedFields
+     *
+     * @return array<int, string>|null
+     */
+    private function sanitizeChangedFields(?array $changedFields): ?array
+    {
+        if ($changedFields === null) {
+            return null;
+        }
+
+        $sanitizedFields = [];
+        foreach ($changedFields as $field) {
+            $sanitizedFields[] = $this->contextSanitizer->sanitizeString($field);
+        }
+
+        return $sanitizedFields;
+    }
+
+    /**
+     * @param array{
+     *     userId: mixed,
+     *     username: mixed,
+     *     ipAddress: mixed,
+     *     userAgent: mixed,
+     *     context: array<string, mixed>
+     * } $resolvedContext
+     */
+    private function sanitizeResolvedContextField(array $resolvedContext, string $field): ?string
+    {
+        return $this->sanitizeOptionalString($resolvedContext[$field]);
+    }
+
+    /**
+     * @param array{
+     *     userId: mixed,
+     *     username: mixed,
+     *     ipAddress: mixed,
+     *     userAgent: mixed,
+     *     context: array<string, mixed>
+     * } $resolvedContext
+     *
+     * @return array<string, mixed>
+     */
+    private function normalizeResolvedContext(array $resolvedContext, string $entityClass, ?string $entityId): array
+    {
+        return $this->contextNormalizer->normalize($resolvedContext['context'], $entityClass, $entityId);
+    }
+
+    private function resolveValidatedIpAddress(mixed $value): ?string
+    {
+        $ipAddress = $this->sanitizeOptionalString($value);
+        if ($ipAddress === null || filter_var($ipAddress, FILTER_VALIDATE_IP) !== false) {
+            return $ipAddress;
+        }
+
+        $this->logger?->warning(sprintf('Invalid IP address format detected during audit: "%s". Nullifying.', $ipAddress));
+
+        return null;
     }
 
     /**

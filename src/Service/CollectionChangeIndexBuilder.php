@@ -152,26 +152,13 @@ final readonly class CollectionChangeIndexBuilder
         $originalData = $uow->getOriginalEntityData($owner);
 
         foreach ($metadata->getAssociationNames() as $associationName) {
-            if (isset($oldValues[$associationName]) || !$metadata->isCollectionValuedAssociation($associationName)) {
-                continue;
-            }
-
-            $currentValue = $metadata->getFieldValue($owner, $associationName);
-            if (!is_iterable($currentValue)) {
-                continue;
-            }
-
-            $originalValue = $this->resolveOriginalCollectionValue($currentValue, $originalData, $associationName);
-            if (!is_iterable($originalValue)) {
-                continue;
-            }
-
-            $transition = $this->resolveOriginalCollectionTransition(
+            $transition = $this->resolveAssociationTransition(
                 $owner,
                 $associationName,
-                $currentValue,
-                $originalValue,
                 $em,
+                $metadata,
+                $originalData,
+                $oldValues,
             );
             if ($transition === null) {
                 continue;
@@ -180,6 +167,44 @@ final readonly class CollectionChangeIndexBuilder
             $oldValues[$associationName] = $transition['old'];
             $newValues[$associationName] = $transition['new'];
         }
+    }
+
+    /**
+     * @param ClassMetadata<object> $metadata
+     * @param array<string, mixed>  $originalData
+     * @param array<string, mixed>  $oldValues
+     *
+     * @return array{old: array<int, int|string>, new: array<int, int|string>}|null
+     */
+    private function resolveAssociationTransition(
+        object $owner,
+        string $associationName,
+        EntityManagerInterface $em,
+        ClassMetadata $metadata,
+        array $originalData,
+        array $oldValues,
+    ): ?array {
+        if (isset($oldValues[$associationName]) || !$metadata->isCollectionValuedAssociation($associationName)) {
+            return null;
+        }
+
+        $currentValue = $metadata->getFieldValue($owner, $associationName);
+        if (!is_iterable($currentValue)) {
+            return null;
+        }
+
+        $originalValue = $this->resolveOriginalCollectionValue($currentValue, $originalData, $associationName);
+        if (!is_iterable($originalValue)) {
+            return null;
+        }
+
+        return $this->resolveOriginalCollectionTransition(
+            $owner,
+            $associationName,
+            $currentValue,
+            $originalValue,
+            $em,
+        );
     }
 
     /**

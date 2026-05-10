@@ -12,7 +12,8 @@ use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 use function array_fill_keys;
-use function array_key_exists;
+use function array_is_list;
+use function count;
 use function is_array;
 use function is_float;
 use function is_int;
@@ -46,11 +47,12 @@ final class ChangeProcessor implements ChangeProcessorInterface
                 continue;
             }
 
-            if (!is_array($change) || !array_key_exists(0, $change) || !array_key_exists(1, $change)) {
+            $normalizedChange = $this->normalizeChangeTuple($change);
+            if ($normalizedChange === null) {
                 continue;
             }
 
-            [$oldValue, $newValue] = $change;
+            [$oldValue, $newValue] = $normalizedChange;
 
             if (!$this->valuesAreDifferent($oldValue, $newValue)) {
                 continue;
@@ -97,50 +99,83 @@ final class ChangeProcessor implements ChangeProcessorInterface
     #[Override]
     public function determineUpdateAction(array $changeSet): AuditAction
     {
-        if (!$this->enableSoftDelete || !array_key_exists($this->softDeleteField, $changeSet)) {
-            return AuditAction::Update;
-        }
-
-        $softDeleteChange = $changeSet[$this->softDeleteField];
-        if (
-            !is_array($softDeleteChange)
-            || !array_key_exists(0, $softDeleteChange)
-            || !array_key_exists(1, $softDeleteChange)
-        ) {
+        $softDeleteChange = $this->resolveSoftDeleteChange($changeSet);
+        if ($softDeleteChange === null) {
             return AuditAction::Update;
         }
 
         [$oldValue, $newValue] = $softDeleteChange;
-        if ($oldValue === null && $newValue !== null) {
-            return AuditAction::SoftDelete;
-        }
 
-        return ($oldValue !== null && $newValue === null)
-            ? AuditAction::Restore
-            : AuditAction::Update;
+        return $this->resolveSoftDeleteAction($oldValue, $newValue) ?? AuditAction::Update;
     }
 
     #[Override]
     public function determineDeletionAction(EntityManagerInterface $em, object $entity, bool $enableHardDelete): ?AuditAction
     {
-        if (!$this->enableSoftDelete) {
-            return $enableHardDelete ? AuditAction::Delete : null;
-        }
-
-        $meta = $em->getClassMetadata($entity::class);
-        if ($meta->hasField($this->softDeleteField)) {
-            $changeSet = $em->getUnitOfWork()->getEntityChangeSet($entity);
-            $softDeleteChange = $changeSet[$this->softDeleteField] ?? null;
-
-            if (is_array($softDeleteChange)) {
-                [$oldValue, $newValue] = $softDeleteChange;
-
-                if ($oldValue === null && $newValue !== null) {
-                    return AuditAction::SoftDelete;
-                }
-            }
+        $softDeleteAction = $this->resolveDeletionSoftDeleteAction($em, $entity);
+        if ($softDeleteAction !== null) {
+            return $softDeleteAction;
         }
 
         return $enableHardDelete ? AuditAction::Delete : null;
+    }
+
+    /**
+     * @param array<string, mixed> $changeSet
+     *
+     * @return array{0: mixed, 1: mixed}|null
+     */
+    private function resolveSoftDeleteChange(array $changeSet): ?array
+    {
+        if (!$this->enableSoftDelete) {
+            return null;
+        }
+
+        return $this->normalizeChangeTuple($changeSet[$this->softDeleteField] ?? null);
+    }
+
+    private function resolveSoftDeleteAction(mixed $oldValue, mixed $newValue): ?AuditAction
+    {
+        if ($oldValue === null && $newValue !== null) {
+            return AuditAction::SoftDelete;
+        }
+
+        if ($oldValue !== null && $newValue === null) {
+            return AuditAction::Restore;
+        }
+
+        return null;
+    }
+
+    private function resolveDeletionSoftDeleteAction(EntityManagerInterface $em, object $entity): ?AuditAction
+    {
+        if (!$this->enableSoftDelete) {
+            return null;
+        }
+
+        $meta = $em->getClassMetadata($entity::class);
+        if (!$meta->hasField($this->softDeleteField)) {
+            return null;
+        }
+
+        $changeSet = $em->getUnitOfWork()->getEntityChangeSet($entity);
+        $softDeleteChange = $this->normalizeChangeTuple($changeSet[$this->softDeleteField] ?? null);
+        if ($softDeleteChange === null) {
+            return null;
+        }
+
+        return $this->resolveSoftDeleteAction($softDeleteChange[0], $softDeleteChange[1]);
+    }
+
+    /**
+     * @return array{0: mixed, 1: mixed}|null
+     */
+    private function normalizeChangeTuple(mixed $change): ?array
+    {
+        if (!is_array($change) || !array_is_list($change) || count($change) < 2) {
+            return null;
+        }
+
+        return [$change[0], $change[1]];
     }
 }

@@ -35,29 +35,38 @@ final readonly class AuditFallbackPersister
         ?object $entity = null,
     ): bool {
         try {
-            return match (true) {
-                $phase->isOnFlush() => $this->persistOnFlush($audit, $em, $uow),
-                default => $this->persistDeferred($audit, $em, $phase),
-            };
+            return $phase->isOnFlush()
+                ? $this->persistOnFlush($audit, $em, $uow)
+                : $this->persistDeferred($audit, $em, $phase);
         } catch (Throwable $fallbackError) {
-            $this->logger?->critical(
-                sprintf(
-                    'AUDIT LOSS: Failed to persist fallback for %s#%s: %s',
-                    $audit->entityClass,
-                    $this->describeEntityId($audit),
-                    $fallbackError->getMessage(),
-                ),
-                ['exception' => $fallbackError],
-            );
-
-            if ($transportError !== null && $this->eventDispatcher !== null) {
-                $this->eventDispatcher->dispatch(
-                    new AuditDeliveryFailedEvent($audit, $phase, $transportError, $fallbackError, $entity),
-                );
-            }
-
-            return false;
+            return $this->handleFallbackFailure($audit, $phase, $fallbackError, $transportError, $entity);
         }
+    }
+
+    private function handleFallbackFailure(
+        AuditLog $audit,
+        AuditPhase $phase,
+        Throwable $fallbackError,
+        ?Throwable $transportError,
+        ?object $entity,
+    ): bool {
+        $this->logger?->critical(
+            sprintf(
+                'AUDIT LOSS: Failed to persist fallback for %s#%s: %s',
+                $audit->entityClass,
+                $this->describeEntityId($audit),
+                $fallbackError->getMessage(),
+            ),
+            ['exception' => $fallbackError],
+        );
+
+        if ($transportError !== null && $this->eventDispatcher !== null) {
+            $this->eventDispatcher->dispatch(
+                new AuditDeliveryFailedEvent($audit, $phase, $transportError, $fallbackError, $entity),
+            );
+        }
+
+        return false;
     }
 
     private function persistOnFlush(AuditLog $audit, EntityManagerInterface $em, ?UnitOfWork $uow): bool
