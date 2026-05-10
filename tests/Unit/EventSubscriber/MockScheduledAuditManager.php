@@ -6,53 +6,82 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\EventSubscriber;
 
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Service\FailedAuditDispatchRetainerInterface;
+use Rcsofttech\AuditTrailBundle\ValueObject\PendingAuditPlan;
+use Rcsofttech\AuditTrailBundle\ValueObject\PendingDeletionEntry;
+use Rcsofttech\AuditTrailBundle\ValueObject\ScheduledAuditEntry;
 
-final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
+final class MockScheduledAuditManager implements ScheduledAuditManagerInterface, FailedAuditDispatchRetainerInterface
 {
-    /** @var array<int, array{entity: object, audit: AuditLog, is_insert: bool}> */
+    /** @var list<ScheduledAuditEntry> */
     private array $scheduledAudits = [];
 
-    /** @var list<array{entity: object, data: array<string, mixed>, is_managed: bool}> */
+    /** @var list<PendingDeletionEntry> */
     private array $pendingDeletions = [];
+
+    /** @var list<PendingAuditPlan> */
+    private array $pendingAuditPlans = [];
 
     public function schedule(object $entity, AuditLog $audit, bool $isInsert): void
     {
-        $this->scheduledAudits[] = ['entity' => $entity, 'audit' => $audit, 'is_insert' => $isInsert];
+        $this->scheduledAudits[] = new ScheduledAuditEntry($entity, $audit, $isInsert);
     }
 
-    public function addPendingDeletion(object $entity, array $data, bool $isManaged): void
+    public function addPendingDeletion(object $entity, array $data, AuditAction $action): void
     {
-        $this->pendingDeletions[] = ['entity' => $entity, 'data' => $data, 'is_managed' => $isManaged];
+        $this->pendingDeletions[] = new PendingDeletionEntry($entity, $data, $action);
+    }
+
+    public function schedulePendingAuditPlan(PendingAuditPlan $plan): void
+    {
+        $this->pendingAuditPlans[] = $plan;
     }
 
     public function clear(): void
     {
         $this->scheduledAudits = [];
         $this->pendingDeletions = [];
+        $this->pendingAuditPlans = [];
     }
 
-    /** @param array<int, array{entity: object, audit: AuditLog, is_insert: bool}> $scheduledAudits */
+    /**
+     * @param list<ScheduledAuditEntry|array{entity: object, audit: AuditLog, is_insert: bool}> $scheduledAudits
+     */
     public function replaceScheduledAudits(array $scheduledAudits): void
     {
-        $this->scheduledAudits = $scheduledAudits;
+        $this->scheduledAudits = $this->normalizeScheduledAudits($scheduledAudits);
     }
 
-    /** @param list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $pendingDeletions */
+    /**
+     * @param list<PendingDeletionEntry|array{entity: object, data: array<string, mixed>, action: AuditAction}> $pendingDeletions
+     */
     public function replacePendingDeletions(array $pendingDeletions): void
     {
-        $this->pendingDeletions = $pendingDeletions;
+        $this->pendingDeletions = $this->normalizePendingDeletions($pendingDeletions);
     }
 
-    /** @return array<int, array{entity: object, audit: AuditLog, is_insert: bool}> */
+    /** @return list<ScheduledAuditEntry> */
     public function getScheduledAudits(): array
     {
         return $this->scheduledAudits;
     }
 
-    /** @return list<array{entity: object, data: array<string, mixed>, is_managed: bool}> */
+    /** @return list<PendingDeletionEntry> */
     public function getPendingDeletions(): array
     {
         return $this->pendingDeletions;
+    }
+
+    /** @return list<PendingAuditPlan> */
+    public function getPendingAuditPlans(): array
+    {
+        return $this->pendingAuditPlans;
+    }
+
+    public function hasPendingAuditPlans(): bool
+    {
+        return $this->pendingAuditPlans !== [];
     }
 
     public function hasScheduledAudits(): bool
@@ -65,16 +94,33 @@ final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
         return $this->pendingDeletions !== [];
     }
 
-    /** @param array<int, array{entity: object, audit: AuditLog, is_insert: bool}> $scheduledAudits */
-    public function seedScheduledAudits(array $scheduledAudits): void
+    public function replacePendingAuditPlans(array $plans): void
     {
-        $this->scheduledAudits = $scheduledAudits;
+        $this->pendingAuditPlans = $plans;
     }
 
-    /** @param list<array{entity: object, data: array<string, mixed>, is_managed: bool}> $pendingDeletions */
+    /**
+     * @param list<ScheduledAuditEntry|array{entity: object, audit: AuditLog, is_insert: bool}> $scheduledAudits
+     */
+    public function seedScheduledAudits(array $scheduledAudits): void
+    {
+        $this->scheduledAudits = $this->normalizeScheduledAudits($scheduledAudits);
+    }
+
+    /**
+     * @param list<PendingDeletionEntry|array{entity: object, data: array<string, mixed>, action: AuditAction}> $pendingDeletions
+     */
     public function seedPendingDeletions(array $pendingDeletions): void
     {
-        $this->pendingDeletions = $pendingDeletions;
+        $this->pendingDeletions = $this->normalizePendingDeletions($pendingDeletions);
+    }
+
+    /**
+     * @param list<PendingAuditPlan> $pendingAuditPlans
+     */
+    public function seedPendingAuditPlans(array $pendingAuditPlans): void
+    {
+        $this->pendingAuditPlans = $pendingAuditPlans;
     }
 
     private bool $enabled = true;
@@ -92,5 +138,59 @@ final class MockScheduledAuditManager implements ScheduledAuditManagerInterface
     public function isEnabled(): bool
     {
         return $this->enabled;
+    }
+
+    public function reset(): void
+    {
+        $this->clear();
+        $this->enabled = true;
+    }
+
+    /**
+     * @param list<ScheduledAuditEntry|array{entity: object, audit: AuditLog, is_insert: bool}> $scheduledAudits
+     *
+     * @return list<ScheduledAuditEntry>
+     */
+    private function normalizeScheduledAudits(array $scheduledAudits): array
+    {
+        $normalized = [];
+        foreach ($scheduledAudits as $scheduledAudit) {
+            if ($scheduledAudit instanceof ScheduledAuditEntry) {
+                $normalized[] = $scheduledAudit;
+                continue;
+            }
+
+            $normalized[] = new ScheduledAuditEntry(
+                $scheduledAudit['entity'],
+                $scheduledAudit['audit'],
+                $scheduledAudit['is_insert'],
+            );
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param list<PendingDeletionEntry|array{entity: object, data: array<string, mixed>, action: AuditAction}> $pendingDeletions
+     *
+     * @return list<PendingDeletionEntry>
+     */
+    private function normalizePendingDeletions(array $pendingDeletions): array
+    {
+        $normalized = [];
+        foreach ($pendingDeletions as $pendingDeletion) {
+            if ($pendingDeletion instanceof PendingDeletionEntry) {
+                $normalized[] = $pendingDeletion;
+                continue;
+            }
+
+            $normalized[] = new PendingDeletionEntry(
+                $pendingDeletion['entity'],
+                $pendingDeletion['data'],
+                $pendingDeletion['action'],
+            );
+        }
+
+        return $normalized;
     }
 }

@@ -23,10 +23,14 @@ final readonly class EntityDataExtractor implements EntityDataExtractorInterface
         private ValueSerializerInterface $serializer,
         private MetadataCacheInterface $metadataCache,
         private ?LoggerInterface $logger = null,
+        private ?EntityManagerResolver $entityManagerResolver = null,
     ) {
     }
 
     /**
+     * @template T of object
+     *
+     * @param T             $entity
      * @param array<string> $ignored
      *
      * @return array<string, mixed>
@@ -35,30 +39,21 @@ final readonly class EntityDataExtractor implements EntityDataExtractorInterface
     public function extract(object $entity, array $ignored = [], ?EntityManagerInterface $entityManager = null): array
     {
         $class = $entity::class;
-        try {
-            $entityManager ??= $this->entityManager;
-            $meta = $entityManager->getClassMetadata($class);
-            $data = [];
-            /** @var array<string, true> $ignoredFields */
-            $ignoredFields = array_fill_keys($ignored, true);
-
-            $this->processFields($meta, $entity, $ignoredFields, $data);
-            $this->processAssociations($meta, $entity, $ignoredFields, $data, $entityManager);
-            $this->applySensitiveMasking($class, $data);
-
-            return $data;
-        } catch (Throwable $e) {
-            $this->logger?->error('Failed to extract entity data', [
-                'exception' => $e->getMessage(),
-                'entity' => $class,
-            ]);
-
-            return [
-                '_extraction_failed' => true,
-                '_error' => 'entity_data_extraction_failed',
-                '_entity_class' => $class,
-            ];
+        $entityManager ??= $this->entityManagerResolver?->resolveForObject($entity) ?? $this->entityManager;
+        $meta = $this->resolveMetadata($entityManager, $class);
+        if ($meta === null) {
+            return $this->buildFailurePayload($class);
         }
+
+        $data = [];
+        /** @var array<string, true> $ignoredFields */
+        $ignoredFields = array_fill_keys($ignored, true);
+
+        $this->processFields($meta, $entity, $ignoredFields, $data);
+        $this->processAssociations($meta, $entity, $ignoredFields, $data, $entityManager);
+        $this->applySensitiveMasking($class, $data);
+
+        return $data;
     }
 
     /**
@@ -75,7 +70,10 @@ final readonly class EntityDataExtractor implements EntityDataExtractorInterface
 
             $resolved = $this->tryGetFieldValue($meta, $entity, $field);
             if ($resolved['success']) {
-                $data[$field] = $this->serializer->serialize($resolved['value']);
+                $serialized = $this->trySerializeValue($resolved['value'], $field, $entity::class);
+                if ($serialized['success']) {
+                    $data[$field] = $serialized['value'];
+                }
             }
         }
     }
@@ -109,11 +107,17 @@ final readonly class EntityDataExtractor implements EntityDataExtractorInterface
             // Optimization: If it's an uninitialized proxy, extract only the ID to prevent N+1 query
             if ($value instanceof \Doctrine\Persistence\Proxy && !$value->__isInitialized()) {
                 $identifier = $uow->getEntityIdentifier($value);
-                $data[$assoc] = $this->serializer->serialize($identifier);
+                $serialized = $this->trySerializeValue($identifier, $assoc, $entity::class);
+                if ($serialized['success']) {
+                    $data[$assoc] = $serialized['value'];
+                }
                 continue;
             }
 
-            $data[$assoc] = $this->serializer->serializeAssociation($value);
+            $serializedAssociation = $this->trySerializeAssociation($value, $assoc, $entity::class);
+            if ($serializedAssociation['success']) {
+                $data[$assoc] = $serializedAssociation['value'];
+            }
         }
     }
 
@@ -142,11 +146,96 @@ final readonly class EntityDataExtractor implements EntityDataExtractorInterface
                 'success' => true,
                 'value' => $meta->getFieldValue($entity, $field),
             ];
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            $this->logger?->warning('Failed to extract audit field value.', [
+                'entity' => $entity::class,
+                'field' => $field,
+                'exception' => $exception,
+            ]);
+
             return [
                 'success' => false,
                 'value' => null,
             ];
         }
+    }
+
+    /**
+     * @param class-string<object> $class
+     *
+     * @return ClassMetadata<object>|null
+     */
+    private function resolveMetadata(EntityManagerInterface $entityManager, string $class): ?ClassMetadata
+    {
+        try {
+            return $entityManager->getClassMetadata($class);
+        } catch (Throwable $exception) {
+            $this->logger?->error('Failed to extract entity data.', [
+                'entity' => $class,
+                'exception' => $exception,
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * @return array{success: bool, value: mixed}
+     */
+    private function trySerializeValue(mixed $value, string $field, string $entityClass): array
+    {
+        try {
+            return [
+                'success' => true,
+                'value' => $this->serializer->serialize($value),
+            ];
+        } catch (Throwable $exception) {
+            $this->logger?->warning('Failed to serialize audit field value.', [
+                'entity' => $entityClass,
+                'field' => $field,
+                'exception' => $exception,
+            ]);
+
+            return [
+                'success' => false,
+                'value' => null,
+            ];
+        }
+    }
+
+    /**
+     * @return array{success: bool, value: mixed}
+     */
+    private function trySerializeAssociation(mixed $value, string $field, string $entityClass): array
+    {
+        try {
+            return [
+                'success' => true,
+                'value' => $this->serializer->serializeAssociation($value),
+            ];
+        } catch (Throwable $exception) {
+            $this->logger?->warning('Failed to serialize audit association value.', [
+                'entity' => $entityClass,
+                'field' => $field,
+                'exception' => $exception,
+            ]);
+
+            return [
+                'success' => false,
+                'value' => null,
+            ];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildFailurePayload(string $class): array
+    {
+        return [
+            '_extraction_failed' => true,
+            '_error' => 'entity_data_extraction_failed',
+            '_entity_class' => $class,
+        ];
     }
 }

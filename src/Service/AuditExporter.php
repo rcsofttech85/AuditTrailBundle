@@ -18,6 +18,7 @@ use function count;
 use function is_array;
 use function is_resource;
 use function is_scalar;
+use function ltrim;
 use function sprintf;
 use function str_contains;
 
@@ -39,6 +40,7 @@ final readonly class AuditExporter implements AuditExporterInterface
         'username',
         'ip_address',
         'user_agent',
+        'reverted_log_id',
         'created_at',
     ];
 
@@ -65,13 +67,13 @@ final readonly class AuditExporter implements AuditExporterInterface
      * @param resource           $stream
      */
     #[Override]
-    public function exportToStream(iterable $audits, string $format, mixed $stream): void
+    public function exportToStream(iterable $audits, string $format, mixed $stream): int
     {
         if (!is_resource($stream) || get_resource_type($stream) !== 'stream') {
             throw new InvalidArgumentException('Expected a writable stream resource');
         }
 
-        match ($format) {
+        return match ($format) {
             'json' => $this->writeJsonToStream($audits, $stream),
             'csv' => $this->writeCsvToStream($audits, $stream),
             default => throw new InvalidArgumentException(sprintf('Unsupported format: %s', $format)),
@@ -83,7 +85,9 @@ final readonly class AuditExporter implements AuditExporterInterface
      */
     public function formatAsJson(iterable $audits): string
     {
-        return $this->formatViaStream(fn ($stream) => $this->writeJsonToStream($audits, $stream));
+        return $this->formatViaStream(function ($stream) use ($audits): void {
+            $this->writeJsonToStream($audits, $stream);
+        });
     }
 
     /**
@@ -91,7 +95,9 @@ final readonly class AuditExporter implements AuditExporterInterface
      */
     public function formatAsCsv(iterable $audits): string
     {
-        return $this->formatViaStream(fn ($stream) => $this->writeCsvToStream($audits, $stream));
+        return $this->formatViaStream(function ($stream) use ($audits): void {
+            $this->writeCsvToStream($audits, $stream);
+        });
     }
 
     /**
@@ -102,8 +108,8 @@ final readonly class AuditExporter implements AuditExporterInterface
         return [
             'id' => $audit->id?->toRfc4122(),
             'entity_class' => $audit->entityClass,
-            'entity_id' => $audit->entityId,
-            'action' => $audit->action,
+            'entity_id' => $audit->requireEntityId(),
+            'action' => $audit->action->value,
             'old_values' => $audit->oldValues,
             'new_values' => $audit->newValues,
             'changed_fields' => $audit->changedFields,
@@ -111,6 +117,7 @@ final readonly class AuditExporter implements AuditExporterInterface
             'username' => $audit->username,
             'ip_address' => $audit->ipAddress,
             'user_agent' => $audit->userAgent,
+            'reverted_log_id' => $audit->revertedLogId,
             'created_at' => $audit->createdAt->format(DateTimeInterface::ATOM),
         ];
     }
@@ -133,10 +140,11 @@ final readonly class AuditExporter implements AuditExporterInterface
      * @param iterable<AuditLog> $audits
      * @param resource           $stream
      */
-    private function writeJsonToStream(iterable $audits, mixed $stream): void
+    private function writeJsonToStream(iterable $audits, mixed $stream): int
     {
         fwrite($stream, '[');
         $first = true;
+        $count = 0;
 
         foreach ($audits as $audit) {
             if (!$first) {
@@ -144,20 +152,24 @@ final readonly class AuditExporter implements AuditExporterInterface
             }
             fwrite($stream, json_encode($this->auditToArray($audit), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
             $first = false;
+            ++$count;
 
             $this->entityManager?->detach($audit);
         }
 
         fwrite($stream, ']');
+
+        return $count;
     }
 
     /**
      * @param iterable<AuditLog> $audits
      * @param resource           $stream
      */
-    private function writeCsvToStream(iterable $audits, mixed $stream): void
+    private function writeCsvToStream(iterable $audits, mixed $stream): int
     {
         fputcsv($stream, self::CSV_HEADERS, ',', '"', '\\');
+        $count = 0;
 
         foreach ($audits as $audit) {
             $row = $this->auditToArray($audit);
@@ -166,9 +178,12 @@ final readonly class AuditExporter implements AuditExporterInterface
                 $row
             );
             fputcsv($stream, $csvRow, ',', '"', '\\');
+            ++$count;
 
             $this->entityManager?->detach($audit);
         }
+
+        return $count;
     }
 
     /**
@@ -196,7 +211,9 @@ final readonly class AuditExporter implements AuditExporterInterface
 
     private function sanitizeCsvValue(string $value): string
     {
-        if ($value !== '' && str_contains('=+-@', $value[0])) {
+        $trimmed = ltrim($value, " \t\r\n");
+
+        if ($trimmed !== '' && str_contains('=+-@', $trimmed[0])) {
             return "'".$value;
         }
 

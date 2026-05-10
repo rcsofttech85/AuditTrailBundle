@@ -14,6 +14,7 @@ use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
+use Rcsofttech\AuditTrailBundle\ValueObject\AssociationImpact;
 
 final class AssociationImpactAnalyzerTest extends TestCase
 {
@@ -86,12 +87,14 @@ final class AssociationImpactAnalyzerTest extends TestCase
 
         $analyzer = new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger());
 
-        self::assertSame([[
-            'entity' => $post,
-            'field' => 'tags',
-            'old' => ['1', '2'],
-            'new' => ['2'],
-        ]], $analyzer->buildAggregatedDeletedAssociationImpacts($em, $uow));
+        $impacts = $analyzer->buildAggregatedDeletedAssociationImpacts($em, $uow);
+
+        self::assertCount(1, $impacts);
+        self::assertContainsOnlyInstancesOf(AssociationImpact::class, $impacts);
+        self::assertSame($post, $impacts[0]->entity);
+        self::assertSame('tags', $impacts[0]->field);
+        self::assertSame(['1', '2'], $impacts[0]->old);
+        self::assertSame(['2'], $impacts[0]->new);
     }
 }
 

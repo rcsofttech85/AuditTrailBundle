@@ -2,7 +2,8 @@
 
 ## Granular Control
 
-You can ignore specific properties or enable/disable auditing per entity via the class-level attribute.
+You can ignore specific properties or enable or disable auditing per entity
+with the class-level attribute.
 
 ```php
 <?php
@@ -20,7 +21,8 @@ class Product
 
 ## Conditional Auditing
 
-Skip auditing based on runtime conditions using the `#[AuditCondition]` attribute or custom voters.
+You can skip auditing based on runtime conditions with the
+`#[AuditCondition]` attribute or custom voters.
 
 ### Option 1: Using ExpressionLanguage
 
@@ -54,7 +56,8 @@ class Product
 
 ### Option 2: Custom Voters
 
-For complex logic, implement the `AuditVoterInterface`. Your voter will be automatically discovered if it's registered as a service.
+For more complex logic, implement `AuditVoterInterface`. Symfony will discover
+your voter automatically if it is registered as a service.
 
 ```php
 <?php
@@ -62,20 +65,23 @@ For complex logic, implement the `AuditVoterInterface`. Your voter will be autom
 declare(strict_types=1);
 
 use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 class MyCustomVoter implements AuditVoterInterface
 {
-    public function vote(object $entity, string $action, array $changeSet): bool
+    public function vote(object $entity, AuditAction $action, array $changeSet): bool
     {
         // Return false to skip auditing
-        return $action !== 'delete' || $this->isAdmin();
+        return $action !== AuditAction::Delete || $this->isAdmin();
     }
 }
 ```
 
 ## Access Auditing (Read Tracking)
 
-To track when an entity is accessed (read), use the `#[AuditAccess]` attribute. By default this feature audits **GET** requests only, and you can change the allowed methods with the `audit_trail.audited_methods` configuration option.
+To track when an entity is read, use `#[AuditAccess]`. By default this only
+audits `GET` requests. You can change the allowed methods with
+`audit_trail.audited_methods`.
 
 ```php
 <?php
@@ -129,7 +135,8 @@ Important limitation:
 
 ### Explicit Read Intent Override
 
-For enterprise apps with complex back-office flows, you can explicitly tell the bundle whether the current main request should count as a real record view.
+If you have complex back-office flows, you can explicitly tell the bundle
+whether the current main request should count as a real record view.
 
 ```php
 <?php
@@ -171,11 +178,13 @@ If no cache pool is configured, request-level deduplication still works during t
 
 ## Rich Context & Impersonation Tracking
 
-The bundle automatically tracks rich context for every audit log, stored in a flexible JSON `context` column.
+The bundle stores extra context for every audit log in the JSON `context`
+column.
 
 ### Impersonation Tracking
 
-If an admin is impersonating a user (using Symfony's `_switch_user`), the bundle automatically records the impersonator's ID and username in the audit log context.
+If an admin is impersonating a user with Symfony's `_switch_user`, the bundle
+records the impersonator's ID and username in the audit log context.
 
 ```php
 $entry = $auditReader->forEntity(Product::class, '123')->getFirstResult();
@@ -188,7 +197,10 @@ if (isset($context['impersonation'])) {
 
 ### Custom Context
 
-You can manually add custom metadata to your audit logs by implementing the `AuditContextContributorInterface`. This is the recommended way to add application-specific information like correlation IDs, app versions, or feature flags.
+You can add custom metadata to your audit logs by implementing
+`AuditContextContributorInterface`. This is the normal way to add
+application-specific data such as correlation IDs, app versions, or feature
+flags.
 
 ```php
 <?php
@@ -198,10 +210,11 @@ declare(strict_types=1);
 namespace App\Audit;
 
 use Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 class SystemInfoContributor implements AuditContextContributorInterface
 {
-    public function contribute(object $entity, string $action, array $changeSet): array
+    public function contribute(object $entity, AuditAction $action, array $changeSet): array
     {
         return [
             'app_version' => 'v2.4.1',
@@ -211,17 +224,19 @@ class SystemInfoContributor implements AuditContextContributorInterface
 }
 ```
 
-Autoconfigured services that implement `AuditContextContributorInterface` are tagged automatically and their results are merged into the `context` JSON column.
+Autoconfigured services that implement `AuditContextContributorInterface` are
+tagged automatically and their results are merged into the `context` JSON
+column.
 
 ## Events & Customization
 
 The bundle dispatches Symfony events that allow you to hook into the audit process.
 
-## AI-Ready Processing
+## Optional AI Metadata
 
-The bundle now includes an optional `AuditLogAiProcessorInterface` contract for integrations that want to add AI-derived metadata before signing and transport dispatch.
+Use `AuditLogAiProcessorInterface` if you want to attach AI-derived metadata to an audit log before signing and transport dispatch.
 
-This is the recommended path for future Symfony AI integrations because it keeps AI explicit, optional, and non-blocking.
+This hook is optional. The bundle does not require an AI provider, and audit delivery does not depend on AI being available.
 
 ```php
 <?php
@@ -257,7 +272,7 @@ Guidelines for AI processor implementations:
 - AI processors run only in delivery-safe phases such as `post_flush`, `batch_flush`, and `manual_flush`.
 - Keep payloads structured and compact so they remain compatible with context-size limits.
 - If AI metadata alone would push context over the size limit, the dispatcher drops only the AI payload and preserves the rest of the audit context.
-- Prefer deterministic outputs when possible; if using AI later, fail open and let the audit continue.
+- Prefer deterministic outputs when possible. If an external AI system is unavailable, let the audit continue without the AI payload.
 
 ### `AuditLogCreatedEvent`
 
@@ -292,6 +307,43 @@ class AuditSubscriber implements EventSubscriberInterface
             ...$event->auditLog->context,
             'server_id' => 'node-01',
         ];
+    }
+}
+```
+
+### `AuditDeliveryFailedEvent`
+
+Dispatched when audit transport delivery fails and the bundle can no longer
+complete the delivery path cleanly.
+
+Typical uses:
+
+- send operational alerts
+- emit metrics for transport or fallback failures
+- hook incident reporting into audit-loss scenarios
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\EventSubscriber;
+
+use Rcsofttech\AuditTrailBundle\Event\AuditDeliveryFailedEvent;
+use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+
+final class AuditFailureSubscriber implements EventSubscriberInterface
+{
+    public static function getSubscribedEvents(): array
+    {
+        return [
+            AuditDeliveryFailedEvent::class => 'onAuditDeliveryFailed',
+        ];
+    }
+
+    public function onAuditDeliveryFailed(AuditDeliveryFailedEvent $event): void
+    {
+        // Send an alert, increment a metric, or record the failure externally.
     }
 }
 ```

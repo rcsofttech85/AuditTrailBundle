@@ -9,14 +9,11 @@ use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 use Symfony\Component\ExpressionLanguage\ParsedExpression;
 use Symfony\Component\ExpressionLanguage\SyntaxError;
 use Throwable;
-
-use function array_any;
-use function str_contains;
-use function strtolower;
 
 /**
  * Evaluates `#[AuditCondition]` expressions to determine audit eligibility.
@@ -28,85 +25,38 @@ use function strtolower;
  */
 final class ExpressionLanguageVoter implements AuditVoterInterface
 {
-    private ?ExpressionLanguage $expressionLanguage = null;
-
     /** @var array<string, ParsedExpression> */
     private array $cache = [];
 
     private const array ALLOWED_VARIABLES = ['object', 'action', 'changeSet', 'user'];
 
-    /** Characters that strongly indicate external/untrusted expression injection. */
-    private const array FORBIDDEN_PATTERNS = [
-        'system(',
-        'exec(',
-        'passthru(',
-        'shell_exec(',
-        'popen(',
-        'proc_open(',
-        'file_get_contents(',
-        'file_put_contents(',
-        'unlink(',
-        'rmdir(',
-        'constant(',
-    ];
-
     public function __construct(
         private readonly MetadataCacheInterface $metadataCache,
         private readonly UserResolverInterface $userResolver,
+        private readonly ExpressionLanguage $expressionLanguage,
+        private readonly AuditConditionExpressionValidator $validator,
         private readonly ?LoggerInterface $logger = null,
     ) {
     }
 
     #[Override]
-    public function vote(object $entity, string $action, array $changeSet): bool
+    public function vote(object $entity, AuditAction $action, array $changeSet): bool
     {
         $condition = $this->metadataCache->getAuditCondition($entity::class);
         if ($condition === null) {
             return true;
         }
 
-        $expression = $condition->expression;
-
-        if (!$this->isExpressionSafe($expression)) {
-            $this->logger?->critical('Blocked potentially dangerous AuditCondition expression.', [
-                'entity' => $entity::class,
-                'expression' => $expression,
-            ]);
-
+        $parsedExpression = $this->resolveParsedExpression($entity::class, $condition->expression);
+        if (!$parsedExpression instanceof ParsedExpression) {
             return false;
         }
 
         try {
-            $this->expressionLanguage ??= new ExpressionLanguage();
-
-            if (!isset($this->cache[$expression])) {
-                $this->cache[$expression] = $this->expressionLanguage->parse(
-                    $expression,
-                    self::ALLOWED_VARIABLES,
-                );
-            }
-
-            return (bool) $this->expressionLanguage->evaluate($this->cache[$expression], [
-                'object' => $entity,
-                'action' => $action,
-                'changeSet' => $changeSet,
-                'user' => new readonly class($this->userResolver->getUserId(), $this->userResolver->getUsername(), $this->userResolver->getIpAddress()) {
-                    public function __construct(
-                        public ?string $id,
-                        public ?string $username,
-                        public ?string $ip,
-                    ) {
-                    }
-                },
-            ]);
-        } catch (SyntaxError $e) {
-            $this->logger?->error('AuditCondition expression syntax error.', [
-                'entity' => $entity::class,
-                'expression' => $expression,
-                'error' => $e->getMessage(),
-            ]);
-
-            return false;
+            return (bool) $this->expressionLanguage->evaluate(
+                $parsedExpression,
+                $this->buildEvaluationContext($entity, $action, $changeSet),
+            );
         } catch (Throwable $e) {
             $this->logger?->error('AuditCondition expression evaluation failed.', [
                 'entity' => $entity::class,
@@ -117,13 +67,57 @@ final class ExpressionLanguageVoter implements AuditVoterInterface
         }
     }
 
-    private function isExpressionSafe(string $expression): bool
+    private function resolveParsedExpression(string $entityClass, string $expression): ?ParsedExpression
     {
-        $normalized = strtolower($expression);
+        if (isset($this->cache[$expression])) {
+            return $this->cache[$expression];
+        }
 
-        return !array_any(
-            self::FORBIDDEN_PATTERNS,
-            static fn (string $pattern): bool => str_contains($normalized, $pattern),
-        );
+        try {
+            $parsedExpression = $this->expressionLanguage->parse($expression, self::ALLOWED_VARIABLES);
+        } catch (SyntaxError $e) {
+            $this->logger?->error('AuditCondition expression syntax error.', [
+                'entity' => $entityClass,
+                'expression' => $expression,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        if (!$this->validator->isSafe($parsedExpression)) {
+            $this->logger?->critical('Blocked unsafe AuditCondition expression.', [
+                'entity' => $entityClass,
+                'expression' => $expression,
+            ]);
+
+            return null;
+        }
+
+        $this->cache[$expression] = $parsedExpression;
+
+        return $parsedExpression;
+    }
+
+    /**
+     * @param array<string, mixed> $changeSet
+     *
+     * @return array{object: object, action: string, changeSet: array<string, mixed>, user: object}
+     */
+    private function buildEvaluationContext(object $entity, AuditAction $action, array $changeSet): array
+    {
+        return [
+            'object' => $entity,
+            'action' => $action->value,
+            'changeSet' => $changeSet,
+            'user' => new readonly class($this->userResolver->getUserId(), $this->userResolver->getUsername(), $this->userResolver->getIpAddress()) {
+                public function __construct(
+                    public ?string $id,
+                    public ?string $username,
+                    public ?string $ip,
+                ) {
+                }
+            },
+        ];
     }
 }

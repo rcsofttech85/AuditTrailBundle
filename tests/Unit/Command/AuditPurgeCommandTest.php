@@ -6,6 +6,8 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
@@ -24,6 +26,9 @@ final class AuditPurgeCommandTest extends TestCase
     /** @var (AuditIntegrityServiceInterface&Stub)|(AuditIntegrityServiceInterface&MockObject) */
     private AuditIntegrityServiceInterface $integrityService;
 
+    /** @var (ManagerRegistry&Stub)|(ManagerRegistry&MockObject) */
+    private ManagerRegistry $managerRegistry;
+
     private CommandTester $commandTester;
 
     protected function setUp(): void
@@ -31,10 +36,11 @@ final class AuditPurgeCommandTest extends TestCase
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
         $this->integrityService = self::createStub(AuditIntegrityServiceInterface::class);
         $this->integrityService->method('isEnabled')->willReturn(false);
+        $this->managerRegistry = self::createStub(ManagerRegistry::class);
         $this->resetCommandTester();
     }
 
-    public function testPurgeRequiresBeforeOption(): void
+    public function testPurgeRequiresBeforeOptionWhenDeletionIsRequested(): void
     {
         $repository = $this->useRepositoryMock();
         $repository
@@ -49,8 +55,47 @@ final class AuditPurgeCommandTest extends TestCase
 
         self::assertSame(1, $this->commandTester->getStatusCode());
         $output = $this->normalizeOutput($this->commandTester);
-        self::assertStringContainsString('--before', $output);
-        self::assertStringContainsString('required', $output);
+        self::assertStringContainsString('The --before option is required unless you are running a dry run.', $output);
+    }
+
+    public function testPurgeUsesConfiguredRetentionWhenBeforeOptionIsOmittedForDryRun(): void
+    {
+        $repository = $this->useRepositoryMock();
+        $repository
+            ->expects($this->once())
+            ->method('countOlderThan');
+
+        $repository
+            ->expects($this->never())
+            ->method('deleteOldLogs');
+
+        $this->commandTester->execute(['--dry-run' => true]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
+        $output = $this->normalizeOutput($this->commandTester);
+        self::assertStringContainsString('configured retention window', $output);
+    }
+
+    public function testPurgeUsesCustomConfiguredRetentionWindowForDryRun(): void
+    {
+        $repository = $this->useRepositoryMock(retentionDays: 7);
+        $repository
+            ->expects($this->once())
+            ->method('countOlderThan')
+            ->with(self::callback(static function (DateTimeInterface $date): bool {
+                $expectedTimestamp = new DateTimeImmutable('-7 days')->getTimestamp();
+
+                return abs($date->getTimestamp() - $expectedTimestamp) < 5;
+            }))
+            ->willReturn(0);
+
+        $repository
+            ->expects($this->never())
+            ->method('deleteOldLogs');
+
+        $this->commandTester->execute(['--dry-run' => true]);
+
+        self::assertSame(0, $this->commandTester->getStatusCode());
     }
 
     public function testPurgeWithInvalidDate(): void
@@ -282,6 +327,13 @@ final class AuditPurgeCommandTest extends TestCase
     {
         $repository = $this->useRepositoryMock();
         $this->integrityService = self::createMock(AuditIntegrityServiceInterface::class);
+        $entityManager = self::createMock(EntityManagerInterface::class);
+        $managerRegistry = self::createMock(ManagerRegistry::class);
+        $managerRegistry->expects($this->once())
+            ->method('getManagerForClass')
+            ->with(AuditLog::class)
+            ->willReturn($entityManager);
+        $this->managerRegistry = $managerRegistry;
         $this->integrityService->method('isEnabled')->willReturn(true);
         $this->integrityService->expects($this->once())
             ->method('verifySignature')
@@ -292,12 +344,16 @@ final class AuditPurgeCommandTest extends TestCase
         $repository->expects($this->once())
             ->method('countOlderThan')
             ->willReturn(1);
+        $log = new AuditLog('Class', '1', 'update');
         $repository->expects($this->once())
             ->method('findAllWithFilters')
             ->with(self::callback(static function (array $filters): bool {
                 return isset($filters['to']) && $filters['to'] instanceof DateTimeImmutable;
             }))
-            ->willReturn([new AuditLog('Class', '1', 'update')]);
+            ->willReturn([$log]);
+        $entityManager->expects($this->once())
+            ->method('detach')
+            ->with($log);
         $repository->expects($this->once())
             ->method('deleteOldLogs')
             ->willReturn(1);
@@ -311,18 +367,18 @@ final class AuditPurgeCommandTest extends TestCase
         self::assertStringContainsString('All logs passed integrity verification', $this->normalizeOutput($this->commandTester));
     }
 
-    private function useRepositoryMock(): AuditLogRepositoryInterface&MockObject
+    private function useRepositoryMock(int $retentionDays = 365): AuditLogRepositoryInterface&MockObject
     {
         $repository = $this->createMock(AuditLogRepositoryInterface::class);
         $this->repository = $repository;
-        $this->resetCommandTester();
+        $this->resetCommandTester($retentionDays);
 
         return $repository;
     }
 
-    private function resetCommandTester(): void
+    private function resetCommandTester(int $retentionDays = 365): void
     {
-        $command = new AuditPurgeCommand($this->repository, $this->integrityService);
+        $command = new AuditPurgeCommand($this->repository, $this->integrityService, $this->managerRegistry, $retentionDays);
         $this->commandTester = new CommandTester($command);
     }
 }

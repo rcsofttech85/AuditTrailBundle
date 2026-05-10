@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Contract;
 use Doctrine\ORM\EntityManagerInterface;
 use Rcsofttech\AuditTrailBundle\Attribute\AuditAccess;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 interface AuditServiceInterface
 {
@@ -15,14 +16,14 @@ interface AuditServiceInterface
      */
     public function shouldAudit(
         object $entity,
-        string $action = AuditLogInterface::ACTION_CREATE,
+        AuditAction $action = AuditAction::Create,
         array $changeSet = [],
     ): bool;
 
     /**
      * @param array<string, mixed> $changeSet
      */
-    public function passesVoters(object $entity, string $action, array $changeSet = []): bool;
+    public function passesVoters(object $entity, AuditAction $action, array $changeSet = []): bool;
 
     public function getAccessAttribute(string $class): ?AuditAccess;
 
@@ -44,7 +45,7 @@ interface AuditServiceInterface
      */
     public function createAuditLog(
         object $entity,
-        string $action,
+        AuditAction $action,
         ?array $oldValues = null,
         ?array $newValues = null,
         array $context = [],

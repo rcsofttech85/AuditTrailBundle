@@ -8,23 +8,40 @@ use DateTimeImmutable;
 use InvalidArgumentException;
 use LogicException;
 use PHPUnit\Framework\MockObject\MockObject;
+use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Query\AuditChangedFieldMatcher;
 use Rcsofttech\AuditTrailBundle\Query\AuditQuery;
+use Rcsofttech\AuditTrailBundle\Query\AuditQueryExecutor;
+use Rcsofttech\AuditTrailBundle\Query\AuditQueryFilterFactory;
 use ReflectionClass;
 use Symfony\Component\Uid\Uuid;
 
 final class AuditQueryTest extends TestCase
 {
-    private AuditLogRepositoryInterface $repository;
+    private AuditLogRepositoryInterface&Stub $repository;
 
     private AuditQuery $query;
 
     protected function setUp(): void
     {
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
-        $this->query = new AuditQuery($this->repository);
+        $this->query = $this->createQuery($this->repository);
+    }
+
+    private function createQuery(?AuditLogRepositoryInterface $repository = null): AuditQuery
+    {
+        $repo = $repository ?? $this->repository;
+
+        return new AuditQuery(
+            new AuditQueryExecutor(
+                $repo,
+                new AuditQueryFilterFactory(),
+                new AuditChangedFieldMatcher(),
+            ),
+        );
     }
 
     public function testImmutability(): void
@@ -233,6 +250,19 @@ final class AuditQueryTest extends TestCase
         self::assertCount(2, $results);
     }
 
+    public function testCountUsesDatabaseCountWhenChangedFieldFilterIsNotActive(): void
+    {
+        $repository = $this->useRepositoryMock();
+
+        $repository->expects($this->once())
+            ->method('countWithFilters')
+            ->with(self::callback(static fn (array $filters): bool => !isset($filters['afterId']) && !isset($filters['beforeId'])))
+            ->willReturn(42);
+        $repository->expects($this->never())->method('findWithFilters');
+
+        self::assertSame(42, $this->query->count());
+    }
+
     public function testChangedFieldAppliesFilterBeforeLimit(): void
     {
         $repository = $this->useRepositoryMock();
@@ -328,15 +358,55 @@ final class AuditQueryTest extends TestCase
         self::assertSame($uuid1, $result->id->toString());
     }
 
+    public function testGetPageReturnsEntriesAndNextCursorFromSingleFetch(): void
+    {
+        $repository = $this->useRepositoryMock();
+
+        $first = new AuditLog('Class', '1', 'create');
+        $secondId = Uuid::v7()->toString();
+        $second = new AuditLog('Class', '2', 'create');
+        $this->setLogId($second, $secondId);
+
+        $repository->expects($this->once())
+            ->method('findWithFilters')
+            ->with(self::anything(), 30)
+            ->willReturn([$first, $second]);
+
+        $page = $this->query->getPage();
+
+        self::assertCount(2, $page->entries);
+        self::assertSame($secondId, $page->nextCursor);
+    }
+
+    public function testGetResultsAndNextCursorReuseOneMaterializedPage(): void
+    {
+        $repository = $this->useRepositoryMock();
+
+        $log = new AuditLog('Class', '1', 'create');
+        $logId = Uuid::v7()->toString();
+        $this->setLogId($log, $logId);
+
+        $repository->expects($this->once())
+            ->method('findWithFilters')
+            ->with(self::anything(), 30)
+            ->willReturn([$log]);
+
+        $results = $this->query->getResults();
+        $cursor = $this->query->getNextCursor();
+
+        self::assertCount(1, $results);
+        self::assertSame($logId, $cursor);
+    }
+
     public function testExists(): void
     {
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
         $this->repository->method('findWithFilters')->willReturn([new AuditLog('Class', '1', 'create')]);
-        $this->query = new AuditQuery($this->repository);
+        $this->query = $this->createQuery($this->repository);
         self::assertTrue($this->query->exists());
 
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
-        $this->query = new AuditQuery($this->repository);
+        $this->query = $this->createQuery($this->repository);
         $this->repository->method('findWithFilters')->willReturn([]);
         self::assertFalse($this->query->exists());
     }
@@ -344,7 +414,7 @@ final class AuditQueryTest extends TestCase
     public function testGetNextCursor(): void
     {
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
-        $this->query = new AuditQuery($this->repository);
+        $this->query = $this->createQuery($this->repository);
 
         $uuid1 = Uuid::v7()->toString();
         $log1 = new AuditLog('Class', '1', 'create');
@@ -356,14 +426,14 @@ final class AuditQueryTest extends TestCase
         $repository = self::createStub(AuditLogRepositoryInterface::class);
         $repository->method('findWithFilters')->willReturn([$log1, $log2]);
         $this->repository = $repository;
-        $this->query = new AuditQuery($repository);
+        $this->query = $this->createQuery($repository);
 
         // getNextCursor returns the ID of the LAST result
         self::assertSame($uuid2, $this->query->getNextCursor());
 
         // Empty results should return null
         $this->repository = self::createStub(AuditLogRepositoryInterface::class);
-        $this->query = new AuditQuery($this->repository);
+        $this->query = $this->createQuery($this->repository);
         $this->repository->method('findWithFilters')->willReturn([]);
         self::assertNull($this->query->getNextCursor());
     }
@@ -396,7 +466,7 @@ final class AuditQueryTest extends TestCase
     {
         $repository = $this->createMock(AuditLogRepositoryInterface::class);
         $this->repository = $repository;
-        $this->query = new AuditQuery($repository);
+        $this->query = $this->createQuery($repository);
 
         return $repository;
     }

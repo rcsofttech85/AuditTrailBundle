@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditKernelSubscriber;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\CooldownPost;
 use Symfony\Component\HttpFoundation\Request;
@@ -59,7 +59,7 @@ final class AuditAccessCooldownTest extends AbstractFunctionalTestCase
         /** @var AuditLog[] $logs */
         $logs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => CooldownPost::class,
-            'action' => AuditLogInterface::ACTION_ACCESS,
+            'action' => AuditAction::Access,
         ]);
 
         self::assertCount(1, $logs, 'Should have only ONE access log due to request-level deduplication');
@@ -104,7 +104,7 @@ final class AuditAccessCooldownTest extends AbstractFunctionalTestCase
 
         $logs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => CooldownPost::class,
-            'action' => AuditLogInterface::ACTION_ACCESS,
+            'action' => AuditAction::Access,
         ]);
         self::assertCount(1, $logs, 'First access should create exactly one log');
 
@@ -134,7 +134,7 @@ final class AuditAccessCooldownTest extends AbstractFunctionalTestCase
 
         $logs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => CooldownPost::class,
-            'action' => AuditLogInterface::ACTION_ACCESS,
+            'action' => AuditAction::Access,
         ]);
         self::assertCount(1, $logs, 'Second access within cooldown should NOT create a new log');
     }

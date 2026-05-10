@@ -7,7 +7,6 @@ namespace Rcsofttech\AuditTrailBundle\Message;
 use DateTimeInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Symfony\Component\Messenger\Attribute\AsMessage;
-use Symfony\Component\Uid\Uuid;
 
 /**
  * Internal message for async database persistence.
@@ -35,8 +34,10 @@ readonly class PersistAuditLogMessage
         public ?string $userAgent,
         public ?string $transactionHash,
         public string $createdAt,
+        public ?string $auditId = null,
         public ?string $signature = null,
         public ?string $deliveryId = null,
+        public ?string $revertedLogId = null,
         /** @var array<string, mixed> */
         public array $context = [],
     ) {
@@ -46,8 +47,8 @@ readonly class PersistAuditLogMessage
     {
         return new self(
             entityClass: $log->entityClass,
-            entityId: $resolvedEntityId ?? $log->entityId,
-            action: $log->action,
+            entityId: $resolvedEntityId ?? $log->requireEntityId(),
+            action: $log->action->value,
             oldValues: $log->oldValues,
             newValues: $log->newValues,
             changedFields: $log->changedFields,
@@ -57,8 +58,10 @@ readonly class PersistAuditLogMessage
             userAgent: $log->userAgent,
             transactionHash: $log->transactionHash,
             createdAt: $log->createdAt->format(DateTimeInterface::ATOM),
+            auditId: $log->id?->toRfc4122(),
             signature: $log->signature,
-            deliveryId: $log->deliveryId ?? Uuid::v7()->toRfc4122(),
+            deliveryId: $log->deliveryId,
+            revertedLogId: $log->revertedLogId,
             context: $log->context,
         );
     }

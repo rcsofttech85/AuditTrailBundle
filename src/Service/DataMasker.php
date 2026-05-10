@@ -7,6 +7,7 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\DataMaskerInterface;
 
+use function array_any;
 use function array_diff;
 use function array_fill_keys;
 use function array_intersect;
@@ -14,6 +15,7 @@ use function array_key_exists;
 use function array_map;
 use function in_array;
 use function is_array;
+use function is_string;
 use function preg_replace;
 use function preg_split;
 use function strtolower;
@@ -33,6 +35,11 @@ final class DataMasker implements DataMaskerInterface
     ];
 
     private const array CONTEXTUAL_SENSITIVE_KEYS = [
+        'key',
+        'token',
+    ];
+
+    private const array EXACT_SENSITIVE_KEYS = [
         'key',
         'token',
     ];
@@ -93,8 +100,28 @@ final class DataMasker implements DataMaskerInterface
             }
 
             if (is_array($value)) {
-                /** @var array<string, mixed> $value */
-                $data[$key] = $this->redact($value);
+                $data[$key] = $this->redactNested($value);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param array<array-key, mixed> $data
+     *
+     * @return array<array-key, mixed>
+     */
+    private function redactNested(array $data): array
+    {
+        foreach ($data as $key => $value) {
+            if (is_string($key) && $this->isSensitiveKey($key)) {
+                $data[$key] = '********';
+                continue;
+            }
+
+            if (is_array($value)) {
+                $data[$key] = $this->redactNested($value);
             }
         }
 
@@ -110,6 +137,10 @@ final class DataMasker implements DataMaskerInterface
         }
 
         if (isset($this->explicitSensitiveKeyLookup[$normalizedKey])) {
+            return true;
+        }
+
+        if (in_array($normalizedKey, self::EXACT_SENSITIVE_KEYS, true)) {
             return true;
         }
 
@@ -138,17 +169,11 @@ final class DataMasker implements DataMaskerInterface
      */
     private function containsSensitiveSegments(array $segments): bool
     {
-        foreach ($segments as $index => $segment) {
-            if (isset($this->alwaysSensitiveKeyLookup[$segment])) {
-                return true;
-            }
-
-            if ($this->isContextuallySensitiveSegment($segments, $index, $segment)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any(
+            $segments,
+            fn (string $segment, int $index): bool => isset($this->alwaysSensitiveKeyLookup[$segment])
+                || $this->isContextuallySensitiveSegment($segments, $index, $segment),
+        );
     }
 
     /**

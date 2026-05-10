@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditKernelSubscriber;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\Post;
 use Symfony\Component\HttpFoundation\Request;
@@ -59,14 +59,14 @@ final class AuditAccessMutationSuppressionTest extends AbstractFunctionalTestCas
         $accessLogs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => Post::class,
             'entityId' => (string) $postId,
-            'action' => AuditLogInterface::ACTION_ACCESS,
+            'action' => AuditAction::Access,
         ]);
 
         /** @var AuditLog[] $updateLogs */
         $updateLogs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => Post::class,
             'entityId' => (string) $postId,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ]);
 
         self::assertCount(0, $accessLogs, 'Mutating a loaded entity in the same request must not produce an access log.');

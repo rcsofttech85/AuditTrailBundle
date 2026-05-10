@@ -6,10 +6,10 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
 use DateTimeImmutable;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditKernelSubscriber;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\Author;
@@ -39,7 +39,7 @@ use function strlen;
 /**
  * End-to-end verification of every feature.
  */
-final class FeatureVerificationTest extends AbstractFunctionalTestCase
+final class AuditTrailFunctionalTest extends AbstractFunctionalTestCase
 {
     public function testF8ScalarUpdateAndClearingUuidTagCollectionUsesReadableIds(): void
     {
@@ -79,7 +79,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $log */
         $log = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => Entity\UuidAuthor::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ], ['createdAt' => 'DESC']);
 
         self::assertNotNull($log);
@@ -111,7 +111,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $log */
         $log = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => TestEntity::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ]);
 
         self::assertNotNull($log, 'Update action should produce an audit log');
@@ -145,7 +145,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
 
         $deleteLog = null;
         foreach ($logs as $l) {
-            if (in_array($l->action, [AuditLogInterface::ACTION_DELETE, AuditLogInterface::ACTION_SOFT_DELETE], true)) {
+            if (in_array($l->action, [AuditAction::Delete, AuditAction::SoftDelete], true)) {
                 $deleteLog = $l;
                 break;
             }
@@ -174,11 +174,11 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $log */
         $log = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => TestEntity::class,
-            'action' => AuditLogInterface::ACTION_CREATE,
+            'action' => AuditAction::Create,
         ], ['id' => 'DESC']);
 
         self::assertNotNull($log, 'Create action should produce an audit log in immediate mode');
-        self::assertNotSame(AuditLogInterface::PENDING_ID, $log->entityId, 'Entity ID should be resolved');
+        self::assertNotNull($log->entityId, 'Entity ID should be resolved');
         self::assertSame((string) $entity->getId(), $log->entityId);
     }
 
@@ -197,7 +197,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog[] $updateLogs */
         $updateLogs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => TestEntityWithIgnored::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ]);
 
         self::assertCount(0, $updateLogs, 'Changes to ignored properties should NOT produce an update audit log');
@@ -216,7 +216,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $log */
         $log = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => TestEntityWithIgnored::class,
-            'action' => AuditLogInterface::ACTION_CREATE,
+            'action' => AuditAction::Create,
         ]);
 
         self::assertNotNull($log);
@@ -239,7 +239,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $log */
         $log = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => SensitivePost::class,
-            'action' => AuditLogInterface::ACTION_CREATE,
+            'action' => AuditAction::Create,
         ]);
 
         self::assertNotNull($log, 'Create action should produce an audit log');
@@ -280,7 +280,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog[] $logs */
         $logs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => ConditionalPost::class,
-            'action' => AuditLogInterface::ACTION_CREATE,
+            'action' => AuditAction::Create,
         ]);
 
         self::assertCount(1, $logs, 'Entity with title "audit-me" SHOULD be audited');
@@ -300,7 +300,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $log */
         $log = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => DateTimePost::class,
-            'action' => AuditLogInterface::ACTION_CREATE,
+            'action' => AuditAction::Create,
         ]);
 
         self::assertNotNull($log, 'Create action should produce an audit log');
@@ -313,7 +313,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
     {
         $options = [
             'audit_config' => [
-                'integrity' => ['enabled' => true, 'secret' => 'test-secret'],
+                'integrity' => ['enabled' => true, 'secret' => '%env(string:AUDIT_INTEGRITY_SECRET)%'],
             ],
         ];
 
@@ -332,7 +332,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $log */
         $log = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => DateTimePost::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ]);
 
         self::assertNotNull($log, 'Update should produce an audit log');
@@ -360,7 +360,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog[] $updateLogs */
         $updateLogs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => Author::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ]);
 
         self::assertNotEmpty($updateLogs, 'ManyToMany add should produce an update audit log');
@@ -368,6 +368,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         $collectionLog = $updateLogs[array_key_last($updateLogs)];
         self::assertNotNull($collectionLog->newValues, 'newValues should contain collection changes');
         self::assertArrayHasKey('tags', $collectionLog->newValues, 'tags field should be tracked');
+        self::assertSame([(string) $tag1->getId(), (string) $tag2->getId()], $collectionLog->newValues['tags']);
     }
 
     public function testF8CreateWithManyToManyDoesNotProduceRedundantUpdateLog(): void
@@ -390,10 +391,34 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         ], ['id' => 'ASC']);
 
         self::assertCount(1, $logs, 'Creating an entity with initial many-to-many values should produce only one audit log');
-        self::assertSame(AuditLogInterface::ACTION_CREATE, $logs[0]->action);
+        self::assertSame(AuditAction::Create, $logs[0]->action);
         self::assertNotNull($logs[0]->newValues);
         self::assertArrayHasKey('tags', $logs[0]->newValues);
-        self::assertCount(2, $logs[0]->newValues['tags']);
+        self::assertSame([(string) $tag1->getId(), (string) $tag2->getId()], $logs[0]->newValues['tags']);
+    }
+
+    public function testF8ExistingOwnerAddNewManyToManyTargetInSameFlushUsesFinalIds(): void
+    {
+        self::bootKernel();
+        $em = $this->getEntityManager();
+
+        $author = new Author('Existing Owner');
+        $em->persist($author);
+        $em->flush();
+
+        $newTag = new Tag('new-same-flush-tag');
+        $author->addTag($newTag);
+        $em->flush();
+
+        /** @var AuditLog[] $updateLogs */
+        $updateLogs = $em->getRepository(AuditLog::class)->findBy([
+            'entityClass' => Author::class,
+            'action' => AuditAction::Update,
+        ], ['id' => 'ASC']);
+
+        self::assertCount(1, $updateLogs, 'Adding a new related entity to an existing owner should produce one update log');
+        self::assertSame([], $updateLogs[0]->oldValues['tags'] ?? null);
+        self::assertSame([(string) $newTag->getId()], $updateLogs[0]->newValues['tags'] ?? null);
     }
 
     public function testF8ManyToManyRemoveIsTracked(): void
@@ -413,7 +438,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog[] $updateLogs */
         $updateLogs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => Author::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ]);
 
         $removalLog = null;
@@ -445,7 +470,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog[] $updateLogs */
         $updateLogs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => Author::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ], ['id' => 'ASC']);
 
         self::assertCount(1, $updateLogs, 'A scalar field update and collection update in the same flush should produce one audit log');
@@ -488,7 +513,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog[] $updateLogs */
         $updateLogs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => Author::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ], ['id' => 'ASC']);
 
         self::assertCount(1, $updateLogs, 'A scalar update and clearing the last tag collection in the same flush should produce one audit log');
@@ -503,6 +528,95 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         self::assertNotNull($log->changedFields);
         self::assertContains('name', $log->changedFields);
         self::assertContains('tags', $log->changedFields);
+    }
+
+    public function testF8RelationOnlyClearingLastTagCollectionProducesUpdateLog(): void
+    {
+        self::bootKernel();
+        $em = $this->getEntityManager();
+
+        $author = new Author('Original Name');
+        $tag = new Tag('php');
+        $author->addTag($tag);
+        $em->persist($author);
+        $em->flush();
+
+        $authorId = $author->getId();
+        self::assertNotNull($authorId);
+
+        $em->clear();
+
+        /** @var Author|null $author */
+        $author = $em->find(Author::class, $authorId);
+        self::assertInstanceOf(Author::class, $author);
+
+        $author->getTags()->clear();
+        $em->flush();
+
+        /** @var AuditLog[] $updateLogs */
+        $updateLogs = $em->getRepository(AuditLog::class)->findBy([
+            'entityClass' => Author::class,
+            'action' => AuditAction::Update,
+        ], ['id' => 'ASC']);
+
+        self::assertCount(1, $updateLogs, 'Clearing the last tag collection without scalar changes should still produce one update log');
+
+        $log = $updateLogs[0];
+        self::assertNotNull($log->oldValues);
+        self::assertNotNull($log->newValues);
+        self::assertCount(1, $log->oldValues['tags'] ?? []);
+        self::assertSame([], $log->newValues['tags'] ?? null);
+        self::assertNotNull($log->changedFields);
+        self::assertSame(['tags'], $log->changedFields);
+    }
+
+    public function testF8ClearingAndReplacingTagCollectionKeepsOriginalIds(): void
+    {
+        self::bootKernel();
+        $em = $this->getEntityManager();
+
+        $author = new Author('Replace Tag Case');
+        $originalTag = new Tag('original');
+        $replacementTag = new Tag('replacement');
+        $author->addTag($originalTag);
+        $em->persist($author);
+        $em->persist($replacementTag);
+        $em->flush();
+
+        $authorId = $author->getId();
+        self::assertNotNull($authorId);
+        self::assertNotNull($originalTag->getId());
+        self::assertNotNull($replacementTag->getId());
+
+        $em->clear();
+
+        /** @var Author|null $author */
+        $author = $em->find(Author::class, $authorId);
+        self::assertInstanceOf(Author::class, $author);
+
+        /** @var Tag|null $replacementTag */
+        $replacementTag = $em->find(Tag::class, $replacementTag->getId());
+        self::assertInstanceOf(Tag::class, $replacementTag);
+
+        $author->getTags()->clear();
+        $author->addTag($replacementTag);
+        $em->flush();
+
+        /** @var AuditLog[] $updateLogs */
+        $updateLogs = $em->getRepository(AuditLog::class)->findBy([
+            'entityClass' => Author::class,
+            'action' => AuditAction::Update,
+        ], ['id' => 'ASC']);
+
+        self::assertCount(1, $updateLogs, 'Clearing and replacing a tag in the same flush should produce one update log');
+
+        $log = $updateLogs[0];
+        self::assertNotNull($log->oldValues);
+        self::assertNotNull($log->newValues);
+        self::assertSame([$originalTag->getId()], $log->oldValues['tags'] ?? null);
+        self::assertSame([(string) $replacementTag->getId()], $log->newValues['tags'] ?? null);
+        self::assertNotNull($log->changedFields);
+        self::assertSame(['tags'], $log->changedFields);
     }
 
     public function testF8DeletingTagProducesOwningEntityTagUpdateLog(): void
@@ -522,7 +636,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog[] $updateLogs */
         $updateLogs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => Author::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ], ['id' => 'ASC']);
 
         $tagRemovalLog = null;
@@ -556,7 +670,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog[] $updateLogs */
         $updateLogs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => Author::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ], ['id' => 'ASC']);
 
         self::assertCount(1, $updateLogs, 'Deleting a tag and updating a scalar field in the same flush should produce one update log');
@@ -595,7 +709,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog[] $updateLogs */
         $updateLogs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => Author::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ], ['id' => 'ASC']);
 
         self::assertCount(1, $updateLogs, 'Deleting multiple related tags in one flush should produce one aggregated update log');
@@ -624,7 +738,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $updateLog */
         $updateLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => TestEntity::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ]);
 
         self::assertNotNull($updateLog, 'Update log should exist before revert');
@@ -643,7 +757,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
 
         $revertLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => TestEntity::class,
-            'action' => AuditLogInterface::ACTION_REVERT,
+            'action' => AuditAction::Revert,
         ]);
         self::assertNotNull($revertLog, 'Revert should produce its own audit log');
         self::assertSame(['name' => 'Modified Name'], $revertLog->oldValues, 'Revert log should capture the value before the revert was applied.');
@@ -668,7 +782,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $updateLog */
         $updateLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => TestEntityWithUuid::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ]);
 
         self::assertNotNull($updateLog);
@@ -712,7 +826,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $updateLog */
         $updateLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => Project::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ], ['createdAt' => 'DESC']);
 
         self::assertNotNull($updateLog);
@@ -754,7 +868,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         $createLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => TestEntity::class,
             'entityId' => (string) $entity->getId(),
-            'action' => AuditLogInterface::ACTION_CREATE,
+            'action' => AuditAction::Create,
         ]);
 
         self::assertNotNull($createLog, 'Create log should exist before revert.');
@@ -778,7 +892,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
     {
         $options = [
             'audit_config' => [
-                'integrity' => ['enabled' => true, 'secret' => 'test-secret'],
+                'integrity' => ['enabled' => true, 'secret' => '%env(string:AUDIT_INTEGRITY_SECRET)%'],
             ],
         ];
 
@@ -797,7 +911,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $updateLog */
         $updateLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => DateTimePost::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ]);
 
         self::assertNotNull($updateLog, 'Update log should exist');
@@ -812,7 +926,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
 
         $revertLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => DateTimePost::class,
-            'action' => AuditLogInterface::ACTION_REVERT,
+            'action' => AuditAction::Revert,
         ]);
         self::assertNotNull($revertLog, 'Revert should produce its own audit log');
         self::assertNotNull($revertLog->signature, 'Revert audit log should be signed');
@@ -845,7 +959,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $updateLog */
         $updateLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => Entity\UuidAuthor::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ], ['createdAt' => 'DESC']);
 
         self::assertNotNull($updateLog);
@@ -886,7 +1000,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $updateLog */
         $updateLog = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => Entity\UuidAuthor::class,
-            'action' => AuditLogInterface::ACTION_UPDATE,
+            'action' => AuditAction::Update,
         ], ['createdAt' => 'DESC']);
 
         self::assertNotNull($updateLog);
@@ -923,7 +1037,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
 
         $log = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => DateTimePost::class,
-            'action' => AuditLogInterface::ACTION_CREATE,
+            'action' => AuditAction::Create,
         ]);
 
         self::assertNotNull($log);
@@ -935,7 +1049,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
     {
         $options = [
             'audit_config' => [
-                'integrity' => ['enabled' => true, 'secret' => 'pressure-secret'],
+                'integrity' => ['enabled' => true, 'secret' => '%env(string:AUDIT_INTEGRITY_PRESSURE_SECRET)%'],
             ],
         ];
 
@@ -948,12 +1062,14 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
 
         $post = new DateTimePost();
         $post->setTitle('Pressure Test');
+        $em->persist($post);
+        $em->flush();
 
         /** @var AuditServiceInterface $auditService */
         $auditService = $this->getService(AuditServiceInterface::class);
         $log = $auditService->createAuditLog(
             $post,
-            AuditLogInterface::ACTION_CREATE,
+            AuditAction::Create,
             null,
             ['title' => 'Pressure Test'],
             ['deep' => ['nested' => ['object' => $nonStringable]]]
@@ -1003,7 +1119,7 @@ final class FeatureVerificationTest extends AbstractFunctionalTestCase
         /** @var AuditLog|null $log */
         $log = $em->getRepository(AuditLog::class)->findOneBy([
             'entityClass' => CooldownPost::class,
-            'action' => AuditLogInterface::ACTION_ACCESS,
+            'action' => AuditAction::Access,
         ]);
 
         self::assertNotNull($log, 'Access auditing should produce a log on entity load');

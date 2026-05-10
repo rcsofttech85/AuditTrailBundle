@@ -6,14 +6,15 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\AssociationMapping;
-use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\ToManyAssociationMapping;
 use Doctrine\ORM\PersistentCollection;
 use Doctrine\ORM\UnitOfWork;
+use Rcsofttech\AuditTrailBundle\Contract\TrackableCollectionInterface;
 
 use function array_values;
 use function is_int;
 use function is_iterable;
+use function is_object;
 use function spl_object_id;
 
 /**
@@ -23,6 +24,7 @@ final readonly class CollectionChangeResolver
 {
     public function __construct(
         private CollectionIdExtractor $collectionIdExtractor,
+        private CollectionChangeIndexBuilder $indexBuilder,
         private JoinTableCollectionIdLoader $joinTableCollectionIdLoader,
     ) {
     }
@@ -35,9 +37,10 @@ final readonly class CollectionChangeResolver
         EntityManagerInterface $em,
         UnitOfWork $uow,
     ): array {
-        $indexedChanges = $this->extractCollectionChangesIndexedByOwner($em, $uow);
-
-        return $this->extractIndexedCollectionChangesForOwner($owner, $indexedChanges);
+        return $this->extractIndexedCollectionChangesForOwner(
+            $owner,
+            $this->extractCollectionChangesIndexedByOwner($em, $uow),
+        );
     }
 
     /**
@@ -47,15 +50,7 @@ final readonly class CollectionChangeResolver
         EntityManagerInterface $em,
         UnitOfWork $uow,
     ): array {
-        $indexedChanges = [];
-        /** @var array<class-string, ClassMetadata<object>> $metadataCache */
-        $metadataCache = [];
-
-        $this->mergeScheduledCollectionChangesIntoIndex($uow->getScheduledCollectionUpdates(), $em, $indexedChanges);
-        $this->mergeScheduledCollectionChangesIntoIndex($uow->getScheduledCollectionDeletions(), $em, $indexedChanges);
-        $this->mergeOwnerCollectionChangesIntoIndex($uow, $em, $metadataCache, $indexedChanges);
-
-        return $indexedChanges;
+        return $this->indexBuilder->build($em, $uow, $this);
     }
 
     /**
@@ -83,27 +78,28 @@ final readonly class CollectionChangeResolver
         EntityManagerInterface $em,
     ): ?array {
         $fieldName = $this->resolveCollectionFieldName($collection);
-        $snapshot = $this->getCollectionSnapshot($collection);
-        $oldIds = $this->collectionIdExtractor->extractFromIterable($snapshot, $em);
         $insertElements = array_values($this->getCollectionInsertDiff($collection));
         $deleteElements = array_values($this->getCollectionDeleteDiff($collection));
+        $oldIds = $this->resolveOriginalCollectionIds(
+            $collection,
+            $fieldName,
+            $insertElements !== [] || $deleteElements !== [],
+            $em,
+        );
 
         if ($insertElements === [] && $deleteElements === []) {
-            if ($oldIds === []) {
-                return null;
-            }
+            $currentIds = [];
+            $oldIds = $this->resolveOriginalCollectionIds($collection, $fieldName, true, $em);
 
-            return [
-                'field' => $fieldName,
-                'old' => $oldIds,
-                'new' => [],
-            ];
+            return $oldIds === []
+                ? null
+                : ['field' => $fieldName, 'old' => $oldIds, 'new' => $currentIds];
         }
 
         return [
             'field' => $fieldName,
             'old' => $oldIds,
-            'new' => $this->computeNewIds($oldIds, $insertElements, $deleteElements, $em),
+            'new' => $this->normalizeUniqueIds($this->resolveCurrentCollectionIds($collection, $em)),
         ];
     }
 
@@ -117,39 +113,26 @@ final readonly class CollectionChangeResolver
 
     public function getCollectionOwner(object $collection): ?object
     {
-        return $this->normalizeTrackableCollection($collection)?->getOwner();
-    }
-
-    /**
-     * @return TrackableCollection|null
-     */
-    private function normalizeTrackableCollection(
-        object $collection,
-    ): PersistentCollection|TrackableCollectionInterface|null {
         if (!$this->isTrackableCollection($collection)) {
             return null;
         }
 
-        return $collection;
+        return $collection->getOwner();
     }
 
     /**
-     * @param TrackableCollection $collection
-     */
-    private function getCollectionMapping(
-        PersistentCollection|TrackableCollectionInterface $collection,
-    ): AssociationMapping&ToManyAssociationMapping {
-        return $collection->getMapping();
-    }
-
-    /**
-     * @param TrackableCollection $collection
+     * @param iterable<mixed> $items
      *
-     * @return iterable<mixed>
+     * @return array<int, int|string>
      */
-    private function getCollectionSnapshot(PersistentCollection|TrackableCollectionInterface $collection): iterable
+    public function extractCollectionIdsFromIterable(iterable $items, EntityManagerInterface $em): array
     {
-        return $collection->getSnapshot();
+        return $this->collectionIdExtractor->extractFromIterable($items, $em);
+    }
+
+    public function collectionContainsPendingIds(mixed $items, EntityManagerInterface $em): bool
+    {
+        return $this->collectionIdExtractor->hasPendingIds($items, $em);
     }
 
     /**
@@ -183,264 +166,101 @@ final readonly class CollectionChangeResolver
     /**
      * @param TrackableCollection $collection
      */
-    private function resolveCollectionFieldName(PersistentCollection|TrackableCollectionInterface $collection): string
-    {
-        return $this->getCollectionMapping($collection)->fieldName;
+    private function resolveCollectionFieldName(
+        PersistentCollection|TrackableCollectionInterface $collection,
+    ): string {
+        /** @var AssociationMapping&ToManyAssociationMapping $mapping */
+        $mapping = $collection->getMapping();
+
+        return $mapping->fieldName;
     }
 
     /**
-     * @param array<int, array{old: array<string, mixed>, new: array<string, mixed>}> $indexedChanges
-     */
-    private function mergeCollectionChangeIntoIndex(
-        object $collection,
-        EntityManagerInterface $em,
-        array &$indexedChanges,
-    ): void {
-        $trackableCollection = $this->normalizeTrackableCollection($collection);
-        if ($trackableCollection === null) {
-            return;
-        }
-
-        $collectionOwner = $trackableCollection->getOwner();
-        if ($collectionOwner === null) {
-            return;
-        }
-
-        $transition = $this->buildCollectionTransition($trackableCollection, $em);
-        if ($transition === null) {
-            return;
-        }
-
-        $ownerId = spl_object_id($collectionOwner);
-        $indexedChanges[$ownerId] ??= [
-            'old' => [],
-            'new' => [],
-        ];
-        $indexedChanges[$ownerId]['old'][$transition['field']] = $transition['old'];
-        $indexedChanges[$ownerId]['new'][$transition['field']] = $transition['new'];
-    }
-
-    /**
-     * @param iterable<object>                                                        $collections
-     * @param array<int, array{old: array<string, mixed>, new: array<string, mixed>}> $indexedChanges
-     */
-    private function mergeScheduledCollectionChangesIntoIndex(
-        iterable $collections,
-        EntityManagerInterface $em,
-        array &$indexedChanges,
-    ): void {
-        foreach ($collections as $collection) {
-            $this->mergeCollectionChangeIntoIndex($collection, $em, $indexedChanges);
-        }
-    }
-
-    /**
-     * @param array<class-string, ClassMetadata<object>>                              $metadataCache
-     * @param array<int, array{old: array<string, mixed>, new: array<string, mixed>}> $indexedChanges
-     */
-    private function mergeOwnerCollectionChangesIntoIndex(
-        UnitOfWork $uow,
-        EntityManagerInterface $em,
-        array &$metadataCache,
-        array &$indexedChanges,
-    ): void {
-        foreach ($uow->getScheduledEntityUpdates() as $owner) {
-            $ownerChanges = $this->resolveOwnerCollectionChanges($owner, $uow, $em, $metadataCache, $indexedChanges);
-            if ($ownerChanges === null) {
-                continue;
-            }
-
-            $indexedChanges[spl_object_id($owner)] = $ownerChanges;
-        }
-    }
-
-    /**
-     * @param array<class-string, ClassMetadata<object>>                              $metadataCache
-     * @param array<int, array{old: array<string, mixed>, new: array<string, mixed>}> $indexedChanges
-     *
-     * @return array{old: array<string, mixed>, new: array<string, mixed>}|null
-     */
-    private function resolveOwnerCollectionChanges(
-        object $owner,
-        UnitOfWork $uow,
-        EntityManagerInterface $em,
-        array &$metadataCache,
-        array $indexedChanges,
-    ): ?array {
-        $ownerId = spl_object_id($owner);
-        /** @var array<string, mixed> $oldValues */
-        $oldValues = $indexedChanges[$ownerId]['old'] ?? [];
-        /** @var array<string, mixed> $newValues */
-        $newValues = $indexedChanges[$ownerId]['new'] ?? [];
-
-        $this->mergeOriginalCollectionChangesForOwner($owner, $em, $uow, $metadataCache, $oldValues, $newValues);
-
-        if ($oldValues === [] && $newValues === []) {
-            return null;
-        }
-
-        return [
-            'old' => $oldValues,
-            'new' => $newValues,
-        ];
-    }
-
-    /**
-     * @param array<class-string, ClassMetadata<object>> $metadataCache
-     * @param array<string, mixed>                       $oldValues
-     * @param array<string, mixed>                       $newValues
-     */
-    private function mergeOriginalCollectionChangesForOwner(
-        object $owner,
-        EntityManagerInterface $em,
-        UnitOfWork $uow,
-        array &$metadataCache,
-        array &$oldValues,
-        array &$newValues,
-    ): void {
-        $metadata = $metadataCache[$owner::class] ??= $em->getClassMetadata($owner::class);
-        $originalData = $uow->getOriginalEntityData($owner);
-
-        foreach ($metadata->getAssociationNames() as $associationName) {
-            if ($this->shouldSkipOriginalCollectionMerge($metadata, $associationName, $oldValues)) {
-                continue;
-            }
-
-            $currentValue = $metadata->getFieldValue($owner, $associationName);
-            if (!is_iterable($currentValue)) {
-                continue;
-            }
-
-            $originalValue = $this->resolveOriginalCollectionValue($currentValue, $originalData, $associationName);
-            if (!is_iterable($originalValue)) {
-                continue;
-            }
-
-            $transition = $this->resolveOriginalCollectionTransition(
-                $owner,
-                $associationName,
-                $currentValue,
-                $originalValue,
-                $em,
-            );
-            if ($transition === null) {
-                continue;
-            }
-
-            $oldValues[$associationName] = $transition['old'];
-            $newValues[$associationName] = $transition['new'];
-        }
-    }
-
-    /**
-     * @param ClassMetadata<object> $metadata
-     * @param array<string, mixed>  $oldValues
-     */
-    private function shouldSkipOriginalCollectionMerge(
-        ClassMetadata $metadata,
-        string $associationName,
-        array $oldValues,
-    ): bool {
-        return isset($oldValues[$associationName]) || !$metadata->isCollectionValuedAssociation($associationName);
-    }
-
-    /**
-     * @param array<string, mixed> $originalData
-     */
-    private function resolveOriginalCollectionValue(
-        mixed $currentValue,
-        array $originalData,
-        string $associationName,
-    ): mixed {
-        if ($currentValue instanceof PersistentCollection || $currentValue instanceof TrackableCollectionInterface) {
-            return $currentValue->getSnapshot();
-        }
-
-        return $originalData[$associationName] ?? null;
-    }
-
-    /**
-     * @param iterable<mixed> $currentValue
-     * @param iterable<mixed> $originalValue
-     *
-     * @return array{old: array<int, int|string>, new: array<int, int|string>}|null
-     */
-    private function resolveOriginalCollectionTransition(
-        object $owner,
-        string $associationName,
-        iterable $currentValue,
-        iterable $originalValue,
-        EntityManagerInterface $em,
-    ): ?array {
-        $originalIds = $this->collectionIdExtractor->extractFromIterable($originalValue, $em);
-        $currentIds = $this->collectionIdExtractor->extractFromIterable($currentValue, $em);
-        if ($originalIds === $currentIds && $currentIds === []) {
-            $originalIds = $this->joinTableCollectionIdLoader->loadOriginalCollectionIdsFromDatabase($owner, $associationName, $em);
-        }
-
-        if ($originalIds === $currentIds) {
-            return null;
-        }
-
-        return ['old' => $originalIds, 'new' => $currentIds];
-    }
-
-    /**
-     * @param array<int, int|string> $oldIds
-     * @param array<int, object>     $insertDiff
-     * @param array<int, object>     $deleteDiff
+     * @param TrackableCollection $collection
      *
      * @return array<int, int|string>
      */
-    private function computeNewIds(
-        array $oldIds,
-        array $insertDiff,
-        array $deleteDiff,
+    private function resolveOriginalCollectionIds(
+        PersistentCollection|TrackableCollectionInterface $collection,
+        string $fieldName,
+        bool $allowDatabaseFallback,
         EntityManagerInterface $em,
     ): array {
-        $newIds = $oldIds;
-        $newIdLookup = $this->buildIdLookup($newIds);
+        $oldIds = $this->collectionIdExtractor->extractFromIterable($collection->getSnapshot(), $em);
+        if ($oldIds !== [] || !$allowDatabaseFallback) {
+            return $oldIds;
+        }
 
-        $insertedIds = $this->collectionIdExtractor->extractFromIterable($insertDiff, $em);
-        foreach ($insertedIds as $id) {
-            $lookupKey = $this->buildIdLookupKey($id);
-            if (isset($newIdLookup[$lookupKey])) {
+        $owner = $collection->getOwner();
+        if ($owner === null) {
+            return [];
+        }
+
+        return $this->joinTableCollectionIdLoader->loadOriginalCollectionIdsFromDatabase(
+            $owner,
+            $fieldName,
+            $em,
+        );
+    }
+
+    /**
+     * @param TrackableCollection $collection
+     *
+     * @return array<int, int|string>
+     */
+    private function resolveCurrentCollectionIds(
+        PersistentCollection|TrackableCollectionInterface $collection,
+        EntityManagerInterface $em,
+    ): array {
+        if ($collection instanceof PersistentCollection) {
+            return $this->collectionIdExtractor->extractFromIterable($collection, $em);
+        }
+
+        if (is_iterable($collection)) {
+            return $this->collectionIdExtractor->extractFromIterable($collection, $em);
+        }
+
+        $deletedObjectIds = [];
+        foreach ($this->getCollectionDeleteDiff($collection) as $entity) {
+            $deletedObjectIds[spl_object_id($entity)] = true;
+        }
+
+        $currentItems = [];
+        foreach ($collection->getSnapshot() as $entity) {
+            if (is_object($entity) && isset($deletedObjectIds[spl_object_id($entity)])) {
                 continue;
             }
 
-            $newIds[] = $id;
-            $newIdLookup[$lookupKey] = true;
+            $currentItems[] = $entity;
         }
 
-        $deletedIds = $this->collectionIdExtractor->extractFromIterable($deleteDiff, $em);
-        $deletedIdLookup = $this->buildIdLookup($deletedIds);
-        $filteredIds = [];
-
-        foreach ($newIds as $id) {
-            if (isset($deletedIdLookup[$this->buildIdLookupKey($id)])) {
-                continue;
-            }
-
-            $filteredIds[] = $id;
-        }
-
-        return $filteredIds;
+        return $this->collectionIdExtractor->extractFromIterable(
+            [...$currentItems, ...$this->getCollectionInsertDiff($collection)],
+            $em,
+        );
     }
 
     /**
      * @param array<int, int|string> $ids
      *
-     * @return array<string, true>
+     * @return array<int, int|string>
      */
-    private function buildIdLookup(array $ids): array
+    private function normalizeUniqueIds(array $ids): array
     {
+        $normalized = [];
         $lookup = [];
 
         foreach ($ids as $id) {
-            $lookup[$this->buildIdLookupKey($id)] = true;
+            $lookupKey = $this->buildIdLookupKey($id);
+            if (isset($lookup[$lookupKey])) {
+                continue;
+            }
+
+            $normalized[] = $id;
+            $lookup[$lookupKey] = true;
         }
 
-        return $lookup;
+        return $normalized;
     }
 
     private function buildIdLookupKey(int|string $id): string

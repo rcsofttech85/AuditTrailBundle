@@ -6,11 +6,13 @@ namespace Rcsofttech\AuditTrailBundle\Transport;
 
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use RuntimeException;
+use Throwable;
 
-final class ChainAuditTransport implements AuditTransportInterface
+final readonly class ChainAuditTransport implements AuditTransportInterface
 {
     /** @var list<AuditTransportInterface> */
-    private readonly array $transports;
+    private array $transports;
 
     /**
      * @param iterable<AuditTransportInterface> $transports
@@ -26,15 +28,35 @@ final class ChainAuditTransport implements AuditTransportInterface
      * strategy consistently.
      */
     #[Override]
-    public function send(AuditTransportContext $context): void
+    public function send(AuditTransportContext $context): AuditDeliveryResult
     {
+        $completedTransports = [];
+
         foreach ($this->transports as $transport) {
             if (!$transport->supports($context)) {
                 continue;
             }
 
-            $transport->send($context);
+            try {
+                $result = $transport->send($context);
+                $completedTransports[] = $transport::class;
+
+                if ($result->isPartial()) {
+                    return AuditDeliveryResult::partiallyDelivered(
+                        [...$completedTransports, ...$result->completedTransports],
+                        $result->failure ?? new RuntimeException('Audit delivery partially failed.'),
+                    );
+                }
+            } catch (Throwable $exception) {
+                if ($completedTransports !== []) {
+                    return AuditDeliveryResult::partiallyDelivered($completedTransports, $exception);
+                }
+
+                throw $exception;
+            }
         }
+
+        return AuditDeliveryResult::delivered();
     }
 
     /**

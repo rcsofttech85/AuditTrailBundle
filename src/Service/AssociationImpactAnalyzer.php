@@ -10,12 +10,11 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\InverseSideMapping;
 use Doctrine\ORM\Mapping\OwningSideMapping;
 use Doctrine\ORM\UnitOfWork;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\ValueObject\AssociationImpact;
 
 use function array_filter;
 use function array_values;
 use function is_iterable;
-use function spl_object_id;
 
 final readonly class AssociationImpactAnalyzer
 {
@@ -26,11 +25,11 @@ final readonly class AssociationImpactAnalyzer
     }
 
     /**
-     * @return list<array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}>
+     * @return list<AssociationImpact>
      */
     public function buildAggregatedDeletedAssociationImpacts(EntityManagerInterface $em, UnitOfWork $uow): array
     {
-        /** @var array<string, array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}> $aggregated */
+        /** @var array<string, AssociationImpact> $aggregated */
         $aggregated = [];
         /** @var array<class-string, ClassMetadata<object>> $metadataByClass */
         $metadataByClass = [];
@@ -43,8 +42,8 @@ final readonly class AssociationImpactAnalyzer
     }
 
     /**
-     * @param array<string, array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}> $aggregated
-     * @param array<class-string, ClassMetadata<object>>                                                                    $metadataByClass
+     * @param array<string, AssociationImpact>           $aggregated
+     * @param array<class-string, ClassMetadata<object>> $metadataByClass
      */
     private function mergeDeletedEntityAssociationImpacts(
         array &$aggregated,
@@ -53,7 +52,7 @@ final readonly class AssociationImpactAnalyzer
         EntityManagerInterface $em,
     ): void {
         $deletedId = $this->resolveEntityId($deletedEntity, $em);
-        if ($deletedId === AuditLogInterface::PENDING_ID) {
+        if ($deletedId === null) {
             return;
         }
 
@@ -72,17 +71,25 @@ final readonly class AssociationImpactAnalyzer
                 $deletedId,
                 $em,
             ) as $impact) {
-                $key = spl_object_id($impact['entity']).':'.$impact['field'];
+                $key = $impact->key();
                 if (!isset($aggregated[$key])) {
                     $aggregated[$key] = $impact;
                     continue;
                 }
 
+                $oldValues = $aggregated[$key]->old;
+                $newValues = $aggregated[$key]->new;
                 $this->collectionTransitionMerger->mergeSingleFieldTransition(
-                    $aggregated[$key]['old'],
-                    $aggregated[$key]['new'],
-                    $impact['old'],
-                    $impact['new'],
+                    $oldValues,
+                    $newValues,
+                    $impact->old,
+                    $impact->new,
+                );
+                $aggregated[$key] = new AssociationImpact(
+                    $aggregated[$key]->entity,
+                    $aggregated[$key]->field,
+                    $oldValues,
+                    $newValues,
                 );
             }
         }
@@ -92,7 +99,7 @@ final readonly class AssociationImpactAnalyzer
      * @param ClassMetadata<object>                      $metadata
      * @param array<class-string, ClassMetadata<object>> $metadataByClass
      *
-     * @return list<array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}>
+     * @return list<AssociationImpact>
      */
     private function buildAssociationCollectionImpacts(
         object $deletedEntity,
@@ -144,8 +151,6 @@ final readonly class AssociationImpactAnalyzer
 
     /**
      * @param array<class-string, ClassMetadata<object>> $metadataByClass
-     *
-     * @return array{entity: object, field: string, old: array<int, int|string>, new: array<int, int|string>}|null
      */
     private function buildSingleRelatedEntityImpact(
         object $relatedEntity,
@@ -153,7 +158,7 @@ final readonly class AssociationImpactAnalyzer
         array &$metadataByClass,
         int|string $deletedId,
         EntityManagerInterface $em,
-    ): ?array {
+    ): ?AssociationImpact {
         $relatedMetadata = $this->getClassMetadata($relatedEntity, $metadataByClass, $em);
         $relatedCollection = $relatedMetadata->getFieldValue($relatedEntity, $counterpartField);
         if (!is_iterable($relatedCollection)) {
@@ -166,12 +171,7 @@ final readonly class AssociationImpactAnalyzer
             return null;
         }
 
-        return [
-            'entity' => $relatedEntity,
-            'field' => $counterpartField,
-            'old' => $oldIds,
-            'new' => $newIds,
-        ];
+        return new AssociationImpact($relatedEntity, $counterpartField, $oldIds, $newIds);
     }
 
     /**
@@ -187,8 +187,8 @@ final readonly class AssociationImpactAnalyzer
         return $metadataByClass[$entity::class] ??= $em->getClassMetadata($entity::class);
     }
 
-    private function resolveEntityId(object $entity, EntityManagerInterface $em): int|string
+    private function resolveEntityId(object $entity, EntityManagerInterface $em): ?string
     {
-        return $this->collectionIdExtractor->extractFromIterable([$entity], $em)[0] ?? AuditLogInterface::PENDING_ID;
+        return $this->collectionIdExtractor->extractFromIterable([$entity], $em)[0] ?? null;
     }
 }

@@ -4,7 +4,9 @@
 
 Sensitive data is automatically masked in audit logs.
 
-### Option 1: Use PHP's `#[SensitiveParameter]`
+### Option 1: Use PHP's `#[SensitiveParameter]` on promoted constructor parameters
+
+The bundle currently reads `#[SensitiveParameter]` from promoted constructor parameters when building the sensitive-field map.
 
 ```php
 <?php
@@ -33,17 +35,19 @@ private string $ssn;
 
 ## Audit Log Integrity
 
-Ensure the integrity of your audit logs by detecting any unauthorized tampering or modifications. This command validates cryptographic hashes to identify compromised records.
+Use this command to check whether stored audit logs were changed after they
+were written. It validates the stored signatures and reports compromised
+records.
 
 ```bash
 php bin/console audit:verify-integrity
 ```
 
-**Use Cases:**
+**Use cases:**
 
-- **Compliance Audits**: Verify that audit logs haven't been altered for regulatory compliance (SOX, HIPAA, GDPR).
-- **Security Monitoring**: Detect unauthorized tampering after security incidents.
-- **Historical Data Verification**: Confirm past records are accurate and trustworthy.
+- **Compliance audits**: Verify that audit logs have not been altered for SOX, HIPAA, GDPR, or similar reviews.
+- **Security monitoring**: Detect tampering after a security incident.
+- **Historical data checks**: Confirm older records still match their stored signatures.
 
 > [!WARNING]
 > Any tampered logs indicate a serious security breach. Investigate immediately and review access controls to your database.
@@ -62,7 +66,8 @@ The bundle also enforces a maximum persisted context payload of 65,536 bytes. Ov
 
 ## Transport Payload Signing
 
-When using **HTTP** or **Queue** transports with integrity enabled, the bundle automatically signs the payload to ensure data authenticity during transit.
+When you use **HTTP** or **Queue** transports with integrity enabled, the
+bundle also signs the payload before sending it.
 
 ### HTTP Transport
 
@@ -78,7 +83,9 @@ Content-Type: application/json
 
 ### Queue Transport
 
-The bundle adds a `SignatureStamp` to the Messenger envelope containing the signature of the serialized `AuditLogMessage`.
+The bundle adds a `SignatureStamp` to the Messenger envelope containing the HMAC of the exact JSON body emitted by `AuditLogMessageSerializer`.
+
+That transport signature is distinct from the audit log's own `signature` field in the JSON body. Queue payloads can carry the persisted entity signature while `SignatureStamp` protects the serialized message in transit.
 
 ```php
 <?php

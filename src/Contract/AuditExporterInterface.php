@@ -19,7 +19,7 @@ interface AuditExporterInterface
      * @param iterable<AuditLog> $audits
      * @param resource           $stream A writable stream resource (e.g. fopen('php://output', 'wb'))
      */
-    public function exportToStream(iterable $audits, string $format, mixed $stream): void;
+    public function exportToStream(iterable $audits, string $format, mixed $stream): int;
 
     public function formatFileSize(int $bytes): string;
 }

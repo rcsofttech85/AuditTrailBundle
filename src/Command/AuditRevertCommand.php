@@ -106,8 +106,8 @@ class AuditRevertCommand extends BaseAuditCommand
 
     private function displayRevertHeader(SymfonyStyle $io, string $auditId, AuditLog $log, bool $dryRun): void
     {
-        $io->title(sprintf('Reverting Audit Log #%s (%s)', $auditId, $log->action));
-        $io->text(sprintf('Entity: %s:%s', $log->entityClass, $log->entityId));
+        $io->title(sprintf('Reverting Audit Log #%s (%s)', $auditId, $log->action->value));
+        $io->text(sprintf('Entity: %s:%s', $log->entityClass, $log->requireEntityId()));
 
         if ($dryRun) {
             $io->note('Running in DRY-RUN mode. No changes will be persisted.');

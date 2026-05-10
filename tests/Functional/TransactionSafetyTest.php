@@ -4,34 +4,60 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Tools\SchemaTool;
+use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
+use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 use RuntimeException;
 
+use function assert;
+use function is_file;
+use function sprintf;
+use function sys_get_temp_dir;
+use function tempnam;
+use function unlink;
+
 /**
- * Tests transaction safety behavior for rollback and deferred persistence.
+ * Tests transaction safety behavior for rollback, deferred persistence, and revert recovery.
  *
- * These tests run in separate processes because they intentionally trigger
- * Doctrine transaction rollbacks (via ThrowingTransport). This rollback destroys
- * DAMA's internal savepoint (DAMA_TEST), corrupting the static connection state
- * for subsequent tests. Process isolation prevents this corruption from leaking.
+ * These tests boot fresh kernels when they need to cross failure boundaries so
+ * each assertion observes a clean Doctrine state after rollback or committed
+ * post-commit transport failure paths.
  */
 final class TransactionSafetyTest extends AbstractFunctionalTestCase
 {
+    /** @var list<string> */
+    private array $databasePaths = [];
+
     protected function setUp(): void
     {
         parent::setUp();
         TestKernel::$useThrowingTransport = true;
     }
 
+    protected function tearDown(): void
+    {
+        foreach ($this->databasePaths as $databasePath) {
+            if (is_file($databasePath)) {
+                unlink($databasePath);
+            }
+        }
+
+        parent::tearDown();
+    }
+
     /** @param array<string, mixed> $options */
-    private function getFreshEntityManager(array $options): \Doctrine\ORM\EntityManagerInterface
+    private function getFreshEntityManager(array $options): EntityManagerInterface
     {
         self::bootKernel($options);
 
         return $this->getEntityManager();
     }
 
-    private function flushAndCaptureFailure(\Doctrine\ORM\EntityManagerInterface $em): RuntimeException
+    private function flushAndCaptureFailure(EntityManagerInterface $em): RuntimeException
     {
         try {
             $em->flush();
@@ -39,6 +65,58 @@ final class TransactionSafetyTest extends AbstractFunctionalTestCase
         } catch (RuntimeException $exception) {
             return $exception;
         }
+    }
+
+    private function createDatabasePath(): string
+    {
+        $databasePath = tempnam(sys_get_temp_dir(), 'audit_revert_');
+        if ($databasePath === false) {
+            self::fail('Failed to create a temporary SQLite database path.');
+        }
+
+        $this->databasePaths[] = $databasePath;
+
+        return $databasePath;
+    }
+
+    /**
+     * @param array<string, mixed> $auditConfig
+     *
+     * @return array<string, mixed>
+     */
+    private function buildFileDatabaseOptions(string $databasePath, array $auditConfig): array
+    {
+        return [
+            'doctrine_config' => [
+                'dbal' => [
+                    'url' => sprintf('sqlite:///%s', $databasePath),
+                ],
+            ],
+            'audit_config' => $auditConfig,
+        ];
+    }
+
+    private function createSchema(EntityManagerInterface $em): void
+    {
+        $metadata = $em->getMetadataFactory()->getAllMetadata();
+        $schemaTool = new SchemaTool($em);
+        $schemaTool->dropSchema($metadata);
+        $schemaTool->createSchema($metadata);
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     * @param list<string>|null    $supportedPhases
+     */
+    private function bootConfiguredKernel(array $options, bool $useThrowingTransport, ?array $supportedPhases = null): EntityManagerInterface
+    {
+        self::ensureKernelShutdown();
+        TestKernel::$useThrowingTransport = $useThrowingTransport;
+        TestKernel::$throwingTransportSupportedPhases = $supportedPhases;
+
+        self::bootKernel($options);
+
+        return $this->getEntityManager();
     }
 
     public function testAtomicModeRollsBackDataOnTransportFailure(): void
@@ -114,7 +192,7 @@ final class TransactionSafetyTest extends AbstractFunctionalTestCase
             'Entity should be saved when immediate transport fails but database fallback is enabled.'
         );
 
-        $auditLogs = $em->getRepository(\Rcsofttech\AuditTrailBundle\Entity\AuditLog::class)->findBy([
+        $auditLogs = $em->getRepository(AuditLog::class)->findBy([
             'entityClass' => TestEntity::class,
             'entityId' => (string) $savedEntity->getId(),
         ]);
@@ -147,5 +225,135 @@ final class TransactionSafetyTest extends AbstractFunctionalTestCase
             $savedEntity,
             'Entity SHOULD be saved in Deferred mode even if transport fails and exception is thrown.'
         );
+    }
+
+    public function testStrictRevertRollsBackEntityWhenRevertAuditFailsInTransaction(): void
+    {
+        $databasePath = $this->createDatabasePath();
+        $options = $this->buildFileDatabaseOptions($databasePath, [
+            'defer_transport_until_commit' => false,
+            'fail_on_transport_error' => true,
+            'transports' => ['database' => ['enabled' => true]],
+        ]);
+
+        $em = $this->bootConfiguredKernel($options, false);
+        $this->createSchema($em);
+
+        $entity = new TestEntity('Original Revert Value');
+        $em->persist($entity);
+        $em->flush();
+
+        $entityId = $entity->getId();
+        self::assertNotNull($entityId);
+
+        $entity->setName('Updated Revert Value');
+        $em->flush();
+        $em->clear();
+
+        $em = $this->bootConfiguredKernel($options, true, [AuditPhase::OnFlush->value]);
+        $updateLog = $em->getRepository(AuditLog::class)->findOneBy([
+            'entityClass' => TestEntity::class,
+            'entityId' => (string) $entityId,
+            'action' => AuditAction::Update,
+        ]);
+        self::assertInstanceOf(AuditLog::class, $updateLog);
+
+        $reverter = self::getContainer()->get(AuditReverterInterface::class);
+        assert($reverter instanceof AuditReverterInterface);
+
+        try {
+            $reverter->revert($updateLog);
+            self::fail('Expected revert to fail when the in-transaction transport throws.');
+        } catch (RuntimeException $exception) {
+            self::assertSame('Transport failed intentionally.', $exception->getMessage());
+        }
+
+        $em = $this->bootConfiguredKernel($options, false);
+        $savedEntity = $em->getRepository(TestEntity::class)->find($entityId);
+        self::assertInstanceOf(TestEntity::class, $savedEntity);
+        self::assertSame('Updated Revert Value', $savedEntity->getName());
+
+        $revertLogs = $em->getRepository(AuditLog::class)->findBy([
+            'entityClass' => TestEntity::class,
+            'entityId' => (string) $entityId,
+            'action' => AuditAction::Revert,
+        ]);
+        self::assertSame([], $revertLogs, 'Failed in-transaction revert audits must not leak a committed revert log.');
+    }
+
+    public function testCommittedButUndeliveredRevertCannotBeAppliedTwice(): void
+    {
+        $databasePath = $this->createDatabasePath();
+        $options = $this->buildFileDatabaseOptions($databasePath, [
+            'defer_transport_until_commit' => false,
+            'fail_on_transport_error' => true,
+            'transports' => ['database' => ['enabled' => true]],
+        ]);
+
+        $em = $this->bootConfiguredKernel($options, false);
+        $this->createSchema($em);
+
+        $entity = new TestEntity('Original Replay Value');
+        $em->persist($entity);
+        $em->flush();
+
+        $entityId = $entity->getId();
+        self::assertNotNull($entityId);
+
+        $entity->setName('Updated Replay Value');
+        $em->flush();
+        $em->clear();
+
+        $em = $this->bootConfiguredKernel($options, true, [AuditPhase::PostFlush->value]);
+        $updateLog = $em->getRepository(AuditLog::class)->findOneBy([
+            'entityClass' => TestEntity::class,
+            'entityId' => (string) $entityId,
+            'action' => AuditAction::Update,
+        ]);
+        self::assertInstanceOf(AuditLog::class, $updateLog);
+
+        $reverter = self::getContainer()->get(AuditReverterInterface::class);
+        assert($reverter instanceof AuditReverterInterface);
+
+        try {
+            $reverter->revert($updateLog);
+            self::fail('Expected deferred revert audit delivery to fail after commit.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('Revert committed', $exception->getMessage());
+        }
+
+        $em = $this->bootConfiguredKernel($options, false);
+        $savedEntity = $em->getRepository(TestEntity::class)->find($entityId);
+        self::assertInstanceOf(TestEntity::class, $savedEntity);
+        self::assertSame('Original Replay Value', $savedEntity->getName());
+        self::assertCount(0, $em->getRepository(AuditLog::class)->findBy([
+            'entityClass' => TestEntity::class,
+            'entityId' => (string) $entityId,
+            'action' => AuditAction::Revert,
+        ]));
+
+        $updateLog = $em->getRepository(AuditLog::class)->findOneBy([
+            'entityClass' => TestEntity::class,
+            'entityId' => (string) $entityId,
+            'action' => AuditAction::Update,
+        ]);
+        self::assertInstanceOf(AuditLog::class, $updateLog);
+
+        $reverter = self::getContainer()->get(AuditReverterInterface::class);
+        assert($reverter instanceof AuditReverterInterface);
+
+        try {
+            $reverter->revert($updateLog);
+            self::fail('Expected the second revert attempt to be rejected as a no-op replay.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('already matches the target state', $exception->getMessage());
+        }
+
+        $em = $this->bootConfiguredKernel($options, false);
+        self::assertCount(0, $em->getRepository(AuditLog::class)->findBy([
+            'entityClass' => TestEntity::class,
+            'entityId' => (string) $entityId,
+            'action' => AuditAction::Revert,
+        ]));
     }
 }

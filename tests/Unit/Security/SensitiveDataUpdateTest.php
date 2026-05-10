@@ -15,15 +15,22 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
 use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
+use Rcsofttech\AuditTrailBundle\Service\AuditedEntityMarker;
+use Rcsofttech\AuditTrailBundle\Service\AuditLifecycleState;
+use Rcsofttech\AuditTrailBundle\Service\AuditOnFlushProcessor;
+use Rcsofttech\AuditTrailBundle\Service\AuditPostFlushProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
+use Rcsofttech\AuditTrailBundle\Service\PendingAuditPlanMaterializer;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\SensitiveUser;
+use Rcsofttech\AuditTrailBundle\Transport\AuditDeliveryResult;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 final class SensitiveDataUpdateTest extends AbstractAuditTestCase
 {
@@ -40,8 +47,9 @@ final class SensitiveDataUpdateTest extends AbstractAuditTestCase
         $this->entityManager = self::createStub(EntityManagerInterface::class);
         $this->transport = $this->createMock(AuditTransportInterface::class);
         $this->transport->method('supports')->willReturn(true);
+        $this->transport->method('send')->willReturn(AuditDeliveryResult::delivered());
 
-        $this->transactionIdGenerator = new TransactionIdGenerator();
+        $this->transactionIdGenerator = new TransactionIdGenerator(new UuidFactory());
     }
 
     public function testUpdateMasksSensitiveData(): void
@@ -82,15 +90,28 @@ final class SensitiveDataUpdateTest extends AbstractAuditTestCase
         );
 
         return new AuditSubscriber(
-            $auditService,
-            $changeProcessor,
-            $dispatcher,
             $auditManager,
-            $entityProcessor,
-            new AssociationImpactAnalyzer(new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)), new CollectionTransitionMerger()),
-            $this->transactionIdGenerator,
             self::createStub(AuditAccessHandlerInterface::class),
-            self::createStub(EntityIdResolverInterface::class)
+            new AuditLifecycleState(),
+            new AuditOnFlushProcessor(
+                $entityProcessor,
+                new AssociationImpactAnalyzer(new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)), new CollectionTransitionMerger()),
+            ),
+            new AuditPostFlushProcessor(
+                $auditService,
+                $dispatcher,
+                $auditManager,
+                $auditManager,
+                new PendingAuditPlanMaterializer(
+                    $auditService,
+                    new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)),
+                ),
+                $this->transactionIdGenerator,
+                new AuditedEntityMarker(
+                    self::createStub(AuditAccessHandlerInterface::class),
+                    self::createStub(EntityIdResolverInterface::class),
+                ),
+            ),
         );
     }
 

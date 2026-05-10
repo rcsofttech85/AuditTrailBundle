@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Override;
-use Symfony\Component\Uid\Uuid;
+use Symfony\Component\Uid\Factory\UuidFactory;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
@@ -19,9 +19,14 @@ final class TransactionIdGenerator implements ResetInterface
 {
     private ?string $transactionId = null;
 
+    public function __construct(
+        private UuidFactory $uuidFactory,
+    ) {
+    }
+
     public function getTransactionId(): string
     {
-        return $this->transactionId ??= Uuid::v7()->toRfc4122();
+        return $this->transactionId ??= $this->uuidFactory->create()->toRfc4122();
     }
 
     #[Override]

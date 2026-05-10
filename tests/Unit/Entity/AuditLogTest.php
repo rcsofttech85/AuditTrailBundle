@@ -8,6 +8,8 @@ use InvalidArgumentException;
 use LogicException;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Symfony\Component\Uid\Uuid;
 
 final class AuditLogTest extends TestCase
 {
@@ -24,7 +26,7 @@ final class AuditLogTest extends TestCase
     public function testActionValidation(): void
     {
         $log = new AuditLog('App\Entity\User', '1', 'create');
-        self::assertSame('create', $log->action);
+        self::assertSame(AuditAction::Create, $log->action);
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Invalid action "invalid_action". Must be one of:');
@@ -128,7 +130,7 @@ final class AuditLogTest extends TestCase
 
         self::assertSame('App\Entity\User', $log->entityClass);
         self::assertSame('1', $log->entityId);
-        self::assertSame('create', $log->action);
+        self::assertSame(AuditAction::Create, $log->action);
         self::assertSame('1.2.3.4', $log->ipAddress);
         self::assertSame('Mozilla/5.0', $log->userAgent);
         self::assertSame('user_123', $log->userId);
@@ -138,5 +140,17 @@ final class AuditLogTest extends TestCase
         self::assertSame(['v' => 2], $log->newValues);
         self::assertSame(['v'], $log->changedFields);
         self::assertSame('sig_123', $log->signature);
+    }
+
+    public function testInitializeIdIfMissingOnlySetsTheIdentifierOnce(): void
+    {
+        $log = new AuditLog('App\Entity\User', '1', 'create');
+        $firstId = Uuid::v7();
+        $secondId = Uuid::v7();
+
+        $log->initializeIdIfMissing($firstId);
+        $log->initializeIdIfMissing($secondId);
+
+        self::assertSame($firstId->toRfc4122(), $log->id?->toRfc4122());
     }
 }

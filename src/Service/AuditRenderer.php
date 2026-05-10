@@ -62,9 +62,9 @@ final readonly class AuditRenderer implements AuditRendererInterface
 
         if ($showDetails) {
             return [
-                $audit->entityId,
-                $audit->action,
-                $user,
+                $this->sanitizeInlineText($audit->requireEntityId()),
+                $audit->action->value,
+                $this->sanitizeInlineText($user),
                 $hash,
                 $this->formatChangedDetails($audit),
                 $date,
@@ -74,9 +74,9 @@ final readonly class AuditRenderer implements AuditRendererInterface
         return [
             $audit->id?->toRfc4122(),
             $this->shortenClass($audit->entityClass),
-            $audit->entityId,
-            $audit->action,
-            $user,
+            $this->sanitizeInlineText($audit->requireEntityId()),
+            $audit->action->value,
+            $this->sanitizeInlineText($user),
             $hash,
             $date,
         ];
@@ -187,10 +187,16 @@ final readonly class AuditRenderer implements AuditRendererInterface
 
     private function truncateString(string $str): string
     {
-        // Strip ANSI escape sequences to prevent terminal injection
-        $str = preg_replace('/\x1b\[[0-9;]*[a-zA-Z]/', '', $str) ?? $str;
+        $str = $this->sanitizeInlineText($str);
 
         return mb_strlen($str) > 50 ? mb_substr($str, 0, 47).'...' : $str;
+    }
+
+    private function sanitizeInlineText(string $str): string
+    {
+        $str = preg_replace('/\x1b\[[0-9;]*[a-zA-Z]/', '', $str) ?? $str;
+
+        return preg_replace('/\r\n?|\n/', ' ', $str) ?? $str;
     }
 
     public function shortenHash(?string $hash): string

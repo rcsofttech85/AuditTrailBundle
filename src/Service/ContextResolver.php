@@ -13,24 +13,25 @@ use Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\DataMaskerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Stringable;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 use Throwable;
 
 use function is_scalar;
 
-final class ContextResolver implements ContextResolverInterface
+final readonly class ContextResolver implements ContextResolverInterface
 {
     /**
      * @param iterable<AuditContextContributorInterface> $contributors
      */
     public function __construct(
-        private readonly UserResolverInterface $userResolver,
-        private readonly DataMaskerInterface $dataMasker,
-        private readonly ValueSerializerInterface $serializer,
+        private UserResolverInterface $userResolver,
+        private DataMaskerInterface $dataMasker,
+        private ValueSerializerInterface $serializer,
         #[AutowireIterator('audit_trail.context_contributor')]
-        private readonly iterable $contributors = [],
-        private readonly ?LoggerInterface $logger = null,
+        private iterable $contributors = [],
+        private ?LoggerInterface $logger = null,
     ) {
     }
 
@@ -47,16 +48,32 @@ final class ContextResolver implements ContextResolverInterface
      * }
      */
     #[Override]
-    public function resolve(object $entity, string $action, array $newValues, array $extraContext): array
+    public function resolve(object $entity, AuditAction $action, array $newValues, array $extraContext): array
     {
-        $userId = $extraContext[AuditLogInterface::CONTEXT_USER_ID]
-            ?? $this->resolveUserContextValue('user_id', $this->userResolver->getUserId(...));
-        $username = $extraContext[AuditLogInterface::CONTEXT_USERNAME]
-            ?? $this->resolveUserContextValue('username', $this->userResolver->getUsername(...));
-        $ipAddress = $extraContext[AuditLogInterface::CONTEXT_IP_ADDRESS]
-            ?? $this->resolveUserContextValue('ip_address', $this->userResolver->getIpAddress(...));
-        $userAgent = $extraContext[AuditLogInterface::CONTEXT_USER_AGENT]
-            ?? $this->resolveUserContextValue('user_agent', $this->userResolver->getUserAgent(...));
+        $userId = $this->resolveContextValue(
+            $extraContext,
+            AuditLogInterface::CONTEXT_USER_ID,
+            'user_id',
+            $this->userResolver->getUserId(...),
+        );
+        $username = $this->resolveContextValue(
+            $extraContext,
+            AuditLogInterface::CONTEXT_USERNAME,
+            'username',
+            $this->userResolver->getUsername(...),
+        );
+        $ipAddress = $this->resolveContextValue(
+            $extraContext,
+            AuditLogInterface::CONTEXT_IP_ADDRESS,
+            'ip_address',
+            $this->userResolver->getIpAddress(...),
+        );
+        $userAgent = $this->resolveContextValue(
+            $extraContext,
+            AuditLogInterface::CONTEXT_USER_AGENT,
+            'user_agent',
+            $this->userResolver->getUserAgent(...),
+        );
         $context = $this->resolveContextPayload($extraContext, $entity, $action, $newValues);
 
         return [
@@ -75,6 +92,18 @@ final class ContextResolver implements ContextResolverInterface
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $extraContext
+     */
+    private function resolveContextValue(
+        array $extraContext,
+        string $contextKey,
+        string $field,
+        Closure $resolver,
+    ): mixed {
+        return $extraContext[$contextKey] ?? $this->resolveUserContextValue($field, $resolver);
     }
 
     private function resolveUserContextValue(string $field, Closure $resolver): mixed
@@ -97,35 +126,36 @@ final class ContextResolver implements ContextResolverInterface
      *
      * @return array<string, mixed>
      */
-    private function resolveContextPayload(array $extraContext, object $entity, string $action, array $newValues): array
+    private function resolveContextPayload(array $extraContext, object $entity, AuditAction $action, array $newValues): array
     {
-        try {
-            return $this->buildContext($extraContext, $entity, $action, $newValues);
-        } catch (Throwable $exception) {
-            $this->logger?->warning('Failed to build audit context payload.', [
-                'exception' => $exception,
-            ]);
+        $context = $this->buildBaseContext($extraContext);
+        $this->appendImpersonationContext($context);
+        $this->appendContributorContext($context, $entity, $action, $newValues);
 
-            return [];
-        }
+        return $this->serializeContext($context);
     }
 
     /**
      * @param array<string, mixed> $extraContext
-     * @param array<string, mixed> $newValues
      *
      * @return array<string, mixed>
      */
-    private function buildContext(array $extraContext, object $entity, string $action, array $newValues): array
+    private function buildBaseContext(array $extraContext): array
     {
         // Remove internal "transport" keys so they don't pollute the JSON storage
-        $context = array_diff_key($extraContext, [
+        return array_diff_key($extraContext, [
             AuditLogInterface::CONTEXT_USER_ID => true,
             AuditLogInterface::CONTEXT_USERNAME => true,
             AuditLogInterface::CONTEXT_IP_ADDRESS => true,
             AuditLogInterface::CONTEXT_USER_AGENT => true,
         ]);
+    }
 
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function appendImpersonationContext(array &$context): void
+    {
         $impersonatorId = $this->userResolver->getImpersonatorId();
         $impersonatorUsername = $this->userResolver->getImpersonatorUsername();
         if ($impersonatorId !== null || $impersonatorUsername !== null) {
@@ -134,19 +164,50 @@ final class ContextResolver implements ContextResolverInterface
                 'impersonator_username' => $impersonatorUsername,
             ];
         }
+    }
 
-        // Add custom context from contributors
+    /**
+     * @param array<string, mixed> $context
+     * @param array<string, mixed> $newValues
+     */
+    private function appendContributorContext(array &$context, object $entity, AuditAction $action, array $newValues): void
+    {
         foreach ($this->contributors as $contributor) {
-            $contribution = $contributor->contribute($entity, $action, $newValues);
+            try {
+                $contribution = $contributor->contribute($entity, $action, $newValues);
+            } catch (Throwable $exception) {
+                $this->logger?->warning('Failed to build audit context payload.', [
+                    'contributor' => $contributor::class,
+                    'exception' => $exception,
+                ]);
+
+                continue;
+            }
 
             foreach ($contribution as $key => $val) {
                 $context[$key] = $val;
             }
         }
+    }
 
-        // This ensures extraContext and contributor data are both safe.
+    /**
+     * @param array<string, mixed> $context
+     *
+     * @return array<string, mixed>
+     */
+    private function serializeContext(array $context): array
+    {
         foreach ($context as $key => $value) {
-            $context[$key] = $this->serializer->serialize($value);
+            try {
+                $context[$key] = $this->serializer->serialize($value);
+            } catch (Throwable $exception) {
+                $this->logger?->warning('Failed to build audit context payload.', [
+                    'key' => $key,
+                    'exception' => $exception,
+                ]);
+
+                unset($context[$key]);
+            }
         }
 
         return $context;

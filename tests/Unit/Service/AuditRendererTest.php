@@ -31,6 +31,15 @@ final class AuditRendererTest extends TestCase
         self::assertStringNotContainsString("\x1b", $result);
     }
 
+    public function testFormatValueCollapsesLineBreaks(): void
+    {
+        $result = $this->renderer->formatValue("first\r\nsecond\nthird");
+
+        self::assertSame('first second third', $result);
+        self::assertStringNotContainsString("\n", $result);
+        self::assertStringNotContainsString("\r", $result);
+    }
+
     public function testFormatValueTruncatesLongStrings(): void
     {
         $longString = str_repeat('a', 60);
@@ -51,6 +60,21 @@ final class AuditRendererTest extends TestCase
 
         self::assertStringContainsString('User', $content);
         self::assertStringContainsString('create', $content);
+    }
+
+    public function testBuildRowSanitizesInlineColumns(): void
+    {
+        $log = new AuditLog(
+            entityClass: 'App\Entity\User',
+            entityId: "user-1\r\nextra",
+            action: 'create',
+            username: "\x1b[31mAdmin\r\nUser\x1b[0m",
+        );
+
+        $row = $this->renderer->buildRow($log, false);
+
+        self::assertSame('user-1 extra', $row[2]);
+        self::assertSame('Admin User', $row[4]);
     }
 
     public function testRenderTableWithDetails(): void

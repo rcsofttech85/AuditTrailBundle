@@ -4,18 +4,29 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\SQLitePlatform;
+use Doctrine\DBAL\Query\QueryBuilder;
+use Doctrine\DBAL\Result;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\Mapping\DefaultNamingStrategy;
 use Doctrine\ORM\Mapping\ManyToManyInverseSideMapping;
+use Doctrine\ORM\Mapping\ManyToManyOwningSideMapping;
 use Doctrine\ORM\UnitOfWork;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Service\CollectionChangeIndexBuilder;
 use Rcsofttech\AuditTrailBundle\Service\CollectionChangeResolver;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\JoinTableCollectionIdLoader;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubCollection;
 use stdClass;
+
+use function get_object_vars;
+use function is_int;
+use function is_string;
 
 final class CollectionChangeResolverTest extends TestCase
 {
@@ -124,6 +135,149 @@ final class CollectionChangeResolverTest extends TestCase
         ], $resolver->buildCollectionTransition($collection, $em));
     }
 
+    public function testBuildCollectionTransitionRecoversOldIdsWhenClearAndReplaceEmptiesSnapshot(): void
+    {
+        $owner = new class {
+            public int $id = 10;
+        };
+        $removedTag = new TestCollectionItem(1);
+        $addedTag = new TestCollectionItem(2);
+
+        $resolver = $this->createResolver();
+        $em = $this->createEntityManagerForDatabaseFallback($owner, [1]);
+
+        $collection = new StubCollection(
+            $owner,
+            [$addedTag],
+            [$removedTag],
+            $this->createOwningTagsMapping($owner),
+            [],
+        );
+
+        self::assertSame([
+            'field' => 'tags',
+            'old' => [1],
+            'new' => ['2'],
+        ], $resolver->buildCollectionTransition($collection, $em));
+    }
+
+    public function testBuildCollectionTransitionPreservesReAddedIdsWhenClearAndReAddShareSameEntity(): void
+    {
+        $owner = new class {
+            public int $id = 10;
+        };
+        $tag = new TestCollectionItem(1);
+
+        $resolver = $this->createResolver();
+        $em = $this->createEntityManagerForDatabaseFallback($owner, [1]);
+
+        $collection = new StubCollection(
+            $owner,
+            [$tag],
+            [$tag],
+            $this->createOwningTagsMapping($owner),
+            [],
+        );
+
+        self::assertSame([
+            'field' => 'tags',
+            'old' => [1],
+            'new' => ['1'],
+        ], $resolver->buildCollectionTransition($collection, $em));
+    }
+
+    public function testBuildCollectionTransitionRecoversOldIdsForUnresolvedPendingInsertDiff(): void
+    {
+        $owner = new class {
+            public int $id = 10;
+        };
+        $pendingItem = new stdClass();
+        $mapping = ManyToManyOwningSideMapping::fromMappingArrayAndNamingStrategy([
+            'fieldName' => 'items',
+            'sourceEntity' => $owner::class,
+            'targetEntity' => stdClass::class,
+            'isOwningSide' => true,
+            'joinTable' => [
+                'name' => 'owner_item',
+                'joinColumns' => [['name' => 'owner_id', 'referencedColumnName' => 'id']],
+                'inverseJoinColumns' => [['name' => 'item_id', 'referencedColumnName' => 'id']],
+            ],
+        ], new DefaultNamingStrategy());
+
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolveFromEntity')
+            ->willReturnCallback(static function (object $entity) use ($owner, $pendingItem): ?string {
+                if ($entity === $pendingItem) {
+                    return null;
+                }
+
+                if ($entity === $owner) {
+                    return '10';
+                }
+
+                return null;
+            });
+
+        $collectionIdExtractor = new CollectionIdExtractor($idResolver);
+        $joinTableLoader = new JoinTableCollectionIdLoader($idResolver);
+        $resolver = new CollectionChangeResolver(
+            $collectionIdExtractor,
+            new CollectionChangeIndexBuilder($collectionIdExtractor, $joinTableLoader),
+            $joinTableLoader,
+        );
+
+        $ownerMetadata = self::createMock(ClassMetadata::class);
+        $ownerMetadata->expects($this->once())->method('getAssociationMapping')->with('items')->willReturn($mapping);
+        $ownerMetadata->method('getFieldForColumn')->willReturn('id');
+        $ownerMetadata->method('getTypeOfField')->willReturn('integer');
+
+        $targetMetadata = self::createStub(ClassMetadata::class);
+        $targetMetadata->method('getFieldForColumn')->willReturn('id');
+        $targetMetadata->method('getTypeOfField')->willReturn('integer');
+
+        $result = self::createStub(Result::class);
+        $result->method('fetchFirstColumn')->willReturn([1]);
+
+        $queryBuilder = self::createStub(QueryBuilder::class);
+        $queryBuilder->method('select')->willReturnSelf();
+        $queryBuilder->method('from')->willReturnSelf();
+        $queryBuilder->method('where')->willReturnSelf();
+        $queryBuilder->method('setParameter')->willReturnSelf();
+        $queryBuilder->method('executeQuery')->willReturn($result);
+
+        $connection = self::createStub(Connection::class);
+        $connection->method('createQueryBuilder')->willReturn($queryBuilder);
+        $connection->method('getDatabasePlatform')->willReturn(new SQLitePlatform());
+
+        $em = self::createStub(EntityManagerInterface::class);
+        $em->method('getConnection')->willReturn($connection);
+        $em->method('getClassMetadata')->willReturnCallback(static function (string $class) use ($owner, $ownerMetadata, $targetMetadata): ClassMetadata {
+            if ($class === $owner::class) {
+                return $ownerMetadata;
+            }
+
+            if ($class === stdClass::class) {
+                return $targetMetadata;
+            }
+
+            throw new InvalidArgumentException('Unexpected metadata lookup for '.$class);
+        });
+
+        $collection = new StubCollection(
+            $owner,
+            [$pendingItem],
+            [],
+            $mapping,
+            [],
+        );
+
+        self::assertSame([
+            'field' => 'items',
+            'old' => [1],
+            'new' => [],
+        ], $resolver->buildCollectionTransition($collection, $em));
+    }
+
     public function testExtractCollectionChangesForOwnerUsesTrackableSnapshotWithoutDuckTyping(): void
     {
         $owner = new class {
@@ -201,7 +355,7 @@ final class CollectionChangeResolverTest extends TestCase
         self::assertSame([], $resolver->extractCollectionChangesIndexedByOwner($em, $uow));
     }
 
-    private function createResolver(): CollectionChangeResolver
+    private function createResolver(?JoinTableCollectionIdLoader $joinTableLoader = null): CollectionChangeResolver
     {
         $idResolver = self::createStub(EntityIdResolverInterface::class);
         $idResolver->method('resolveFromEntity')->willReturnCallback(static function (object $entity): string {
@@ -209,10 +363,84 @@ final class CollectionChangeResolverTest extends TestCase
                 return (string) $entity->id;
             }
 
+            $id = get_object_vars($entity)['id'] ?? null;
+            if (is_int($id) || is_string($id)) {
+                return (string) $id;
+            }
+
             throw new InvalidArgumentException('Unexpected entity type '.$entity::class);
         });
 
-        return new CollectionChangeResolver(new CollectionIdExtractor($idResolver), new JoinTableCollectionIdLoader($idResolver));
+        $collectionIdExtractor = new CollectionIdExtractor($idResolver);
+        $joinTableLoader ??= new JoinTableCollectionIdLoader($idResolver);
+
+        return new CollectionChangeResolver(
+            $collectionIdExtractor,
+            new CollectionChangeIndexBuilder($collectionIdExtractor, $joinTableLoader),
+            $joinTableLoader,
+        );
+    }
+
+    private function createOwningTagsMapping(object $owner): ManyToManyOwningSideMapping
+    {
+        return ManyToManyOwningSideMapping::fromMappingArrayAndNamingStrategy([
+            'fieldName' => 'tags',
+            'sourceEntity' => $owner::class,
+            'targetEntity' => TestCollectionItem::class,
+            'isOwningSide' => true,
+            'joinTable' => [
+                'name' => 'owner_tag',
+                'joinColumns' => [['name' => 'owner_id', 'referencedColumnName' => 'id']],
+                'inverseJoinColumns' => [['name' => 'tag_id', 'referencedColumnName' => 'id']],
+            ],
+        ], new DefaultNamingStrategy());
+    }
+
+    /**
+     * @param array<int, int|string> $databaseIds
+     */
+    private function createEntityManagerForDatabaseFallback(object $owner, array $databaseIds): EntityManagerInterface
+    {
+        $mapping = $this->createOwningTagsMapping($owner);
+
+        $ownerMetadata = self::createStub(ClassMetadata::class);
+        $ownerMetadata->method('getAssociationMapping')->willReturn($mapping);
+        $ownerMetadata->method('getFieldForColumn')->willReturn('id');
+        $ownerMetadata->method('getTypeOfField')->willReturn('integer');
+
+        $targetMetadata = self::createStub(ClassMetadata::class);
+        $targetMetadata->method('getFieldForColumn')->willReturn('id');
+        $targetMetadata->method('getTypeOfField')->willReturn('integer');
+
+        $result = self::createStub(Result::class);
+        $result->method('fetchFirstColumn')->willReturn($databaseIds);
+
+        $queryBuilder = self::createStub(QueryBuilder::class);
+        $queryBuilder->method('select')->willReturnSelf();
+        $queryBuilder->method('from')->willReturnSelf();
+        $queryBuilder->method('where')->willReturnSelf();
+        $queryBuilder->method('setParameter')->willReturnSelf();
+        $queryBuilder->method('executeQuery')->willReturn($result);
+
+        $connection = self::createStub(Connection::class);
+        $connection->method('createQueryBuilder')->willReturn($queryBuilder);
+        $connection->method('getDatabasePlatform')->willReturn(new SQLitePlatform());
+
+        $em = self::createStub(EntityManagerInterface::class);
+        $em->method('getConnection')->willReturn($connection);
+        $em->method('getClassMetadata')->willReturnCallback(static function (string $class) use ($owner, $ownerMetadata, $targetMetadata): ClassMetadata {
+            if ($class === $owner::class) {
+                return $ownerMetadata;
+            }
+
+            if ($class === TestCollectionItem::class) {
+                return $targetMetadata;
+            }
+
+            throw new InvalidArgumentException('Unexpected metadata lookup for '.$class);
+        });
+
+        return $em;
     }
 }
 

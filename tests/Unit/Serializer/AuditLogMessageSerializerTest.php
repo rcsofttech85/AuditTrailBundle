@@ -11,6 +11,7 @@ use Rcsofttech\AuditTrailBundle\AuditTrailBundle;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
+use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessagePayloadEncoder;
 use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessageSerializer;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
@@ -66,6 +67,9 @@ final class AuditLogMessageSerializerTest extends TestCase
             'user_agent' => 'Mozilla',
             'transaction_hash' => 'hash123',
             'created_at' => $createdAt->format(DateTimeInterface::ATOM),
+            'signature' => null,
+            'delivery_id' => null,
+            'reverted_log_id' => null,
             'context' => ['ctx' => 'val'],
         ];
 
@@ -83,5 +87,27 @@ final class AuditLogMessageSerializerTest extends TestCase
         $this->expectExceptionMessage('Decoding is not supported');
 
         $this->serializer->decode(['body' => '{}']);
+    }
+
+    public function testEncodeUsesCanonicalJsonBody(): void
+    {
+        $message = new AuditLogMessage(
+            'TestEntity',
+            '123',
+            'create',
+            null,
+            ['url' => 'https://a/b', 'label' => 'Resume', 'title' => 'Resume'],
+            ['url', 'label', 'title'],
+            null,
+            null,
+            null,
+            null,
+            null,
+            '2024-01-01T00:00:00+00:00',
+        );
+
+        $encoded = $this->serializer->encode(new Envelope($message));
+
+        self::assertSame(new AuditLogMessagePayloadEncoder()->encode($message), $encoded['body']);
     }
 }

@@ -17,32 +17,35 @@ use function sprintf;
 
 use const JSON_THROW_ON_ERROR;
 
-final class HttpAuditTransport implements AuditTransportInterface
+final readonly class HttpAuditTransport implements AuditTransportInterface
 {
     /**
      * @param array<string, string> $headers
      */
     public function __construct(
-        private readonly HttpClientInterface $client,
-        private readonly string $endpoint,
-        private readonly AuditIntegrityServiceInterface $integrityService,
-        private readonly EntityIdResolverInterface $idResolver,
-        private readonly ?LoggerInterface $logger = null,
-        private readonly array $headers = [],
-        private readonly int $timeout = 5,
+        private HttpClientInterface $client,
+        private string $endpoint,
+        private AuditIntegrityServiceInterface $integrityService,
+        private EntityIdResolverInterface $idResolver,
+        private ?LoggerInterface $logger = null,
+        private array $headers = [],
+        private int $timeout = 5,
     ) {
     }
 
     #[Override]
-    public function send(AuditTransportContext $context): void
+    public function send(AuditTransportContext $context): AuditDeliveryResult
     {
         $log = $context->audit;
-        $entityId = $this->idResolver->resolve($log, $context) ?? $log->entityId;
+        $entityId = $this->resolveEntityId($context);
+        if ($entityId === null) {
+            throw new RuntimeException('Cannot send an HTTP audit payload before the entity ID has been resolved.');
+        }
 
         $payload = [
             'entity_class' => $log->entityClass,
             'entity_id' => $entityId,
-            'action' => $log->action,
+            'action' => $log->action->value,
             'old_values' => $log->oldValues,
             'new_values' => $log->newValues,
             'changed_fields' => $log->changedFields,
@@ -73,23 +76,28 @@ final class HttpAuditTransport implements AuditTransportInterface
         $statusCode = $response->getStatusCode();
 
         if ($statusCode < 200 || $statusCode >= 300) {
-            $responseBody = mb_substr($response->getContent(false), 0, 500);
             $message = sprintf(
-                'HTTP audit transport failed for %s#%s with status code %d: %s',
+                'HTTP audit transport failed for %s#%s with status code %d.',
                 $log->entityClass,
                 $entityId,
                 $statusCode,
-                $responseBody
             );
             $this->logger?->error($message);
 
             throw new RuntimeException($message);
         }
+
+        return AuditDeliveryResult::delivered();
     }
 
     #[Override]
     public function supports(AuditTransportContext $context): bool
     {
-        return $context->phase->isAsyncDispatchPhase();
+        return $context->phase->isAsyncDispatchPhase() && $this->resolveEntityId($context) !== null;
+    }
+
+    private function resolveEntityId(AuditTransportContext $context): ?string
+    {
+        return $this->idResolver->resolve($context->audit, $context) ?? $context->audit->entityId;
     }
 }

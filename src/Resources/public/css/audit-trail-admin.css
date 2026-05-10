@@ -221,6 +221,130 @@
     word-break: break-all;
 }
 
+.audit-ai-section {
+    margin-block-end: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--audit-radius);
+    background: var(--body-bg);
+    box-shadow: var(--audit-shadow);
+    overflow: hidden;
+}
+
+.audit-ai-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: .85rem 1rem;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--audit-primary) 12%, transparent), transparent);
+    border-block-end: 1px solid var(--border-color);
+    font-weight: 700;
+}
+
+.audit-ai-grid {
+    display: grid;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.audit-ai-card {
+    border: 1px solid var(--border-color);
+    border-radius: var(--audit-radius-sm);
+    background: var(--secondary-bg);
+    padding: 1rem;
+}
+
+.audit-ai-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: .75rem;
+    margin-block-end: .75rem;
+}
+
+.audit-ai-namespace {
+    font-family: var(--font-family-monospace);
+    font-size: .8rem;
+    color: var(--text-muted);
+}
+
+.audit-ai-severity {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: .2rem .6rem;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+}
+
+.audit-ai-severity-info {
+    background: var(--badge-info-bg, rgba(13, 202, 240, .12));
+    color: var(--badge-info-color, #0c5460);
+}
+
+.audit-ai-severity-low {
+    background: rgba(25, 135, 84, .12);
+    color: #146c43;
+}
+
+.audit-ai-severity-medium {
+    background: rgba(255, 193, 7, .16);
+    color: #997404;
+}
+
+.audit-ai-severity-high,
+.audit-ai-severity-critical {
+    background: rgba(220, 53, 69, .12);
+    color: #b02a37;
+}
+
+.audit-ai-summary {
+    margin-block-end: .75rem;
+    font-size: .92rem;
+    color: var(--text-color);
+}
+
+.audit-ai-meta-row {
+    display: flex;
+    align-items: flex-start;
+    gap: .75rem;
+    margin-block-start: .6rem;
+}
+
+.audit-ai-label {
+    min-width: 110px;
+    font-size: .78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--text-muted);
+}
+
+.audit-ai-value {
+    font-family: var(--font-family-monospace);
+    font-size: .85rem;
+}
+
+.audit-ai-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .45rem;
+}
+
+.audit-ai-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: .2rem .55rem;
+    border-radius: 999px;
+    background: var(--tertiary-bg);
+    border: 1px solid var(--border-color);
+    font-size: .78rem;
+}
+
+.audit-ai-chip-tag {
+    background: color-mix(in srgb, var(--audit-primary) 10%, var(--tertiary-bg));
+}
+
 .audit-context-raw {
     margin-block-start: 0.75rem;
 }

@@ -9,6 +9,7 @@ use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
 use Stringable;
 
 use function fclose;
+use function strlen;
 use function tmpfile;
 
 final class ContextSanitizerTest extends TestCase
@@ -44,5 +45,15 @@ final class ContextSanitizerTest extends TestCase
         $sanitizer = new ContextSanitizer();
 
         self::assertSame('[invalid utf-8]', $sanitizer->sanitizeString("\xB1\x31"));
+    }
+
+    public function testSanitizeStringTruncatesOversizedUtf8Strings(): void
+    {
+        $sanitizer = new ContextSanitizer();
+
+        $sanitized = $sanitizer->sanitizeString(str_repeat('a', ContextSanitizer::MAX_STRING_BYTES + 128));
+
+        self::assertStringEndsWith('[truncated]', $sanitized);
+        self::assertLessThanOrEqual(ContextSanitizer::MAX_STRING_BYTES, strlen($sanitized));
     }
 }

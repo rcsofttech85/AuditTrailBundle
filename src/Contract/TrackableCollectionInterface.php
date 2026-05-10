@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rcsofttech\AuditTrailBundle\Service;
+namespace Rcsofttech\AuditTrailBundle\Contract;
 
 use Doctrine\ORM\Mapping\AssociationMapping;
 use Doctrine\ORM\Mapping\ToManyAssociationMapping;

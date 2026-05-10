@@ -19,15 +19,22 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\EventSubscriber\AuditSubscriber;
 use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
+use Rcsofttech\AuditTrailBundle\Service\AuditedEntityMarker;
+use Rcsofttech\AuditTrailBundle\Service\AuditLifecycleState;
+use Rcsofttech\AuditTrailBundle\Service\AuditOnFlushProcessor;
+use Rcsofttech\AuditTrailBundle\Service\AuditPostFlushProcessor;
 use Rcsofttech\AuditTrailBundle\Service\ChangeProcessor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
+use Rcsofttech\AuditTrailBundle\Service\PendingAuditPlanMaterializer;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
 use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\AbstractAuditTestCase;
+use Rcsofttech\AuditTrailBundle\Transport\AuditDeliveryResult;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use stdClass;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 final class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
 {
@@ -35,6 +42,7 @@ final class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
     {
         /** @var AuditTransportInterface&MockObject $transport */
         $transport = $this->createMock(AuditTransportInterface::class);
+        $transport->method('send')->willReturn(AuditDeliveryResult::delivered());
         $auditService = $this->createAuditServiceStub();
         $subscriber = $this->createSubscriber($transport, $auditService);
         $em = $this->createMockEntityManagerWithUow();
@@ -55,6 +63,7 @@ final class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
     {
         /** @var AuditTransportInterface&MockObject $transport */
         $transport = $this->createMock(AuditTransportInterface::class);
+        $transport->method('send')->willReturn(AuditDeliveryResult::delivered());
         $auditService = $this->createAuditServiceStub();
         $subscriber = $this->createSubscriber($transport, $auditService);
         $em = $this->createMockEntityManagerWithUow();
@@ -96,15 +105,28 @@ final class AuditSubscriberTransportSupportTest extends AbstractAuditTestCase
         );
 
         return new AuditSubscriber(
-            $auditService,
-            $changeProcessor,
-            $dispatcher,
             $auditManager,
-            $entityProcessor,
-            new AssociationImpactAnalyzer(new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)), new CollectionTransitionMerger()),
-            new TransactionIdGenerator(),
             self::createStub(AuditAccessHandlerInterface::class),
-            self::createStub(EntityIdResolverInterface::class)
+            new AuditLifecycleState(),
+            new AuditOnFlushProcessor(
+                $entityProcessor,
+                new AssociationImpactAnalyzer(new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)), new CollectionTransitionMerger()),
+            ),
+            new AuditPostFlushProcessor(
+                $auditService,
+                $dispatcher,
+                $auditManager,
+                $auditManager,
+                new PendingAuditPlanMaterializer(
+                    $auditService,
+                    new CollectionIdExtractor(self::createStub(EntityIdResolverInterface::class)),
+                ),
+                new TransactionIdGenerator(new UuidFactory()),
+                new AuditedEntityMarker(
+                    self::createStub(AuditAccessHandlerInterface::class),
+                    self::createStub(EntityIdResolverInterface::class),
+                ),
+            ),
         );
     }
 

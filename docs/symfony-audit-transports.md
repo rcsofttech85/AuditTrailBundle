@@ -1,26 +1,25 @@
 # Audit Transports Documentation
 
-AuditTrailBundle supports multiple transports to dispatch audit logs. This allows you to store logs locally, publish them to external services, or fan them out to several destinations at once.
+AuditTrailBundle can store audits in the local database, send them over HTTP,
+or send them through Symfony Messenger.
 
-In `v3`, the transport pipeline is strongly typed. Custom transports receive a read-only [AuditTransportContext](/home/rahul/AuditTrailBundle/src/Transport/AuditTransportContext.php) instead of the older stringly `array $context` payload.
+Messenger is used for two different jobs:
 
-> [!NOTE]
-> **Messenger Confusion Warning:** The bundle utilizes Symfony Messenger for **two different features**.
->
-> 1. `database: { async: true }`: Designed to save logs to your *local database* asynchronously via an internal worker.
-> 2. `queue: { enabled: true }`: Designed to publish logs to an *external system* (so other microservices or tools like ELK can consume them).
->
-> They can be used simultaneously because they target different Messenger message types and transport names.
-> [!NOTE]
-> `symfony/messenger` and `symfony/http-client` are optional integrations.
-> Install only what your chosen transport needs:
->
-> - `symfony/messenger` for queue delivery or async database persistence
-> - `symfony/http-client` for HTTP delivery
->
-> If you enable a transport without its package installed, the bundle fails fast with a clear `LogicException` during container build.
-> You still need the corresponding runtime configuration:
-> Messenger routing/buses for queue or async database, and an endpoint for HTTP transport.
+1. `database: { async: true }` writes audit rows to your local database through a background worker.
+2. `queue: { enabled: true }` publishes audit messages for an external consumer.
+
+You can use these at the same time because they use different message types
+and transport names.
+
+Install only what you need:
+
+- `symfony/messenger` for queue delivery or async database persistence
+- `symfony/http-client` for HTTP delivery
+
+If you enable a transport without its package installed, the bundle throws a
+clear `LogicException` during container build. You still need the matching
+runtime config too: Messenger routing or buses for queue or async database,
+and an endpoint for HTTP delivery.
 
 ## Install Matrix
 
@@ -35,7 +34,7 @@ Use the base bundle by itself if you only need the synchronous database transpor
 
 ## Transport Contract
 
-All transport implementations now use the same typed contract:
+Custom transports implement this contract:
 
 ```php
 <?php
@@ -43,17 +42,20 @@ All transport implementations now use the same typed contract:
 declare(strict_types=1);
 
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Transport\AuditDeliveryResult;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 
 final class AppAuditTransport implements AuditTransportInterface
 {
-    public function send(AuditTransportContext $context): void
+    public function send(AuditTransportContext $context): AuditDeliveryResult
     {
         // $context->phase
         // $context->entityManager
         // $context->unitOfWork
         // $context->entity
         // $context->audit
+
+        return AuditDeliveryResult::delivered();
     }
 
     public function supports(AuditTransportContext $context): bool
@@ -63,27 +65,31 @@ final class AppAuditTransport implements AuditTransportInterface
 }
 ```
 
+Return `AuditDeliveryResult::delivered()` when delivery succeeds. If your
+transport has multiple child steps and one fails later, it can return a
+partial result instead.
+
 `AuditTransportContext` contains:
 
-- `phase`: the current [AuditPhase](/home/rahul/AuditTrailBundle/src/Enum/AuditPhase.php)
+- `phase`: the current [AuditPhase](../src/Enum/AuditPhase.php)
 - `entityManager`: the active Doctrine entity manager for this audit flow
-- `audit`: the current [AuditLog](/home/rahul/AuditTrailBundle/src/Entity/AuditLog.php)
+- `audit`: the current [AuditLog](../src/Entity/AuditLog.php)
 - `unitOfWork`: the active `UnitOfWork` when the phase has one
 - `entity`: the source entity when it is available
 
-The `AuditTransportContext` instance passed to a transport is read-only and is
-not mutated in place. Internally the dispatcher may create a new context with
-`withAudit()` after listeners mutate or swap the `AuditLog`, but transport
-implementations should treat the context they receive as read-only input.
+Treat the `AuditTransportContext` you receive as read-only. Internally the
+dispatcher may create a new context with `withAudit()` after listeners replace
+the `AuditLog`, but your transport should not mutate the context it receives.
 
 ## 1. Database Transport (Async)
 
-By default, the `database` transport persists logs synchronously using phase-appropriate strategies:
+By default, the `database` transport stores logs synchronously with logic that
+matches the current phase:
 
 - during `onFlush`, ORM-safe audit rows are attached to the current UnitOfWork
 - during deferred phases such as `postFlush`, database audit rows are written without re-entering Doctrine `flush()`
 
-For high-traffic applications, you can offload this database write to a background worker.
+If you want, you can move this database write to a Messenger worker.
 
 ### Configuration
 
@@ -113,7 +119,7 @@ If `symfony/messenger` is not installed and you enable `database.async: true`, t
 To use async database transport, you must install the symfony/messenger package.
 ```
 
-*(The bundle auto-registers `PersistAuditLogHandler` to consume from this transport and insert the records into the database).*
+*(The bundle auto-registers `PersistAuditLogHandler` for this transport and uses it to insert the records into the database.)*
 
 > [!IMPORTANT]
 > Async database mode uses a per-message delivery identifier so worker retries can be handled idempotently.
@@ -124,7 +130,9 @@ To use async database transport, you must install the symfony/messenger package.
 
 ## 2. Queue Transport (External Delivery)
 
-The `queue` transport dispatches a strictly-typed DTO (`AuditLogMessage`) to a Symfony Messenger bus. You must define the Messenger transport routing yourself and provide the downstream consumer that ingests those messages.
+The `queue` transport sends an `AuditLogMessage` through a Symfony Messenger
+bus. You still need to configure Messenger routing and the worker or service
+that reads those messages.
 
 If `symfony/messenger` is not installed and you enable `queue`, the bundle throws:
 
@@ -156,7 +164,9 @@ framework:
 
 ### Advanced Usage: Messenger Stamps
 
-Use the `AuditMessageStampEvent` to add stamps to the message right before it is dispatched to the bus. This is the supported way to add transport-specific stamps such as `DelayStamp` or `DispatchAfterCurrentBusStamp`.
+Use `AuditMessageStampEvent` if you want to add stamps right before the message
+is dispatched. This is the normal way to add transport-specific stamps such as
+`DelayStamp` or `DispatchAfterCurrentBusStamp`.
 
 ```php
 <?php
@@ -188,7 +198,9 @@ class AuditMessengerSubscriber implements EventSubscriberInterface
 
 ### Queue Payload Signing
 
-When `audit_trail.integrity.enabled` is true, the bundle automatically signs the payload to ensure authenticity. The signature is added as a `SignatureStamp` to the Messenger envelope.
+When `audit_trail.integrity.enabled` is true, the bundle signs the exact JSON body emitted by `AuditLogMessageSerializer` to ensure authenticity in transit. That transport signature is added as a `SignatureStamp` on the Messenger envelope.
+
+This is separate from the audit log's own `signature` field, which may still be present inside the JSON body when entity integrity signing is enabled.
 
 ```php
 <?php
@@ -205,7 +217,8 @@ $signature = $envelope->last(SignatureStamp::class)?->signature;
 
 ## 3. HTTP Transport
 
-The HTTP transport streams audit logs to an external API endpoint (e.g., a logging service, ELK, or Splunk).
+The HTTP transport sends audit logs to an external API endpoint, such as a
+logging service, ELK, or Splunk.
 
 HTTP delivery is synchronous when it runs, but it is phase-limited: the built-in
 HTTP transport only supports deferred phases such as `postFlush` and `postLoad`.
@@ -246,7 +259,7 @@ Content-Type: application/json
 
 ### Payload Structure
 
-Different transports send slightly different JSON payloads based on their delivery target.
+Different transports send slightly different JSON payloads.
 
 #### HTTP Transport
 
@@ -279,7 +292,10 @@ The HTTP transport sends a flat JSON object including the entity signature and t
 
 #### Queue Transport (AuditLogMessage)
 
-The Queue transport dispatches a strictly-typed DTO. It **omits** the entity signature from the body and carries transport signing separately through Messenger metadata (`SignatureStamp`).
+The queue transport sends a message object.
+
+- The JSON body preserves the audit log payload, including the persisted entity-level `signature` field when present.
+- Messenger metadata carries a separate transport signature via `SignatureStamp`.
 
 ```json
 {
@@ -294,6 +310,9 @@ The Queue transport dispatches a strictly-typed DTO. It **omits** the entity sig
     "ip_address": "127.0.0.1",
     "user_agent": "Mozilla/5.0...",
     "transaction_hash": "a1b2c3d4...",
+    "signature": "entity-hmac-signature-here",
+    "delivery_id": null,
+    "reverted_log_id": null,
     "created_at": "2024-01-01T12:00:00+00:00",
     "context": {
         "impersonation": {
@@ -312,7 +331,8 @@ The Database transport stores logs in your local database. It is enabled by defa
 
 ### Sync Mode (Default)
 
-Logs are persisted directly during the Doctrine lifecycle using the current phase:
+Logs are persisted directly during the Doctrine lifecycle for the current
+phase:
 
 ```yaml
 audit_trail:
@@ -327,7 +347,8 @@ Behavior summary:
 - `onFlush`: the bundle uses `persist()` plus `UnitOfWork::computeChangeSet()` so the audit row joins the current flush safely
 - deferred phases such as `postFlush` and `postLoad`: the bundle resolves the final entity identifier if needed and inserts the audit row through a dedicated database writer
 
-This avoids nested `flush()` calls from Doctrine event listeners while preserving immediate local persistence for database-backed audits.
+This avoids nested `flush()` calls from Doctrine event listeners and still
+keeps local database-backed audits immediate.
 
 > [!NOTE]
 > Deferred database writes are not ORM-managed `AuditLog` persistence operations.
@@ -336,8 +357,9 @@ This avoids nested `flush()` calls from Doctrine event listeners while preservin
 
 ### Async Mode
 
-Logs are dispatched via Symfony Messenger and persisted by a built-in handler (`PersistAuditLogHandler`).
-This is useful for high-traffic applications where you want to offload DB writes to a worker.
+Logs are dispatched through Symfony Messenger and persisted by the built-in
+`PersistAuditLogHandler`. Use this if you want to move database writes to a
+worker.
 
 ```yaml
 audit_trail:
@@ -358,11 +380,29 @@ framework:
 
 Worker retries are handled safely: duplicate deliveries for the same internal message are ignored instead of creating duplicate audit rows.
 
+The async database path also preserves the original audit-log UUID when the
+message is created, then reuses that UUID in the worker. This keeps keyset
+pagination, latest-first reads, and transaction drilldowns aligned with audit
+creation order instead of worker-consumption timing.
+
+With the bundle's built-in container wiring, those audit row UUIDs stay on
+UUID v7 semantics even if the host application changes Symfony's global
+default UUID version for unrelated identifiers. If you manually instantiate
+ordering-sensitive services such as `AuditLogMessageFactory` or
+`AuditLogWriter` outside the container, provide a `UuidFactory` configured for
+UUID v7 semantics.
+
+If integrity signing is enabled, the async worker also verifies the carried
+entity signature before inserting the row. Tampered messages therefore fail as
+unrecoverable Messenger handling errors instead of being retried into the
+database.
+
 ---
 
 ## 5. Chain Transport (Multiple Transports)
 
-You can enable multiple transports simultaneously. The bundle will automatically use a `ChainAuditTransport` to dispatch logs to all enabled transports.
+You can enable multiple transports at the same time. The bundle uses
+`ChainAuditTransport` to send logs to each enabled transport.
 
 ```yaml
 audit_trail:
@@ -373,24 +413,23 @@ audit_trail:
             enabled: true
 ```
 
-`ChainAuditTransport` is fail-fast by design. If one child transport throws,
-later transports in the chain are not executed and the exception is allowed to
-bubble back to the dispatcher. This keeps transport failure semantics explicit
-and lets the bundle apply `fail_on_transport_error` and fallback rules in one
-place instead of partially succeeding silently.
+`ChainAuditTransport` is fail-fast. If one child transport throws, later
+transports in the chain do not run and the exception goes back to the
+dispatcher. This keeps failure handling in one place instead of letting part of
+the chain fail silently.
 
-Fail-fast does **not** mean transactional rollback across transports. If an
-earlier transport has already produced a side effect, the chain does not undo
-that side effect when a later transport fails.
+Fail-fast does **not** mean rollback across transports. If an earlier transport
+already produced a side effect, the chain does not undo it when a later
+transport fails.
 
 Audit deliveries now carry an internal `deliveryId` so the bundle's
-database-backed writes are idempotent across fallback and retry paths. This
-prevents duplicate local audit rows when an earlier database-capable transport
+database-backed writes stay idempotent across fallback and retry paths. This
+prevents duplicate local audit rows when an earlier database transport
 succeeds and a later transport fails in the same chain. It does not roll back
-or deduplicate side effects performed by external systems.
+or deduplicate side effects in external systems.
 
 Transport order is fixed by the bundle, not by YAML key order. When multiple
-transports are enabled, they are registered in this order:
+transports are enabled, they run in this order:
 
 1. database
 2. http
@@ -406,7 +445,7 @@ That means:
 
 ## 6. Signature vs. Payload Signing
 
-It is important to distinguish between the two types of signatures:
+There are two different signatures:
 
 1. **Entity Signature (`signature` field in JSON):**
    - Generated at the moment of creation.

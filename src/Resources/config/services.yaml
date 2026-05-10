@@ -6,6 +6,7 @@ services:
       $enableSoftDelete: '%audit_trail.enable_soft_delete%'
       $enableHardDelete: '%audit_trail.enable_hard_delete%'
       $softDeleteField: '%audit_trail.soft_delete_field%'
+      $softDeleteFilterNames: '%audit_trail.soft_delete_filter_names%'
       $enabled: '%audit_trail.enabled%'
       $deferTransportUntilCommit: '%audit_trail.defer_transport_until_commit%'
       $failOnTransportError: '%audit_trail.fail_on_transport_error%'
@@ -19,23 +20,17 @@ services:
       $fallbackToDatabase: '%audit_trail.fallback_to_database%'
       $collectionSerializationMode: '%audit_trail.collection_serialization_mode%'
       $maxCollectionItems: '%audit_trail.max_collection_items%'
+      $maxScheduledAudits: '%audit_trail.queue_limits.scheduled_audits%'
+      $maxPendingAuditPlans: '%audit_trail.queue_limits.pending_audit_plans%'
+      $maxPendingDeletions: '%audit_trail.queue_limits.pending_deletions%'
       $trackIpAddress: '%audit_trail.track_ip_address%'
       $trackUserAgent: '%audit_trail.track_user_agent%'
-
-  _instanceof:
-    Rcsofttech\AuditTrailBundle\Contract\AuditVoterInterface:
-      tags: ['audit_trail.voter']
-    Rcsofttech\AuditTrailBundle\Contract\AuditContextContributorInterface:
-      tags: ['audit_trail.context_contributor']
-    Rcsofttech\AuditTrailBundle\Contract\AuditLogAiProcessorInterface:
-      tags: ['audit_trail.ai_processor']
-
+      $adminPermission: '%audit_trail.admin_permission%'
+      $adminExportLimit: '%audit_trail.admin_export_limit%'
+      $retentionDays: '%audit_trail.retention_days%'
 
   Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService:
-    bind:
-      $enabled: '%audit_trail.integrity.enabled%'
-      $secret: '%audit_trail.integrity.secret%'
-      $algorithm: '%audit_trail.integrity.algorithm%'
+    ~
 
   Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService
@@ -70,6 +65,15 @@ services:
   Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\AuditDispatcher
 
+  Rcsofttech\AuditTrailBundle\Contract\AuditQueueManagerInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager
+
+  Rcsofttech\AuditTrailBundle\Service\FailedAuditDispatchRetainerInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager
+
+  Rcsofttech\AuditTrailBundle\Contract\AuditToggleInterface:
+    alias: Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager
+
   Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface:
     alias: Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository
 
@@ -97,14 +101,14 @@ services:
   Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface:
     alias: Rcsofttech\AuditTrailBundle\Service\ValueSerializer
 
-  Rcsofttech\AuditTrailBundle\Query\AuditReader:
-    lazy: true
+  rcsofttech_audit_trail.uid.audit_log_uuid_factory:
+    class: Symfony\Component\Uid\Factory\UuidFactory
+    arguments:
+      $defaultClass: 7
+      $timeBasedClass: 7
 
-  Rcsofttech\AuditTrailBundle\Service\AuditRenderer:
-    lazy: true
-
-  Rcsofttech\AuditTrailBundle\Service\AuditExporter:
-    lazy: true
+  Symfony\Component\ExpressionLanguage\ExpressionLanguage:
+    ~
 
   Rcsofttech\AuditTrailBundle\:
     resource: '../../*'
@@ -120,3 +124,27 @@ services:
       - '../../Service/AuditIntegrityService.php'
       - '../../Transport/'
       - '../../Controller/'
+
+  # Explicit overrides must be declared after the prototype resource so they
+  # keep their custom arguments and lazy settings.
+  Rcsofttech\AuditTrailBundle\Repository\AuditLogRepository:
+    arguments:
+      $filterApplier: '@Rcsofttech\AuditTrailBundle\Repository\AuditLogQueryFilterApplier'
+      $changedFieldQueryExecutor: '@Rcsofttech\AuditTrailBundle\Repository\AuditLogChangedFieldQueryExecutor'
+
+  Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory:
+    arguments:
+      $uuidFactory: '@rcsofttech_audit_trail.uid.audit_log_uuid_factory'
+
+  Rcsofttech\AuditTrailBundle\Service\AuditLogWriter:
+    arguments:
+      $uuidFactory: '@rcsofttech_audit_trail.uid.audit_log_uuid_factory'
+
+  Rcsofttech\AuditTrailBundle\Query\AuditReader:
+    lazy: true
+
+  Rcsofttech\AuditTrailBundle\Service\AuditRenderer:
+    lazy: true
+
+  Rcsofttech\AuditTrailBundle\Service\AuditExporter:
+    lazy: true

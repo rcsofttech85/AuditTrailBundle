@@ -11,9 +11,14 @@ use Rcsofttech\AuditTrailBundle\Command\AuditExportCommand;
 use Rcsofttech\AuditTrailBundle\Contract\AuditExporterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Service\AuditExportFileWriter;
+use Rcsofttech\AuditTrailBundle\Service\AuditExportInputFactory;
+use Rcsofttech\AuditTrailBundle\Service\AuditExportService;
 use ReflectionClass;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Uid\Uuid;
+
+use function count;
 
 use const JSON_THROW_ON_ERROR;
 
@@ -58,7 +63,10 @@ final class AuditExportCommandTest extends TestCase
 
     private function resetCommandTester(): void
     {
-        $this->commandTester = new CommandTester(new AuditExportCommand($this->repository, $this->exporter));
+        $this->commandTester = new CommandTester(new AuditExportCommand(
+            new AuditExportInputFactory(),
+            new AuditExportService($this->repository, $this->exporter, new AuditExportFileWriter()),
+        ));
     }
 
     public function testExportWithNoResults(): void
@@ -66,7 +74,8 @@ final class AuditExportCommandTest extends TestCase
         $repository = $this->useRepositoryMock();
         $repository
             ->expects($this->once())
-            ->method('findWithFilters')
+            ->method('findAllWithFilters')
+            ->with([])
             ->willReturn([]);
 
         $this->commandTester->execute([]);
@@ -88,24 +97,36 @@ final class AuditExportCommandTest extends TestCase
         $repository = $this->useRepositoryMock();
         $repository
             ->expects($this->once())
-            ->method('findWithFilters')
+            ->method('findAllWithFilters')
+            ->with([])
             ->willReturn([$audit]);
         $exporter = $this->useExporterMock();
         $exporter
             ->expects($this->once())
-            ->method('formatAudits')
-            ->with([$audit], 'json')
-            ->willReturn('[{"entity_class":"App\\\\Entity\\\\User"}]');
+            ->method('exportToStream')
+            ->with(self::isIterable(), 'json', self::isResource())
+            ->willReturnCallback(static function (iterable $audits, string $_format, $stream): int {
+                foreach ($audits as $audit) {
+                    fwrite($stream, json_encode(['entity_class' => $audit->entityClass], JSON_THROW_ON_ERROR));
+                }
 
-        $this->commandTester->execute([
-            '--format' => 'JSON', // Test case-insensitivity
-        ]);
+                return 1;
+            });
+
+        ob_start();
+        try {
+            $this->commandTester->execute([
+                '--format' => 'JSON', // Test case-insensitivity
+            ]);
+            $streamOutput = (string) ob_get_contents();
+        } finally {
+            ob_end_clean();
+        }
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->normalizeOutput($this->commandTester);
-        self::assertStringContainsString('"entity_class"', $output);
-        self::assertStringContainsString('User', $output);
-        self::assertStringNotContainsString('Found 1 audit logs', $output);
+        self::assertStringContainsString('"entity_class"', $streamOutput);
+        self::assertStringContainsString('User', $streamOutput);
+        self::assertStringNotContainsString('Found 1 audit logs', $streamOutput);
     }
 
     public function testExportToFile(): void
@@ -119,11 +140,6 @@ final class AuditExportCommandTest extends TestCase
         $repository = $this->useRepositoryMock();
         $repository
             ->expects($this->once())
-            ->method('findWithFilters')
-            ->with([], 1)
-            ->willReturn([$audit]);
-        $repository
-            ->expects($this->once())
             ->method('findAllWithFilters')
             ->with([])
             ->willReturn([$audit]);
@@ -132,16 +148,15 @@ final class AuditExportCommandTest extends TestCase
             ->expects($this->once())
             ->method('exportToStream')
             ->with(self::isIterable(), 'json', self::isResource())
-            ->willReturnCallback(static function (iterable $audits, string $_format, $stream): void {
+            ->willReturnCallback(static function (iterable $audits, string $_format, $stream): int {
+                $count = 0;
                 foreach ($audits as $audit) {
                     fwrite($stream, json_encode(['entity_class' => $audit->entityClass], JSON_THROW_ON_ERROR));
+                    ++$count;
                 }
+
+                return $count;
             });
-        $exporter
-            ->expects($this->once())
-            ->method('formatFileSize')
-            ->with(self::greaterThan(0))
-            ->willReturn('42 B');
 
         $this->commandTester->execute([
             '--output' => $tempFile,
@@ -158,14 +173,12 @@ final class AuditExportCommandTest extends TestCase
 
     public function testExportToFileReturnsFailureWhenWriteFails(): void
     {
-        $audit = $this->createAuditLog('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'App\\Entity\\User', '42', 'create');
-
         $repository = $this->useRepositoryMock();
         $repository
             ->expects($this->once())
-            ->method('findWithFilters')
-            ->with([], 1)
-            ->willReturn([$audit]);
+            ->method('findAllWithFilters')
+            ->with([])
+            ->willReturn([$this->createAuditLog('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'App\\Entity\\User', '42', 'create')]);
 
         $this->commandTester->execute([
             '--output' => sys_get_temp_dir(),
@@ -183,6 +196,13 @@ final class AuditExportCommandTest extends TestCase
         self::assertNotFalse(file_put_contents($blockingFile, 'block'));
 
         try {
+            $repository = $this->useRepositoryMock();
+            $repository
+                ->expects($this->once())
+                ->method('findAllWithFilters')
+                ->with([])
+                ->willReturn([$this->createAuditLog('018f3a3a-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'App\\Entity\\User', '42', 'create')]);
+
             set_error_handler(static function (int $severity, string $message): bool {
                 return str_contains($message, 'mkdir(): File exists');
             });
@@ -198,25 +218,20 @@ final class AuditExportCommandTest extends TestCase
             self::assertSame(1, $this->commandTester->getStatusCode());
             self::assertStringContainsString('Failed to create directory', $this->normalizeOutput($this->commandTester));
         } finally {
-            @unlink($blockingFile);
-            @rmdir($parentDirectory);
+            $this->removeFileIfExists($blockingFile);
+            $this->removeDirectoryIfExists($parentDirectory);
         }
     }
 
-    public function testExportToFileReturnsSuccessWhenPreviewFindsNoRows(): void
+    public function testExportToFileReturnsSuccessWhenStreamingFindsNoRows(): void
     {
         $tempFile = sys_get_temp_dir().'/audit_export_empty_preview.json';
-        @unlink($tempFile);
+        $this->removeFileIfExists($tempFile);
 
-        $repository = $this->useRepositoryMock();
-        $repository
-            ->expects($this->once())
-            ->method('findWithFilters')
-            ->with([], 1)
-            ->willReturn([]);
-        $repository
-            ->expects($this->never())
-            ->method('findAllWithFilters');
+        $repository = self::createStub(AuditLogRepositoryInterface::class);
+        $repository->method('findAllWithFilters')->willReturn([]);
+        $this->repository = $repository;
+        $this->resetCommandTester();
 
         $this->commandTester->execute([
             '--output' => $tempFile,
@@ -233,14 +248,9 @@ final class AuditExportCommandTest extends TestCase
         $audit2 = $this->createAuditLog('018f3a3b-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'App\\Entity\\User', '43', 'create');
         $audit3 = $this->createAuditLog('018f3a3c-3a3a-7a3a-8a3a-3a3a3a3a3a3a', 'App\\Entity\\User', '44', 'create');
         $tempFile = sys_get_temp_dir().'/audit_export_limit_test.json';
-        @unlink($tempFile);
+        $this->removeFileIfExists($tempFile);
 
         $repository = $this->useRepositoryMock();
-        $repository
-            ->expects($this->once())
-            ->method('findWithFilters')
-            ->with([], 1)
-            ->willReturn([$audit1]);
         $repository
             ->expects($this->once())
             ->method('findAllWithFilters')
@@ -251,19 +261,16 @@ final class AuditExportCommandTest extends TestCase
             ->expects($this->once())
             ->method('exportToStream')
             ->with(self::isIterable(), 'json', self::isResource())
-            ->willReturnCallback(static function (iterable $audits, string $_format, $stream): void {
+            ->willReturnCallback(static function (iterable $audits, string $_format, $stream): int {
                 $payload = [];
                 foreach ($audits as $audit) {
                     $payload[] = $audit->entityId;
                 }
 
                 fwrite($stream, json_encode($payload, JSON_THROW_ON_ERROR));
+
+                return count($payload);
             });
-        $exporter
-            ->expects($this->once())
-            ->method('formatFileSize')
-            ->with(self::greaterThan(0))
-            ->willReturn('16 B');
 
         try {
             $this->commandTester->execute([
@@ -273,9 +280,9 @@ final class AuditExportCommandTest extends TestCase
 
             self::assertSame(0, $this->commandTester->getStatusCode());
             self::assertSame('["42","43"]', (string) file_get_contents($tempFile));
-            self::assertStringContainsString('Exported 3 audit logs', $this->normalizeOutput($this->commandTester));
+            self::assertStringContainsString('Exported 2 audit logs', $this->normalizeOutput($this->commandTester));
         } finally {
-            @unlink($tempFile);
+            $this->removeFileIfExists($tempFile);
         }
     }
 
@@ -286,24 +293,34 @@ final class AuditExportCommandTest extends TestCase
         $repository = $this->useRepositoryMock();
         $repository
             ->expects($this->once())
-            ->method('findWithFilters')
+            ->method('findAllWithFilters')
+            ->with([])
             ->willReturn([$audit]);
         $exporter = $this->useExporterMock();
         $exporter
             ->expects($this->once())
-            ->method('formatAudits')
-            ->with([$audit], 'csv')
-            ->willReturn("id,entity_class,entity_id,action\n1,App\\Entity\\User,42,update\n");
+            ->method('exportToStream')
+            ->with(self::isIterable(), 'csv', self::isResource())
+            ->willReturnCallback(static function (iterable $_audits, string $_format, $stream): int {
+                fwrite($stream, "id,entity_class,entity_id,action\n1,App\\Entity\\User,42,update\n");
 
-        $this->commandTester->execute([
-            '--format' => 'csv',
-        ]);
+                return 1;
+            });
+
+        ob_start();
+        try {
+            $this->commandTester->execute([
+                '--format' => 'csv',
+            ]);
+            $streamOutput = (string) ob_get_contents();
+        } finally {
+            ob_end_clean();
+        }
 
         self::assertSame(0, $this->commandTester->getStatusCode());
-        $output = $this->commandTester->getDisplay();
-        self::assertStringContainsString('id,entity_class', $output);
-        self::assertStringContainsString('update', $output);
-        self::assertStringNotContainsString('Found 1 audit logs', $output);
+        self::assertStringContainsString('id,entity_class', $streamOutput);
+        self::assertStringContainsString('update', $streamOutput);
+        self::assertStringNotContainsString('Found 1 audit logs', $streamOutput);
     }
 
     public function testExportWithInvalidFormat(): void
@@ -311,7 +328,7 @@ final class AuditExportCommandTest extends TestCase
         $repository = $this->useRepositoryMock();
         $repository
             ->expects($this->never())
-            ->method('findWithFilters');
+            ->method('findAllWithFilters');
 
         $this->commandTester->execute([
             '--format' => 'xml',
@@ -339,7 +356,7 @@ final class AuditExportCommandTest extends TestCase
         $repository = $this->useRepositoryMock();
         $repository
             ->expects($this->never())
-            ->method('findWithFilters');
+            ->method('findAllWithFilters');
 
         $this->commandTester->execute([
             '--action' => 'invalid_action',
@@ -354,16 +371,13 @@ final class AuditExportCommandTest extends TestCase
         $repository = $this->useRepositoryMock();
         $repository
             ->expects($this->once())
-            ->method('findWithFilters')
-            ->with(
-                self::callback(static function (array $filters) {
-                    return $filters['entityClass'] === 'User'
-                        && $filters['action'] === 'create'
-                        && $filters['from'] instanceof DateTimeImmutable
-                        && $filters['to'] instanceof DateTimeImmutable;
-                }),
-                1000
-            )
+            ->method('findAllWithFilters')
+            ->with(self::callback(static function (array $filters) {
+                return $filters['entityClass'] === 'User'
+                    && $filters['action'] === 'create'
+                    && $filters['from'] instanceof DateTimeImmutable
+                    && $filters['to'] instanceof DateTimeImmutable;
+            }))
             ->willReturn([]);
 
         $this->commandTester->execute([
@@ -382,8 +396,8 @@ final class AuditExportCommandTest extends TestCase
         $repository = $this->useRepositoryMock();
         $repository
             ->expects($this->once())
-            ->method('findWithFilters')
-            ->with([], 1000)
+            ->method('findAllWithFilters')
+            ->with([])
             ->willReturn([]);
 
         $this->commandTester->execute([
@@ -406,6 +420,24 @@ final class AuditExportCommandTest extends TestCase
         return $log;
     }
 
+    private function removeFileIfExists(string $path): void
+    {
+        if (!file_exists($path)) {
+            return;
+        }
+
+        self::assertTrue(unlink($path));
+    }
+
+    private function removeDirectoryIfExists(string $path): void
+    {
+        if (!is_dir($path)) {
+            return;
+        }
+
+        self::assertTrue(rmdir($path));
+    }
+
     /**
      * Test that invalid from date fails with proper error.
      */
@@ -414,7 +446,7 @@ final class AuditExportCommandTest extends TestCase
         $repository = $this->useRepositoryMock();
         $repository
             ->expects($this->never())
-            ->method('findWithFilters');
+            ->method('findAllWithFilters');
 
         $this->commandTester->execute([
             '--from' => 'not-a-valid-date',
@@ -433,7 +465,7 @@ final class AuditExportCommandTest extends TestCase
         $repository = $this->useRepositoryMock();
         $repository
             ->expects($this->never())
-            ->method('findWithFilters');
+            ->method('findAllWithFilters');
 
         $this->commandTester->execute([
             '--to' => 'invalid-date-format',

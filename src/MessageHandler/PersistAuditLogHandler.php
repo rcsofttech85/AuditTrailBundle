@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\MessageHandler;
 
 use DateTimeImmutable;
-use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use LogicException;
+use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Message\PersistAuditLogMessage;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
+use Symfony\Component\Uid\Uuid;
 
 use function sprintf;
 
@@ -27,6 +31,8 @@ final readonly class PersistAuditLogHandler
 {
     public function __construct(
         private ManagerRegistry $registry,
+        private AuditLogWriterInterface $auditLogWriter,
+        private ?AuditIntegrityServiceInterface $integrityService = null,
     ) {
     }
 
@@ -37,7 +43,7 @@ final readonly class PersistAuditLogHandler
         $log = new AuditLog(
             entityClass: $message->entityClass,
             entityId: $message->entityId,
-            action: $message->action,
+            action: AuditAction::from($message->action),
             createdAt: new DateTimeImmutable($message->createdAt),
             oldValues: $message->oldValues,
             newValues: $message->newValues,
@@ -50,18 +56,29 @@ final readonly class PersistAuditLogHandler
             context: $message->context,
             signature: $message->signature,
             deliveryId: $message->deliveryId,
+            revertedLogId: $message->revertedLogId,
         );
 
-        try {
-            $em->persist($log);
-            $em->flush();
-        } catch (UniqueConstraintViolationException) {
-            // Another worker or retry already stored this delivery; treat as idempotent success.
-            if ($em->isOpen()) {
-                $em->clear();
-            } else {
-                $this->registry->resetManager();
-            }
+        if ($message->auditId !== null) {
+            $log->initializeIdIfMissing(Uuid::fromString($message->auditId));
+        }
+
+        $this->assertIntegrity($log, $message);
+        $this->auditLogWriter->insert($log, $em);
+    }
+
+    private function assertIntegrity(AuditLog $log, PersistAuditLogMessage $message): void
+    {
+        if ($this->integrityService?->isEnabled() !== true) {
+            return;
+        }
+
+        if ($message->signature === null) {
+            throw new UnrecoverableMessageHandlingException('Async audit messages must include a signature when integrity verification is enabled.');
+        }
+
+        if (!$this->integrityService->verifySignature($log)) {
+            throw new UnrecoverableMessageHandlingException('Async audit message signature verification failed.');
         }
     }
 

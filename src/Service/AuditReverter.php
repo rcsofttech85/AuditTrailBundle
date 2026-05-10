@@ -4,51 +4,39 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
-use Doctrine\Common\Collections\Collection;
-use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\Mapping\AssociationMapping;
-use Doctrine\ORM\Mapping\ClassMetadata;
-use Doctrine\ORM\Mapping\InverseSideMapping;
-use Doctrine\ORM\Mapping\OwningSideMapping;
 use Override;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
-use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
-use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
-use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditToggleInterface;
+use Rcsofttech\AuditTrailBundle\Contract\RevertActionHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
+use Rcsofttech\AuditTrailBundle\ValueObject\RevertPlan;
 use RuntimeException;
+use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Throwable;
 
 use function count;
-use function is_callable;
-use function is_string;
-use function method_exists;
-use function preg_replace;
-use function spl_object_id;
 use function sprintf;
-use function strrpos;
-use function substr;
 
 final readonly class AuditReverter implements AuditReverterInterface
 {
+    /**
+     * @param iterable<RevertActionHandlerInterface> $actionHandlers
+     */
     public function __construct(
-        private EntityManagerInterface $em,
+        private EntityManagerResolver $entityManagerResolver,
         private ValidatorInterface $validator,
-        private AuditServiceInterface $auditService,
         private RevertValueDenormalizer $denormalizer,
-        private SoftDeleteHandlerInterface $softDeleteHandler,
-        private AuditIntegrityServiceInterface $integrityService,
-        private AuditDispatcherInterface $dispatcher,
-        private ValueSerializerInterface $serializer,
-        private ScheduledAuditManagerInterface $auditManager,
-        private AuditLogRepositoryInterface $repository,
+        private SoftDeleteFilterManager $softDeleteFilterManager,
+        private AuditToggleInterface $auditManager,
+        private RevertGuard $revertGuard,
+        private RevertEntityStateApplier $revertStateApplier,
+        private RevertAuditLogCreator $revertAuditLogCreator,
+        private AuditDispatcherInterface $auditDispatcher,
+        #[AutowireIterator('audit_trail.revert_action_handler')]
+        private iterable $actionHandlers,
     ) {
     }
 
@@ -66,28 +54,20 @@ final readonly class AuditReverter implements AuditReverterInterface
         bool $silenceSubscriber = true,
         bool $verifySignature = true,
     ): array {
-        if ($verifySignature && $this->integrityService->isEnabled() && !$this->integrityService->verifySignature($log)) {
-            throw new RuntimeException(sprintf('Audit log #%s has been tampered with and cannot be reverted.', $log->id?->toRfc4122() ?? 'unknown'));
-        }
-
-        if ($this->repository->isReverted($log)) {
-            throw new RuntimeException(sprintf('Audit log #%s has already been reverted.', $log->id?->toRfc4122() ?? 'unknown'));
-        }
+        $this->revertGuard->assertRevertable($log, $verifySignature);
 
         if ($silenceSubscriber) {
             $this->auditManager->disable();
         }
 
         try {
-            $entity = $this->findEntity($log->entityClass, $log->entityId);
-
+            $entity = $this->findEntity($log->entityClass, $log->requireEntityId());
             if ($entity === null) {
-                throw new RuntimeException(sprintf('Entity %s:%s not found.', $log->entityClass, $log->entityId));
+                throw new RuntimeException(sprintf('Entity %s:%s not found.', $log->entityClass, $log->requireEntityId()));
             }
 
             $revertData = $this->determineChanges($log, $entity, $force, $dryRun);
-            $changes = $revertData['changes'];
-
+            $changes = $revertData->changes;
             if ($dryRun) {
                 return $changes;
             }
@@ -102,63 +82,81 @@ final readonly class AuditReverter implements AuditReverterInterface
         }
     }
 
-    /**
-     * @return array{
-     *     changes: array<string, mixed>,
-     *     previousValues?: array<string, mixed>,
-     *     fieldValues?: array<string, mixed>,
-     *     restoreSoftDelete?: bool
-     * }
-     */
-    private function determineChanges(AuditLog $log, object $entity, bool $force, bool $dryRun): array
+    private function determineChanges(AuditLog $log, object $entity, bool $force, bool $dryRun): RevertPlan
     {
-        return match ($log->action) {
-            AuditLogInterface::ACTION_CREATE => $this->handleRevertCreate($force),
-            AuditLogInterface::ACTION_UPDATE => $this->handleRevertUpdate($log, $entity, $dryRun),
-            AuditLogInterface::ACTION_SOFT_DELETE => $this->handleRevertSoftDelete($entity, $dryRun),
-            AuditLogInterface::ACTION_ACCESS => ['changes' => []], // Ignore access attribute during revert
-            default => throw new RuntimeException(sprintf('Reverting action "%s" is not supported.', $log->action)),
-        };
+        foreach ($this->actionHandlers as $handler) {
+            if ($handler->supports($log->action)) {
+                return $handler->buildPlan($log, $entity, $force, $dryRun);
+            }
+        }
+
+        throw new RuntimeException(sprintf('Reverting action "%s" is not supported.', $log->action->value));
     }
 
     /**
-     * @param array{
-     *     changes: array<string, mixed>,
-     *     previousValues?: array<string, mixed>,
-     *     fieldValues?: array<string, mixed>,
-     *     restoreSoftDelete?: bool
-     * } $revertData
      * @param array<string, mixed> $context
      */
     private function applyAndPersist(
         object $entity,
         AuditLog $log,
-        array $revertData,
+        RevertPlan $revertPlan,
         array $context,
     ): void {
-        $changes = $revertData['changes'];
-        $isDelete = isset($changes['action']) && $changes['action'] === 'delete';
+        $entityManager = $this->entityManagerResolver->requireForObject($entity);
+        $changes = $revertPlan->changes;
+        $isDelete = $revertPlan->isDeleteAction();
+        $dispatchedInTransaction = false;
 
-        $this->em->wrapInTransaction(function () use ($entity, $isDelete, $log, $changes, $context, $revertData) {
+        $revertAudit = $entityManager->wrapInTransaction(function () use ($entityManager, $entity, $isDelete, $log, $changes, $context, $revertPlan, &$dispatchedInTransaction): AuditLog {
             try {
                 if ($isDelete) {
-                    $this->em->remove($entity);
+                    $entityManager->remove($entity);
                 } else {
-                    $this->applyRevertData($entity, $revertData);
+                    $this->revertStateApplier->apply($entity, $revertPlan);
                     $this->validateEntity($entity);
                 }
 
-                $this->em->flush();
+                $revertAudit = $this->revertAuditLogCreator->create(
+                    $entity,
+                    $log,
+                    $changes,
+                    $revertPlan->previousValues,
+                    $isDelete,
+                    $context,
+                    $entityManager,
+                );
 
-                $this->createRevertAuditLog($entity, $log, $changes, $revertData['previousValues'] ?? [], $isDelete, $context);
+                $dispatchedInTransaction = $this->auditDispatcher->dispatch(
+                    $revertAudit,
+                    $entityManager,
+                    AuditPhase::OnFlush,
+                    null,
+                    $entity,
+                );
+
+                return $revertAudit;
             } catch (Throwable $e) {
-                if (!$isDelete && $this->em->isOpen()) {
-                    $this->em->refresh($entity);
+                if (!$isDelete && $entityManager->isOpen()) {
+                    $entityManager->refresh($entity);
                 }
 
                 throw $e;
             }
         });
+
+        if ($dispatchedInTransaction) {
+            return;
+        }
+
+        try {
+            if ($this->auditDispatcher->dispatch($revertAudit, $entityManager, AuditPhase::PostFlush, null, $entity)) {
+                return;
+            }
+        } catch (Throwable $exception) {
+            throw new RuntimeException(sprintf('Revert committed for %s:%s, but audit dispatch failed after commit.', $log->entityClass, $log->requireEntityId()), previous: $exception);
+        }
+
+        throw new RuntimeException(sprintf('Revert committed for %s:%s, but no audit transport accepted the revert log after commit.', $log->entityClass, $log->requireEntityId()));
     }
 
     private function validateEntity(object $entity): void
@@ -169,499 +167,24 @@ final readonly class AuditReverter implements AuditReverterInterface
         }
     }
 
-    /**
-     * @param array<string, mixed> $changes
-     * @param array<string, mixed> $previousValues
-     * @param array<string, mixed> $context
-     */
-    private function createRevertAuditLog(
-        object $entity,
-        AuditLog $log,
-        array $changes,
-        array $previousValues,
-        bool $isDelete,
-        array $context,
-    ): void {
-        $revertContext = [
-            ...$context,
-            'reverted_log_id' => $log->id?->toRfc4122(),
-        ];
-
-        $serializedChanges = [];
-        foreach ($changes as $field => $value) {
-            $serializedChanges[$field] = $this->serializer->serialize($value);
-        }
-
-        $revertLog = $this->auditService->createAuditLog(
-            $entity,
-            AuditLogInterface::ACTION_REVERT,
-            $previousValues !== [] ? $previousValues : null,
-            $isDelete ? null : $serializedChanges,
-            $revertContext,
-            $this->em,
-        );
-
-        if ($revertLog->entityId === AuditLogInterface::PENDING_ID) {
-            $revertLog->entityId = $log->entityId;
-        }
-
-        if (!$this->dispatcher->dispatch($revertLog, $this->em, AuditPhase::PostFlush, null, $entity)) {
-            throw new RuntimeException(sprintf('Failed to dispatch revert audit log for %s:%s.', $log->entityClass, $log->entityId));
-        }
-    }
-
-    /**
-     * @return array{changes: array<string, mixed>}
-     */
-    private function handleRevertCreate(bool $force): array
-    {
-        if (!$force) {
-            throw new RuntimeException('Reverting a creation (deleting the entity) requires --force.');
-        }
-
-        return ['changes' => ['action' => 'delete']];
-    }
-
-    /**
-     * @return array{changes: array<string, mixed>, previousValues: array<string, mixed>}
-     */
-    private function handleRevertUpdate(AuditLog $log, object $entity, bool $dryRun): array
-    {
-        $oldValues = $log->oldValues ?? [];
-        if ($oldValues === []) {
-            throw new RuntimeException('No old values found in audit log to revert to.');
-        }
-
-        return $this->computeChanges($entity, $oldValues, $dryRun);
-    }
-
-    /**
-     * @return array{changes: array<string, mixed>}
-     */
-    private function handleRevertSoftDelete(object $entity, bool $dryRun): array
-    {
-        if ($this->softDeleteHandler->isSoftDeleted($entity)) {
-            return [
-                'changes' => ['action' => 'restore'],
-                'restoreSoftDelete' => !$dryRun,
-            ];
-        }
-
-        return ['changes' => ['info' => 'Entity is not soft-deleted.']];
-    }
-
     private function findEntity(string $class, string $id): ?object
     {
         if (!class_exists($class)) {
             return null;
         }
 
-        $disabledFilters = $this->softDeleteHandler->disableSoftDeleteFilters();
+        $entityManager = $this->entityManagerResolver->resolveForClass($class);
+        if ($entityManager === null) {
+            return null;
+        }
+
+        $disabledFilters = $this->softDeleteFilterManager->disable($entityManager);
 
         try {
-            /* @var class-string $class */
-            return $this->em->find($class, $this->denormalizer->normalizeEntityIdentifier($class, $id));
+            /** @var class-string<object> $class */
+            return $entityManager->find($class, $this->denormalizer->normalizeEntityIdentifier($class, $id));
         } finally {
-            $this->softDeleteHandler->enableFilters($disabledFilters);
+            $this->softDeleteFilterManager->enable($entityManager, $disabledFilters);
         }
-    }
-
-    /**
-     * @param array<string, mixed> $values
-     *
-     * @return array{changes: array<string, mixed>, previousValues: array<string, mixed>, fieldValues: array<string, mixed>}
-     */
-    private function computeChanges(object $entity, array $values, bool $dryRun): array
-    {
-        $metadata = $this->em->getClassMetadata($entity::class);
-        $appliedChanges = [];
-        $previousValues = [];
-
-        foreach ($values as $field => $value) {
-            $denormalizedValue = $this->denormalizer->denormalize($metadata, $field, $value, $dryRun);
-            $currentValue = $metadata->getFieldValue($entity, $field);
-
-            if ($this->shouldSkipField($metadata, $field, $denormalizedValue, $currentValue)) {
-                continue;
-            }
-
-            $appliedChanges[$field] = $denormalizedValue;
-            $previousValues[$field] = $this->serializer->serialize($currentValue);
-        }
-
-        return [
-            'changes' => $appliedChanges,
-            'previousValues' => $previousValues,
-            'fieldValues' => $appliedChanges,
-        ];
-    }
-
-    /**
-     * @param array{
-     *     changes: array<string, mixed>,
-     *     previousValues?: array<string, mixed>,
-     *     fieldValues?: array<string, mixed>,
-     *     restoreSoftDelete?: bool
-     * } $revertData
-     */
-    private function applyRevertData(object $entity, array $revertData): void
-    {
-        $metadata = $this->em->getClassMetadata($entity::class);
-
-        foreach ($revertData['fieldValues'] ?? [] as $field => $value) {
-            $this->applyRevertFieldValue($metadata, $entity, $field, $value);
-        }
-
-        if (($revertData['restoreSoftDelete'] ?? false) === true) {
-            $this->softDeleteHandler->restoreSoftDeleted($entity);
-        }
-    }
-
-    /**
-     * @param ClassMetadata<object> $metadata
-     */
-    private function applyRevertFieldValue(ClassMetadata $metadata, object $entity, string $field, mixed $value): void
-    {
-        if ($metadata->hasAssociation($field) && $metadata->isCollectionValuedAssociation($field)) {
-            $this->applyCollectionAssociationRevertData($metadata, $entity, $field, $value);
-
-            return;
-        }
-
-        $metadata->setFieldValue($entity, $field, $value);
-    }
-
-    /**
-     * @param ClassMetadata<object> $metadata
-     */
-    private function shouldSkipField(
-        ClassMetadata $metadata,
-        string $field,
-        mixed $value,
-        mixed $currentValue,
-    ): bool {
-        if ($metadata->isIdentifier($field) || (!$metadata->hasField($field) && !$metadata->hasAssociation($field))) {
-            return true;
-        }
-
-        if ($metadata->hasAssociation($field) && $metadata->isCollectionValuedAssociation($field)) {
-            return $this->collectionValuesAreEqual($currentValue, $value);
-        }
-
-        return $this->denormalizer->valuesAreEqual($currentValue, $value);
-    }
-
-    /**
-     * @param ClassMetadata<object> $metadata
-     */
-    private function applyCollectionAssociationRevertData(
-        ClassMetadata $metadata,
-        object $entity,
-        string $field,
-        mixed $value,
-    ): void {
-        $currentValue = $metadata->getFieldValue($entity, $field);
-        if (!$currentValue instanceof Collection || !$value instanceof Collection) {
-            $metadata->setFieldValue($entity, $field, $value);
-
-            return;
-        }
-
-        $mapping = $metadata->getAssociationMapping($field);
-        $currentItems = $this->snapshotCollectionItems($currentValue);
-        $currentLookup = $this->buildCollectionObjectLookup($currentItems);
-        $incomingItems = $this->snapshotCollectionItems($value);
-        $incomingLookup = $this->buildCollectionObjectLookup($incomingItems);
-
-        foreach ($currentItems as $currentItem) {
-            if (isset($incomingLookup[spl_object_id($currentItem)])) {
-                continue;
-            }
-
-            $this->removeAssociationItem($metadata, $mapping, $entity, $field, $currentValue, $currentItem);
-        }
-
-        foreach ($incomingItems as $item) {
-            if (isset($currentLookup[spl_object_id($item)])) {
-                continue;
-            }
-
-            $this->addAssociationItem($metadata, $mapping, $entity, $field, $currentValue, $item);
-        }
-    }
-
-    private function collectionValuesAreEqual(mixed $currentValue, mixed $newValue): bool
-    {
-        if (!$currentValue instanceof Collection || !$newValue instanceof Collection) {
-            return false;
-        }
-
-        /** @var array<class-string, ClassMetadata<object>> $metadataByClass */
-        $metadataByClass = [];
-
-        return $this->normalizeCollectionIdentifiers($currentValue, $metadataByClass)
-            === $this->normalizeCollectionIdentifiers($newValue, $metadataByClass);
-    }
-
-    /**
-     * @param Collection<int|string, object>             $collection
-     * @param array<class-string, ClassMetadata<object>> $metadataByClass
-     *
-     * @return list<string>
-     */
-    private function normalizeCollectionIdentifiers(Collection $collection, array &$metadataByClass): array
-    {
-        $identifiers = [];
-
-        foreach ($collection as $item) {
-            $identifiers[] = $this->normalizeEntityIdentifier($item, $metadataByClass);
-        }
-
-        sort($identifiers);
-
-        return $identifiers;
-    }
-
-    /**
-     * @param array<class-string, ClassMetadata<object>> $metadataByClass
-     */
-    private function normalizeEntityIdentifier(object $entity, array &$metadataByClass): string
-    {
-        $metadata = $metadataByClass[$entity::class] ??= $this->em->getClassMetadata($entity::class);
-        $identifierValues = $metadata->getIdentifierValues($entity);
-
-        if ($identifierValues === []) {
-            return (string) spl_object_id($entity);
-        }
-
-        $normalized = [];
-        foreach ($identifierValues as $field => $value) {
-            $normalized[] = sprintf('%s=%s', $field, (string) $value);
-        }
-
-        sort($normalized);
-
-        return implode('|', $normalized);
-    }
-
-    /**
-     * @param ClassMetadata<object>          $metadata
-     * @param Collection<int|string, object> $currentValue
-     */
-    private function addAssociationItem(
-        ClassMetadata $metadata,
-        AssociationMapping $mapping,
-        object $entity,
-        string $field,
-        Collection $currentValue,
-        object $item,
-    ): void {
-        if ($this->invokeCollectionMutator($entity, 'add', $item)) {
-            return;
-        }
-
-        $currentValue->add($item);
-        $this->synchronizeCounterpartAssociation($metadata, $mapping, $entity, $field, $item, true);
-    }
-
-    /**
-     * @param ClassMetadata<object>          $metadata
-     * @param Collection<int|string, object> $currentValue
-     */
-    private function removeAssociationItem(
-        ClassMetadata $metadata,
-        AssociationMapping $mapping,
-        object $entity,
-        string $field,
-        Collection $currentValue,
-        object $item,
-    ): void {
-        if ($this->invokeCollectionMutator($entity, 'remove', $item)) {
-            return;
-        }
-
-        $currentValue->removeElement($item);
-        $this->synchronizeCounterpartAssociation($metadata, $mapping, $entity, $field, $item, false);
-    }
-
-    private function invokeCollectionMutator(object $entity, string $prefix, object $item): bool
-    {
-        $method = $prefix.$this->resolveShortClassName($item);
-
-        if (!method_exists($entity, $method) || !is_callable([$entity, $method])) {
-            return false;
-        }
-        /** @var callable(object): void $callable */
-        $callable = [$entity, $method];
-        $callable($item);
-
-        return true;
-    }
-
-    /**
-     * @param ClassMetadata<object> $metadata
-     */
-    private function synchronizeCounterpartAssociation(
-        ClassMetadata $metadata,
-        AssociationMapping $mapping,
-        object $entity,
-        string $field,
-        object $item,
-        bool $adding,
-    ): void {
-        $counterpartField = $this->resolveCounterpartField($mapping);
-        if (!is_string($counterpartField)) {
-            return;
-        }
-
-        if ($this->invokeCounterpartMutator($entity, $item, $adding)) {
-            return;
-        }
-
-        $targetMetadata = $this->em->getClassMetadata($item::class);
-        if (!$this->targetMetadataContainsField($targetMetadata, $counterpartField)) {
-            return;
-        }
-
-        if ($targetMetadata->hasAssociation($counterpartField) && $targetMetadata->isCollectionValuedAssociation($counterpartField)) {
-            $this->synchronizeCollectionCounterpart($targetMetadata, $item, $counterpartField, $entity, $adding);
-
-            return;
-        }
-
-        $this->synchronizeSingleValuedCounterpart($targetMetadata, $item, $counterpartField, $entity, $adding);
-    }
-
-    private function resolveCounterpartField(AssociationMapping $mapping): ?string
-    {
-        if ($mapping instanceof OwningSideMapping) {
-            return $mapping->inversedBy;
-        }
-
-        if ($mapping instanceof InverseSideMapping) {
-            return $mapping->mappedBy;
-        }
-
-        return null;
-    }
-
-    /**
-     * @param ClassMetadata<object> $targetMetadata
-     */
-    private function targetMetadataContainsField(ClassMetadata $targetMetadata, string $field): bool
-    {
-        return $targetMetadata->hasAssociation($field) || $targetMetadata->hasField($field);
-    }
-
-    /**
-     * @param ClassMetadata<object> $targetMetadata
-     */
-    private function synchronizeCollectionCounterpart(
-        ClassMetadata $targetMetadata,
-        object $item,
-        string $counterpartField,
-        object $entity,
-        bool $adding,
-    ): void {
-        $counterpartValue = $targetMetadata->getFieldValue($item, $counterpartField);
-        if (!$counterpartValue instanceof Collection) {
-            return;
-        }
-
-        if ($adding) {
-            if (!$counterpartValue->contains($entity)) {
-                $counterpartValue->add($entity);
-            }
-
-            return;
-        }
-
-        $counterpartValue->removeElement($entity);
-    }
-
-    /**
-     * @param ClassMetadata<object> $targetMetadata
-     */
-    private function synchronizeSingleValuedCounterpart(
-        ClassMetadata $targetMetadata,
-        object $item,
-        string $counterpartField,
-        object $entity,
-        bool $adding,
-    ): void {
-        $targetMetadata->setFieldValue($item, $counterpartField, $adding ? $entity : null);
-    }
-
-    private function invokeCounterpartMutator(object $entity, object $item, bool $adding): bool
-    {
-        $method = ($adding ? 'add' : 'remove').$this->resolveShortClassName($entity);
-
-        if (!method_exists($item, $method) || !is_callable([$item, $method])) {
-            return false;
-        }
-        /** @var callable(object): void $callable */
-        $callable = [$item, $method];
-        $callable($entity);
-
-        return true;
-    }
-
-    /**
-     * @param Collection<int|string, object> $collection
-     *
-     * @return list<object>
-     */
-    private function snapshotCollectionItems(Collection $collection): array
-    {
-        $items = [];
-
-        foreach ($collection as $item) {
-            $items[] = $item;
-        }
-
-        return $items;
-    }
-
-    /**
-     * @param list<object> $items
-     *
-     * @return array<int, true>
-     */
-    private function buildCollectionObjectLookup(array $items): array
-    {
-        $lookup = [];
-
-        foreach ($items as $item) {
-            $lookup[spl_object_id($item)] = true;
-        }
-
-        return $lookup;
-    }
-
-    private function resolveShortClassName(object $entity): string
-    {
-        /** @var array<class-string, string> $shortNameCache */
-        static $shortNameCache = [];
-
-        $class = $entity::class;
-
-        return $shortNameCache[$class] ??= $this->normalizeShortClassName($this->extractShortClassName($class));
-    }
-
-    /**
-     * @param class-string $class
-     */
-    private function extractShortClassName(string $class): string
-    {
-        $separatorPosition = strrpos($class, '\\');
-
-        return $separatorPosition === false ? $class : substr($class, $separatorPosition + 1);
-    }
-
-    private function normalizeShortClassName(string $shortName): string
-    {
-        $normalized = preg_replace('/@anonymous.*$/', '', $shortName);
-
-        return $normalized !== null && $normalized !== '' ? $normalized : 'Item';
     }
 }

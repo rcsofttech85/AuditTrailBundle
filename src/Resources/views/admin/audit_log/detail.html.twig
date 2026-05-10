@@ -4,10 +4,12 @@
 {% block content_title %}
     {{ parent() }}
     {% if entity is defined and entity.instance is defined %}
-        <span class="audit-action-badge audit-action-badge-{{ audit_action_badge_class(entity.instance.action) }} audit-detail-title-badge">
-            <i class="fa {{ audit_action_icon(entity.instance.action) }}"></i>
-            {{ entity.instance.action|upper }}
-        </span>
+        {{ include('@AuditTrail/admin/_audit_action_badge.html.twig', {
+            action: entity.instance.action,
+            label: (entity.instance.action.value ?? entity.instance.action)|upper,
+            title: (entity.instance.action.value ?? entity.instance.action)|upper,
+            class: 'audit-detail-title-badge',
+        }, with_context: false) }}
         {% if is_reverted|default(false) %}
             <span class="badge bg-secondary ms-2" style="font-size: 0.8rem; vertical-align: middle;">
                 <i class="fa fa-history me-1"></i> REVERTED

@@ -18,12 +18,15 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Http\AuditRequestAttributes;
 use Rcsofttech\AuditTrailBundle\Service\AuditAccessContextProvider;
 use Rcsofttech\AuditTrailBundle\Service\AuditAccessCooldownManager;
 use Rcsofttech\AuditTrailBundle\Service\AuditAccessHandler;
 use Rcsofttech\AuditTrailBundle\Service\AuditAccessIntentResolver;
+use Rcsofttech\AuditTrailBundle\Service\AuditAccessLogDispatcher;
+use Rcsofttech\AuditTrailBundle\Service\AuditAccessRequestEvaluator;
 use ReflectionClass;
 use stdClass;
 use Symfony\Component\HttpFoundation\Request;
@@ -57,16 +60,15 @@ final class AuditAccessHandlerTest extends TestCase
         ?CacheItemPoolInterface $cache = null,
         array $auditedMethods = ['GET'],
     ): AuditAccessHandler {
+        $cooldownManager = new AuditAccessCooldownManager($cache);
+
         return new AuditAccessHandler(
             $this->auditService,
-            $this->dispatcher,
-            $this->requestStack,
+            new AuditAccessLogDispatcher($this->auditService, $this->dispatcher, $cooldownManager),
+            new AuditAccessRequestEvaluator($this->requestStack, new AuditAccessIntentResolver(), $auditedMethods),
             $this->idResolver,
-            new AuditAccessIntentResolver(),
-            new AuditAccessCooldownManager($cache),
+            $cooldownManager,
             new AuditAccessContextProvider($this->userResolver),
-            null,
-            $auditedMethods,
         );
     }
 
@@ -272,15 +274,16 @@ final class AuditAccessHandlerTest extends TestCase
         $handler->flushPendingAccesses();
     }
 
-    public function testHandleAccessDoesNotPersistCooldownWhenDispatchReturnsFalse(): void
+    public function testHandleAccessReleasesCooldownWhenDispatchReturnsFalse(): void
     {
         $cache = $this->createMock(CacheItemPoolInterface::class);
         $item = $this->createMock(CacheItemInterface::class);
         $item->method('isHit')->willReturn(false);
-        $item->expects($this->never())->method('set');
-        $item->expects($this->never())->method('expiresAfter');
+        $item->expects($this->once())->method('set')->with(true)->willReturnSelf();
+        $item->expects($this->once())->method('expiresAfter')->with(60)->willReturnSelf();
         $cache->method('getItem')->willReturn($item);
-        $cache->expects($this->never())->method('save');
+        $cache->expects($this->once())->method('save')->with($item);
+        $cache->expects($this->once())->method('deleteItem')->willReturn(true);
 
         $handler = $this->createHandler($cache);
 
@@ -300,6 +303,37 @@ final class AuditAccessHandlerTest extends TestCase
         $this->dispatcher->expects($this->once())->method('dispatch')->with($auditLog, $om, AuditPhase::PostLoad, null, $entity)->willReturn(false);
 
         $handler->handleAccess($entity, $om);
+        $handler->flushPendingAccesses();
+    }
+
+    public function testMarkAsAuditedReleasesReservedCooldownWhenCancellingPendingAccessAudit(): void
+    {
+        $cache = $this->createMock(CacheItemPoolInterface::class);
+        $item = $this->createMock(CacheItemInterface::class);
+        $item->method('isHit')->willReturn(false);
+        $item->expects($this->once())->method('set')->with(true)->willReturnSelf();
+        $item->expects($this->once())->method('expiresAfter')->with(60)->willReturnSelf();
+        $cache->method('getItem')->willReturn($item);
+        $cache->expects($this->once())->method('save')->with($item);
+        $cache->expects($this->once())->method('deleteItem')->willReturn(true);
+
+        $handler = $this->createHandler($cache);
+
+        $request = Request::create('/test', 'GET');
+        $this->requestStack->push($request);
+
+        $entity = new stdClass();
+        $om = self::createStub(EntityManagerInterface::class);
+
+        $accessAttr = new AuditAccess(level: 'read', message: 'test', cooldown: 60);
+        $this->auditService->method('getAccessAttribute')->willReturn($accessAttr);
+        $this->auditService->method('passesVoters')->willReturn(true);
+        $this->idResolver->method('resolveFromEntity')->willReturn('1');
+        $this->auditService->expects($this->never())->method('createAuditLog');
+        $this->dispatcher->expects($this->never())->method('dispatch');
+
+        $handler->handleAccess($entity, $om);
+        $handler->markAsAudited('stdClass:1');
         $handler->flushPendingAccesses();
     }
 
@@ -408,7 +442,7 @@ final class AuditAccessHandlerTest extends TestCase
             ->method('createAuditLog')
             ->with(
                 $entity,
-                AuditLogInterface::ACTION_ACCESS,
+                AuditAction::Access,
                 null,
                 null,
                 self::callback(static function (array $context): bool {
@@ -457,6 +491,67 @@ final class AuditAccessHandlerTest extends TestCase
 
         $handler->markAsAudited($pendingKey);
         $handler->flushPendingAccesses();
+    }
+
+    public function testFlushPendingAccessesReleasesReservedCooldownWhenEntityManagerIsClosed(): void
+    {
+        $cache = $this->createMock(CacheItemPoolInterface::class);
+        $item = $this->createMock(CacheItemInterface::class);
+        $item->method('isHit')->willReturn(false);
+        $item->expects($this->once())->method('set')->with(true)->willReturnSelf();
+        $item->expects($this->once())->method('expiresAfter')->with(60)->willReturnSelf();
+        $cache->method('getItem')->willReturn($item);
+        $cache->expects($this->once())->method('save')->with($item);
+        $cache->expects($this->once())->method('deleteItem')->willReturn(true);
+
+        $handler = $this->createHandler($cache);
+
+        $request = Request::create('/test', 'GET');
+        $this->requestStack->push($request);
+
+        $entity = new stdClass();
+        $om = self::createStub(EntityManagerInterface::class);
+        $om->method('isOpen')->willReturn(false);
+
+        $accessAttr = new AuditAccess(level: 'read', message: 'test', cooldown: 60);
+        $this->auditService->method('getAccessAttribute')->willReturn($accessAttr);
+        $this->auditService->method('passesVoters')->willReturn(true);
+        $this->idResolver->method('resolveFromEntity')->willReturn('1');
+        $this->auditService->expects($this->never())->method('createAuditLog');
+        $this->dispatcher->expects($this->never())->method('dispatch');
+
+        $handler->handleAccess($entity, $om);
+        $handler->flushPendingAccesses();
+    }
+
+    public function testResetReleasesReservedCooldownForPendingAccesses(): void
+    {
+        $cache = $this->createMock(CacheItemPoolInterface::class);
+        $item = $this->createMock(CacheItemInterface::class);
+        $item->method('isHit')->willReturn(false);
+        $item->expects($this->once())->method('set')->with(true)->willReturnSelf();
+        $item->expects($this->once())->method('expiresAfter')->with(60)->willReturnSelf();
+        $cache->method('getItem')->willReturn($item);
+        $cache->expects($this->once())->method('save')->with($item);
+        $cache->expects($this->once())->method('deleteItem')->willReturn(true);
+
+        $handler = $this->createHandler($cache);
+
+        $request = Request::create('/test', 'GET');
+        $this->requestStack->push($request);
+
+        $entity = new stdClass();
+        $om = self::createStub(EntityManagerInterface::class);
+
+        $accessAttr = new AuditAccess(level: 'read', message: 'test', cooldown: 60);
+        $this->auditService->method('getAccessAttribute')->willReturn($accessAttr);
+        $this->auditService->method('passesVoters')->willReturn(true);
+        $this->idResolver->method('resolveFromEntity')->willReturn('1');
+        $this->auditService->expects($this->never())->method('createAuditLog');
+        $this->dispatcher->expects($this->never())->method('dispatch');
+
+        $handler->handleAccess($entity, $om);
+        $handler->reset();
     }
 
     public function testHandleAccessDeduplicatesProxyAndRealClassLoads(): void

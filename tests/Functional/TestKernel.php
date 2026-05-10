@@ -18,14 +18,11 @@ use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\HttpKernel\Kernel;
 
+use function dirname;
+
 class TestKernel extends Kernel implements CompilerPassInterface
 {
     use MicroKernelTrait;
-
-    public function __construct(string $environment, bool $debug)
-    {
-        parent::__construct($environment, $debug);
-    }
 
     /** @var array<string, mixed> */
     private array $auditConfig = [];
@@ -33,7 +30,16 @@ class TestKernel extends Kernel implements CompilerPassInterface
     /** @var array<string, mixed> */
     private array $doctrineConfig = [];
 
+    /** @var array<string, mixed> */
+    private array $frameworkConfig = [];
+
     public static bool $useThrowingTransport = false;
+
+    /** @var list<string>|null */
+    public static ?array $throwingTransportSupportedPhases = null;
+
+    /** @var list<string> */
+    public static array $publicServiceIds = [];
 
     public function build(ContainerBuilder $container): void
     {
@@ -51,6 +57,16 @@ class TestKernel extends Kernel implements CompilerPassInterface
 
             // Silence logger during expected failures
             $container->register('logger', NullLogger::class);
+        }
+
+        foreach (self::$publicServiceIds as $serviceId) {
+            if ($container->hasDefinition($serviceId)) {
+                $container->getDefinition($serviceId)->setPublic(true);
+            }
+
+            if ($container->hasAlias($serviceId)) {
+                $container->getAlias($serviceId)->setPublic(true);
+            }
         }
     }
 
@@ -70,10 +86,26 @@ class TestKernel extends Kernel implements CompilerPassInterface
         $this->doctrineConfig = $config;
     }
 
+    /**
+     * @param array<string, mixed> $config
+     */
+    public function setFrameworkConfig(array $config): void
+    {
+        $this->frameworkConfig = $config;
+    }
+
     public function getCacheDir(): string
     {
         return sys_get_temp_dir().'/audit_trail_test/cache/'.
-            md5(serialize([$this->auditConfig, $this->doctrineConfig]));
+            md5(serialize([
+                realpath(dirname(__DIR__, 2)),
+                $this->auditConfig,
+                $this->doctrineConfig,
+                $this->frameworkConfig,
+                self::$useThrowingTransport,
+                self::$throwingTransportSupportedPhases,
+                self::$publicServiceIds,
+            ]));
     }
 
     public function getLogDir(): string
@@ -94,9 +126,12 @@ class TestKernel extends Kernel implements CompilerPassInterface
 
     protected function configureContainer(ContainerBuilder $c, LoaderInterface $loader): void
     {
-        $c->loadFromExtension('framework', [
+        $c->setParameter('env(AUDIT_INTEGRITY_SECRET)', 'test-integrity-secret-for-suite-123');
+        $c->setParameter('env(AUDIT_INTEGRITY_PRESSURE_SECRET)', 'pressure-secret-for-suite-verify-123');
+
+        $defaultFrameworkConfig = [
             'test' => true,
-            'secret' => 'test',
+            'secret' => 'test-integrity-secret-for-kernel-123',
             'php_errors' => ['log' => false, 'throw' => false],
             'validation' => ['email_validation_mode' => 'html5'],
             'cache' => [
@@ -104,7 +139,12 @@ class TestKernel extends Kernel implements CompilerPassInterface
                     'audit_test.cache' => ['adapter' => 'cache.adapter.filesystem'],
                 ],
             ],
-        ]);
+        ];
+
+        /** @var array<string, mixed> $frameworkConfig */
+        $frameworkConfig = array_replace_recursive($defaultFrameworkConfig, $this->frameworkConfig);
+
+        $c->loadFromExtension('framework', $frameworkConfig);
 
         $c->loadFromExtension('security', [
             'firewalls' => [

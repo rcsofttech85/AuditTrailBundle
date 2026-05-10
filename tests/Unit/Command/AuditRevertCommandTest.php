@@ -7,10 +7,10 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Command;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Command\AuditRevertCommand;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use RuntimeException;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -64,7 +64,7 @@ final class AuditRevertCommandTest extends TestCase
 
     public function testExecuteRevertSuccess(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Update);
 
         $repository = $this->useRepositoryMock();
         $repository->expects($this->once())
@@ -92,7 +92,7 @@ final class AuditRevertCommandTest extends TestCase
 
     public function testExecuteRevertDryRun(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Update);
 
         $repository = $this->useRepositoryMock();
         $repository->expects($this->once())
@@ -119,7 +119,7 @@ final class AuditRevertCommandTest extends TestCase
 
     public function testExecuteRevertForce(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Create);
 
         $repository = $this->useRepositoryMock();
         $repository->expects($this->once())
@@ -143,7 +143,7 @@ final class AuditRevertCommandTest extends TestCase
 
     public function testExecuteRevertNoisy(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Update);
 
         $repository = $this->useRepositoryMock();
         $repository->expects($this->once())
@@ -182,7 +182,7 @@ final class AuditRevertCommandTest extends TestCase
 
     public function testExecuteRevertFailure(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Update);
 
         $repository = $this->useRepositoryMock();
         $repository->expects($this->once())
@@ -204,7 +204,7 @@ final class AuditRevertCommandTest extends TestCase
 
     public function testExecuteRawOption(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Update);
 
         $this->repository->method('find')->willReturn($log);
         $this->reverter->method('revert')->willReturn(['name' => 'Old Name']);
@@ -221,7 +221,7 @@ final class AuditRevertCommandTest extends TestCase
 
     public function testExecuteRawOptionSuppressesFormattedDryRunOutput(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Update);
 
         $this->repository->method('find')->willReturn($log);
         $this->reverter->method('revert')->willReturn(['name' => 'Old Name']);
@@ -248,7 +248,7 @@ final class AuditRevertCommandTest extends TestCase
 
     public function testExecuteNoChanges(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Update);
 
         $this->repository->method('find')->willReturn($log);
         $this->reverter->method('revert')->willReturn([]);
@@ -261,7 +261,7 @@ final class AuditRevertCommandTest extends TestCase
 
     public function testExecuteNonScalarChange(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Update);
 
         $this->repository->method('find')->willReturn($log);
         $this->reverter->method('revert')->willReturn(['roles' => ['ROLE_USER']]);
@@ -274,7 +274,7 @@ final class AuditRevertCommandTest extends TestCase
 
     public function testExecuteWithContext(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Update);
 
         $this->repository->method('find')->willReturn($log);
 
@@ -298,7 +298,7 @@ final class AuditRevertCommandTest extends TestCase
 
     public function testExecuteWithInvalidContext(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Update);
 
         $this->repository->method('find')->willReturn($log);
 

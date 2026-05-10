@@ -42,10 +42,12 @@
                     {% for log in logs %}
                     <tr class="audit-drilldown-row">
                         <td class="align-middle fw-medium">
-                            <span class="audit-action-badge audit-action-badge-{{ audit_action_badge_class(log.action) }}">
-                                <i class="fa {{ audit_action_icon(log.action) }} me-1"></i>
-                                {{ log.action|upper }}
-                            </span>
+                            {{ include('@AuditTrail/admin/_audit_action_badge.html.twig', {
+                                action: log.action,
+                                label: (log.action.value ?? log.action)|upper,
+                                title: (log.action.value ?? log.action)|upper,
+                                icon_class: 'me-1',
+                            }, with_context: false) }}
                         </td>
                         <td class="align-middle fw-semibold text-body">
                             {{ log.entityClass|audit_short_class }}

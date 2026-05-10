@@ -25,16 +25,28 @@ use Rcsofttech\AuditTrailBundle\Contract\EntityProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Service\AssociationImpactAnalyzer;
+use Rcsofttech\AuditTrailBundle\Service\AuditContextNormalizer;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
+use Rcsofttech\AuditTrailBundle\Service\AuditFallbackPersister;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogContextProcessor;
+use Rcsofttech\AuditTrailBundle\Service\AuditLogFactory;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogWriter;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
+use Rcsofttech\AuditTrailBundle\Service\CollectionChangeIndexBuilder;
 use Rcsofttech\AuditTrailBundle\Service\CollectionChangeResolver;
 use Rcsofttech\AuditTrailBundle\Service\CollectionIdExtractor;
 use Rcsofttech\AuditTrailBundle\Service\CollectionTransitionMerger;
 use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
+use Rcsofttech\AuditTrailBundle\Service\DeferredCollectionDetector;
+use Rcsofttech\AuditTrailBundle\Service\DeletedAssociationImpactResolver;
+use Rcsofttech\AuditTrailBundle\Service\EntityAuditDispatchManager;
+use Rcsofttech\AuditTrailBundle\Service\EntityCollectionUpdateProcessor;
 use Rcsofttech\AuditTrailBundle\Service\EntityDataExtractor;
+use Rcsofttech\AuditTrailBundle\Service\EntityDeletionProcessor;
+use Rcsofttech\AuditTrailBundle\Service\EntityInsertionProcessor;
 use Rcsofttech\AuditTrailBundle\Service\EntityProcessor;
+use Rcsofttech\AuditTrailBundle\Service\EntityUpdateProcessor;
+use Rcsofttech\AuditTrailBundle\Service\EntityUpdateTransitionResolver;
 use Rcsofttech\AuditTrailBundle\Service\JoinTableCollectionIdLoader;
 use Rcsofttech\AuditTrailBundle\Service\MetadataCache;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
@@ -42,6 +54,7 @@ use Rcsofttech\AuditTrailBundle\Service\ValueSerializer;
 use ReflectionClass;
 use ReflectionProperty;
 use Symfony\Component\Clock\MockClock;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 abstract class AbstractAuditTestCase extends TestCase
 {
@@ -67,16 +80,16 @@ abstract class AbstractAuditTestCase extends TestCase
 
         return new AuditService(
             $em,
-            new MockClock(),
-            $transactionIdGenerator,
             $extractor,
             $metadataManager,
-            $contextResolver,
-            $idResolver,
-            new ContextSanitizer(),
-            null,
-            'UTC',
-            [],
+            new AuditLogFactory(
+                new MockClock(),
+                $transactionIdGenerator,
+                $contextResolver,
+                $idResolver,
+                new ContextSanitizer(),
+                new AuditContextNormalizer(new ContextSanitizer()),
+            ),
         );
     }
 
@@ -94,8 +107,9 @@ abstract class AbstractAuditTestCase extends TestCase
     ): AuditDispatcherInterface {
         return new AuditDispatcher(
             $transport,
-            new AuditLogContextProcessor(new ContextSanitizer()),
-            new AuditLogWriter(),
+            new AuditLogContextProcessor(new ContextSanitizer(), new AuditContextNormalizer(new ContextSanitizer())),
+            new AuditFallbackPersister(new AuditLogWriter(new UuidFactory())),
+            new UuidFactory(),
             null, // eventDispatcher
             $integrityService ?? self::createStub(AuditIntegrityServiceInterface::class),
         );
@@ -109,17 +123,53 @@ abstract class AbstractAuditTestCase extends TestCase
         bool $deferTransportUntilCommit = false,
     ): EntityProcessorInterface {
         $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $collectionIdExtractor = new CollectionIdExtractor($idResolver);
+        $joinTableLoader = new JoinTableCollectionIdLoader($idResolver);
+
+        $deletedAssociationImpactResolver = new DeletedAssociationImpactResolver();
+        $collectionTransitionMerger = new CollectionTransitionMerger();
+        $collectionChangeResolver = new CollectionChangeResolver(
+            $collectionIdExtractor,
+            new CollectionChangeIndexBuilder($collectionIdExtractor, $joinTableLoader),
+            $joinTableLoader,
+        );
 
         return new EntityProcessor(
-            $auditService,
-            $changeProcessor,
-            $dispatcher,
-            $auditManager,
-            new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger()),
-            new CollectionChangeResolver(new CollectionIdExtractor($idResolver), new JoinTableCollectionIdLoader($idResolver)),
-            new CollectionTransitionMerger(),
-            $deferTransportUntilCommit,
-            false,
+            new EntityInsertionProcessor(
+                $auditService,
+                $auditManager,
+                new DeferredCollectionDetector($collectionChangeResolver),
+                new EntityAuditDispatchManager($dispatcher, $auditManager, $deferTransportUntilCommit, false),
+            ),
+            new EntityUpdateProcessor(
+                $auditService,
+                $auditManager,
+                new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger()),
+                new DeferredCollectionDetector($collectionChangeResolver),
+                new EntityUpdateTransitionResolver(
+                    $changeProcessor,
+                    $deletedAssociationImpactResolver,
+                    $collectionChangeResolver,
+                    $collectionTransitionMerger,
+                ),
+                new EntityAuditDispatchManager($dispatcher, $auditManager, $deferTransportUntilCommit, false),
+            ),
+            new EntityCollectionUpdateProcessor(
+                $auditService,
+                $auditManager,
+                $collectionChangeResolver,
+                new DeferredCollectionDetector($collectionChangeResolver),
+                $collectionTransitionMerger,
+                new EntityAuditDispatchManager($dispatcher, $auditManager, $deferTransportUntilCommit, false),
+            ),
+            new EntityDeletionProcessor(
+                $auditService,
+                $changeProcessor,
+                $auditManager,
+                new AssociationImpactAnalyzer(new CollectionIdExtractor($idResolver), new CollectionTransitionMerger()),
+                new EntityAuditDispatchManager($dispatcher, $auditManager, $deferTransportUntilCommit, false),
+                true,
+            ),
         );
     }
 

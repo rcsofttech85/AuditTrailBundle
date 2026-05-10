@@ -10,13 +10,16 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
+use Rcsofttech\AuditTrailBundle\Service\AuditContextNormalizer;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
+use Rcsofttech\AuditTrailBundle\Service\AuditFallbackPersister;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogContextProcessor;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogWriter;
 use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\AbstractFunctionalTestCase;
 use Symfony\Component\EventDispatcher\EventDispatcher;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 final class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
 {
@@ -26,7 +29,7 @@ final class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
             'audit_config' => [
                 'integrity' => [
                     'enabled' => true,
-                    'secret' => 'test-secret',
+                    'secret' => '%env(string:AUDIT_INTEGRITY_SECRET)%',
                 ],
             ],
         ];
@@ -39,10 +42,11 @@ final class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
 
         $transport = $container->get('rcsofttech_audit_trail.transport.database');
         self::assertInstanceOf(AuditTransportInterface::class, $transport);
+        $uuidFactory = $container->get(UuidFactory::class);
+        self::assertInstanceOf(UuidFactory::class, $uuidFactory);
 
         $eventDispatcher = new EventDispatcher();
 
-        //  Add a listener that modifies the log (a signed field)
         $eventDispatcher->addListener(AuditLogCreatedEvent::class, static function (AuditLogCreatedEvent $event) {
             $log = $event->auditLog;
             $log->entityId = 'MODIFIED';
@@ -50,8 +54,9 @@ final class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
 
         $dispatcher = new AuditDispatcher(
             $transport,
-            new AuditLogContextProcessor(new ContextSanitizer()),
-            new AuditLogWriter(),
+            new AuditLogContextProcessor(new ContextSanitizer(), new AuditContextNormalizer(new ContextSanitizer())),
+            new AuditFallbackPersister(new AuditLogWriter($uuidFactory), $eventDispatcher),
+            $uuidFactory,
             $eventDispatcher,
             $integrityService,
             null,
@@ -63,13 +68,10 @@ final class AuditLogCreatedEventTest extends AbstractFunctionalTestCase
 
         $em = $this->getEntityManager();
 
-        //  Dispatch
         $dispatcher->dispatch($log, $em, AuditPhase::PostFlush);
 
-        //  Verify modification
         self::assertSame('MODIFIED', $log->entityId, 'Log should be modified in the event listener');
 
-        //  Verify signature integrity
         self::assertTrue($integrityService->verifySignature($log), 'Signature should be valid even after modification in event listener');
     }
 

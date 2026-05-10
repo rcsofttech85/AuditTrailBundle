@@ -10,15 +10,18 @@ use LogicException;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Attribute\AuditCondition;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\MetadataCacheInterface;
 use Rcsofttech\AuditTrailBundle\Contract\UserResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Service\AuditConditionExpressionValidator;
+use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityNormalizer;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 use Rcsofttech\AuditTrailBundle\Service\DataMasker;
 use Rcsofttech\AuditTrailBundle\Service\ExpressionLanguageVoter;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
 use ReflectionProperty;
+use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
 
 final class SecurityAuditTest extends TestCase
 {
@@ -28,12 +31,12 @@ final class SecurityAuditTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->integrityService = new AuditIntegrityService(self::TEST_HMAC_SECRET, true);
+        $this->integrityService = new AuditIntegrityService(new AuditIntegrityNormalizer(), self::TEST_HMAC_SECRET, true, 'sha256');
     }
 
     public function testSealedLogRejectsDirectMutation(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Create);
         $log->entityId = 'ORIGINAL';
         $log->seal();
 
@@ -45,7 +48,7 @@ final class SecurityAuditTest extends TestCase
 
     public function testReflectionCannotBypassSealProtection(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Create);
         $log->entityId = 'ORIGINAL';
         $log->seal();
 
@@ -59,7 +62,7 @@ final class SecurityAuditTest extends TestCase
 
     public function testSerializationTamperAttempt(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Create);
         $log->entityId = 'SAFE';
         $log->signature = $this->integrityService->generateSignature($log);
         $log->seal();
@@ -84,7 +87,7 @@ final class SecurityAuditTest extends TestCase
 
     public function testIndirectArrayModification(): void
     {
-        $log = new AuditLog('App\Entity\User', '1', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog('App\Entity\User', '1', AuditAction::Create);
         $log->context = ['initial' => true];
         $log->seal();
 
@@ -138,14 +141,20 @@ final class SecurityAuditTest extends TestCase
 
         $metadataCache->method('getAuditCondition')->willReturn(new AuditCondition("system('whoami')"));
         $logger->expects($this->once())
-            ->method('critical')
+            ->method('error')
             ->with(
-                'Blocked potentially dangerous AuditCondition expression.',
+                'AuditCondition expression syntax error.',
                 self::callback(static fn (array $context): bool => ($context['expression'] ?? null) === "system('whoami')")
             );
 
-        $voter = new ExpressionLanguageVoter($metadataCache, $userResolver, $logger);
+        $voter = new ExpressionLanguageVoter(
+            $metadataCache,
+            $userResolver,
+            new ExpressionLanguage(),
+            new AuditConditionExpressionValidator(),
+            $logger,
+        );
 
-        self::assertFalse($voter->vote(new TestEntity('attack'), AuditLogInterface::ACTION_UPDATE, []));
+        self::assertFalse($voter->vote(new TestEntity('attack'), AuditAction::Update, []));
     }
 }

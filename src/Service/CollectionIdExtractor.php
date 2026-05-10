@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Doctrine\ORM\PersistentCollection;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Contract\TrackableCollectionInterface;
 
+use function is_iterable;
 use function is_object;
 
 final readonly class CollectionIdExtractor
@@ -20,7 +22,7 @@ final readonly class CollectionIdExtractor
     /**
      * @param iterable<mixed> $items
      *
-     * @return array<int, int|string>
+     * @return array<int, string>
      */
     public function extractFromIterable(iterable $items, EntityManagerInterface $em): array
     {
@@ -31,11 +33,50 @@ final readonly class CollectionIdExtractor
             }
 
             $id = $this->idResolver->resolveFromEntity($item, $em);
-            if ($id !== AuditLogInterface::PENDING_ID) {
+            if ($id !== null) {
                 $ids[] = $id;
             }
         }
 
         return $ids;
+    }
+
+    public function hasPendingIds(mixed $items, EntityManagerInterface $em): bool
+    {
+        if (!is_iterable($items)) {
+            return false;
+        }
+
+        if ($items instanceof PersistentCollection && !$items->isInitialized()) {
+            if (!$items->isDirty()) {
+                return false;
+            }
+
+            return $this->iterableContainsUnresolvedIds($items->getInsertDiff(), $em);
+        }
+
+        if ($items instanceof TrackableCollectionInterface) {
+            return $this->iterableContainsUnresolvedIds($items->getInsertDiff(), $em);
+        }
+
+        return $this->iterableContainsUnresolvedIds($items, $em);
+    }
+
+    /**
+     * @param iterable<mixed> $items
+     */
+    private function iterableContainsUnresolvedIds(iterable $items, EntityManagerInterface $em): bool
+    {
+        foreach ($items as $item) {
+            if (!is_object($item)) {
+                continue;
+            }
+
+            if ($this->idResolver->resolveFromEntity($item, $em) === null) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -8,9 +8,10 @@ use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use LogicException;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Symfony\Component\Uid\Uuid;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 use function array_map;
 use function array_merge;
@@ -23,11 +24,20 @@ use function str_contains;
 
 final class AuditLogWriter implements AuditLogWriterInterface
 {
+    public function __construct(
+        private UuidFactory $uuidFactory,
+    ) {
+    }
+
     public function insert(AuditLog $audit, EntityManagerInterface $em): void
     {
+        if (!$audit->hasResolvedEntityId()) {
+            throw new LogicException('Cannot insert an audit log before the entity ID has been resolved.');
+        }
+
         $metadata = $em->getClassMetadata(AuditLog::class);
         $connection = $em->getConnection();
-        $this->assignIdentifierIfMissing($audit, $metadata);
+        $this->assignIdentifierIfMissing($audit);
 
         $fieldNames = $metadata->getFieldNames();
         if (!in_array('id', $fieldNames, true)) {
@@ -65,16 +75,9 @@ final class AuditLogWriter implements AuditLogWriterInterface
         return Type::getType($type)->convertToDatabaseValue($value, $em->getConnection()->getDatabasePlatform());
     }
 
-    /**
-     * @param ClassMetadata<AuditLog> $metadata
-     */
-    private function assignIdentifierIfMissing(AuditLog $audit, ClassMetadata $metadata): void
+    private function assignIdentifierIfMissing(AuditLog $audit): void
     {
-        if ($metadata->getFieldValue($audit, 'id') !== null) {
-            return;
-        }
-
-        $metadata->setFieldValue($audit, 'id', Uuid::v7());
+        $audit->initializeIdIfMissing($this->uuidFactory->create());
     }
 
     /**

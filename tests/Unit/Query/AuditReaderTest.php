@@ -4,40 +4,66 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Query;
 
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\Persistence\ManagerRegistry;
 use Exception;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Query\AuditChangedFieldMatcher;
+use Rcsofttech\AuditTrailBundle\Query\AuditQueryExecutor;
+use Rcsofttech\AuditTrailBundle\Query\AuditQueryFilterFactory;
 use Rcsofttech\AuditTrailBundle\Query\AuditReader;
+use Rcsofttech\AuditTrailBundle\Service\EntityClassResolver;
+use Rcsofttech\AuditTrailBundle\Service\EntityManagerResolver;
 use stdClass;
 
 final class AuditReaderTest extends TestCase
 {
+    private function createReader(
+        ?AuditLogRepositoryInterface $repository = null,
+        ?EntityIdResolverInterface $idResolver = null,
+        ?EntityClassResolver $entityClassResolver = null,
+    ): AuditReader {
+        $repo = $repository ?? self::createStub(AuditLogRepositoryInterface::class);
+
+        return new AuditReader(
+            new AuditQueryExecutor(
+                $repo,
+                new AuditQueryFilterFactory(),
+                new AuditChangedFieldMatcher(),
+            ),
+            $idResolver ?? self::createStub(EntityIdResolverInterface::class),
+            entityClassResolver: $entityClassResolver,
+        );
+    }
+
     public function testCreateQueryReturnsAuditQuery(): void
     {
-        $reader = new AuditReader(self::createStub(AuditLogRepositoryInterface::class), self::createStub(EntityIdResolverInterface::class));
+        $reader = $this->createReader();
         $reader->createQuery();
         $this->expectNotToPerformAssertions();
     }
 
     public function testForEntityReturnsAuditQuery(): void
     {
-        $reader = new AuditReader(self::createStub(AuditLogRepositoryInterface::class), self::createStub(EntityIdResolverInterface::class));
+        $reader = $this->createReader();
         $reader->forEntity('App\Entity\User', '123');
         $this->expectNotToPerformAssertions();
     }
 
     public function testByUserReturnsAuditQuery(): void
     {
-        $reader = new AuditReader(self::createStub(AuditLogRepositoryInterface::class), self::createStub(EntityIdResolverInterface::class));
+        $reader = $this->createReader();
         $reader->byUser('1');
         $this->expectNotToPerformAssertions();
     }
 
     public function testByTransactionReturnsAuditQuery(): void
     {
-        $reader = new AuditReader(self::createStub(AuditLogRepositoryInterface::class), self::createStub(EntityIdResolverInterface::class));
+        $reader = $this->createReader();
         $reader->byTransaction('hash');
         $this->expectNotToPerformAssertions();
     }
@@ -54,7 +80,7 @@ final class AuditReaderTest extends TestCase
             ->with(self::callback(static fn (array $f) => ($f['entityClass'] ?? null) === stdClass::class && ($f['entityId'] ?? null) === '123'), 30)
             ->willReturn([]);
 
-        $reader = new AuditReader($repository, $idResolver);
+        $reader = $this->createReader($repository, $idResolver);
         $reader->getHistoryFor($entity);
     }
 
@@ -67,7 +93,7 @@ final class AuditReaderTest extends TestCase
         $repository = self::createMock(AuditLogRepositoryInterface::class);
         $repository->expects($this->never())->method('findWithFilters');
 
-        $reader = new AuditReader($repository, $idResolver);
+        $reader = $this->createReader($repository, $idResolver);
         $collection = $reader->getHistoryFor($entity);
         self::assertCount(0, $collection);
     }
@@ -83,7 +109,7 @@ final class AuditReaderTest extends TestCase
         $repository = self::createStub(AuditLogRepositoryInterface::class);
         $repository->method('findWithFilters')->willReturn([$log]);
 
-        $reader = new AuditReader($repository, $idResolver);
+        $reader = $this->createReader($repository, $idResolver);
         $timeline = $reader->getTimelineFor($entity);
 
         self::assertArrayHasKey('tx1', $timeline);
@@ -100,7 +126,7 @@ final class AuditReaderTest extends TestCase
         $repository = self::createStub(AuditLogRepositoryInterface::class);
         $repository->method('findWithFilters')->willReturn([$log]);
 
-        $reader = new AuditReader($repository, $idResolver);
+        $reader = $this->createReader($repository, $idResolver);
         $result = $reader->getLatestFor($entity);
 
         self::assertNotNull($result);
@@ -115,7 +141,45 @@ final class AuditReaderTest extends TestCase
         $repository = self::createStub(AuditLogRepositoryInterface::class);
         $repository->method('findWithFilters')->willReturn([new AuditLog(stdClass::class, '123', 'create')]);
 
-        $reader = new AuditReader($repository, $idResolver);
+        $reader = $this->createReader($repository, $idResolver);
         self::assertTrue($reader->hasHistoryFor($entity));
+    }
+
+    public function testGetHistoryForUsesResolvedEntityClassForProxyEntities(): void
+    {
+        $entity = new class extends stdClass {
+        };
+        $idResolver = self::createStub(EntityIdResolverInterface::class);
+        $idResolver->method('resolveFromEntity')->willReturn('123');
+
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->expects($this->once())
+            ->method('getClassMetadata')
+            ->with($entity::class)
+            ->willReturn(new ClassMetadata(stdClass::class));
+
+        $repository = self::createMock(AuditLogRepositoryInterface::class);
+        $repository->expects($this->once())
+            ->method('findWithFilters')
+            ->with(
+                self::callback(static fn (array $filters) => ($filters['entityClass'] ?? null) === stdClass::class && ($filters['entityId'] ?? null) === '123'),
+                30,
+            )
+            ->willReturn([]);
+
+        $resolver = $this->createResolver(stdClass::class, $entityManager);
+        $reader = $this->createReader($repository, $idResolver, new EntityClassResolver($resolver));
+
+        $reader->getHistoryFor($entity);
+    }
+
+    private function createResolver(string $class, EntityManagerInterface $entityManager): EntityManagerResolver
+    {
+        $registry = self::createStub(ManagerRegistry::class);
+        $registry->method('getManagerForClass')->willReturnCallback(
+            static fn (string $resolvedClass): ?EntityManagerInterface => $resolvedClass === $class ? $entityManager : null
+        );
+
+        return new EntityManagerResolver($registry);
     }
 }

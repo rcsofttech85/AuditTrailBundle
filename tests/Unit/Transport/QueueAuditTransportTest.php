@@ -11,14 +11,15 @@ use Exception;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogMessageFactoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;
 use Rcsofttech\AuditTrailBundle\Message\AuditLogMessage;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
+use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessagePayloadEncoder;
 use Rcsofttech\AuditTrailBundle\Transport\AuditTransportContext;
 use Rcsofttech\AuditTrailBundle\Transport\QueueAuditTransport;
 use stdClass;
@@ -72,6 +73,16 @@ final class QueueAuditTransportTest extends TestCase
         return $eventDispatcher;
     }
 
+    /** @return AuditIntegrityServiceInterface&MockObject */
+    private function useIntegrityServiceMock(): AuditIntegrityServiceInterface
+    {
+        $integrityService = self::createMock(AuditIntegrityServiceInterface::class);
+        $this->integrityService = $integrityService;
+        $this->resetTransport();
+
+        return $integrityService;
+    }
+
     private function resetTransport(): void
     {
         $this->transport = new QueueAuditTransport(
@@ -85,7 +96,7 @@ final class QueueAuditTransportTest extends TestCase
 
     public function testSendDispatchesMessageWithStamps(): void
     {
-        $log = new AuditLog('TestEntity', '1', AuditLogInterface::ACTION_CREATE, new DateTimeImmutable());
+        $log = new AuditLog('TestEntity', '1', AuditAction::Create, new DateTimeImmutable());
 
         $queueMessage = new AuditLogMessage(
             entityClass: 'TestEntity',
@@ -138,9 +149,55 @@ final class QueueAuditTransportTest extends TestCase
         $this->transport->send($this->createContext(AuditPhase::PostFlush, $log));
     }
 
+    public function testSendSignsCanonicalSerializedPayload(): void
+    {
+        $log = new AuditLog('TestEntity', '1', AuditAction::Create, new DateTimeImmutable());
+        $queueMessage = new AuditLogMessage(
+            entityClass: 'TestEntity',
+            entityId: '1',
+            action: 'create',
+            oldValues: null,
+            newValues: ['url' => 'https://a/b', 'label' => 'Resume', 'title' => 'Resume'],
+            changedFields: ['url', 'label', 'title'],
+            userId: null,
+            username: null,
+            ipAddress: null,
+            userAgent: null,
+            transactionHash: null,
+            createdAt: $log->createdAt->format(DateTimeInterface::ATOM),
+        );
+
+        $this->messageFactory->method('createQueueMessage')->willReturn($queueMessage);
+        $integrityService = $this->useIntegrityServiceMock();
+        $integrityService->method('isEnabled')->willReturn(true);
+        $integrityService->expects($this->once())
+            ->method('signPayload')
+            ->with(new AuditLogMessagePayloadEncoder()->encode($queueMessage))
+            ->willReturn('canonical-signature');
+
+        $bus = $this->useBusMock();
+        $bus->expects($this->once())
+            ->method('dispatch')
+            ->with(
+                $queueMessage,
+                self::callback(static function (array $stamps): bool {
+                    foreach ($stamps as $stamp) {
+                        if ($stamp instanceof SignatureStamp) {
+                            return $stamp->signature === 'canonical-signature';
+                        }
+                    }
+
+                    return false;
+                }),
+            )
+            ->willReturn(new Envelope(new stdClass()));
+
+        $this->transport->send($this->createContext(AuditPhase::PostFlush, $log));
+    }
+
     public function testSendPropagatesException(): void
     {
-        $log = new AuditLog('TestEntity', '1', AuditLogInterface::ACTION_CREATE, new DateTimeImmutable());
+        $log = new AuditLog('TestEntity', '1', AuditAction::Create, new DateTimeImmutable());
 
         $queueMessage = new AuditLogMessage(
             entityClass: 'TestEntity',
@@ -172,7 +229,7 @@ final class QueueAuditTransportTest extends TestCase
 
     public function testSendResolvesPendingId(): void
     {
-        $log = new AuditLog('TestEntity', 'pending', AuditLogInterface::ACTION_CREATE);
+        $log = new AuditLog('TestEntity', null, AuditAction::Create);
 
         $queueMessage = new AuditLogMessage(
             entityClass: 'TestEntity',
@@ -204,7 +261,7 @@ final class QueueAuditTransportTest extends TestCase
 
     public function testSendIsCancelledByStoppingPropagation(): void
     {
-        $log = new AuditLog('TestEntity', '1', AuditLogInterface::ACTION_CREATE, new DateTimeImmutable());
+        $log = new AuditLog('TestEntity', '1', AuditAction::Create, new DateTimeImmutable());
 
         $queueMessage = new AuditLogMessage(
             entityClass: 'TestEntity',
@@ -250,7 +307,7 @@ final class QueueAuditTransportTest extends TestCase
         return new AuditTransportContext(
             $phase,
             self::createStub(EntityManagerInterface::class),
-            $log ?? new AuditLog('TestEntity', '1', AuditLogInterface::ACTION_CREATE),
+            $log ?? new AuditLog('TestEntity', '1', AuditAction::Create),
         );
     }
 }

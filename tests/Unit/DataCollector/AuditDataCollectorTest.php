@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\DataCollector;
 
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\DataCollector\AuditDataCollector;
 use Rcsofttech\AuditTrailBundle\DataCollector\TraceableAuditCollector;
@@ -27,18 +26,18 @@ final class AuditDataCollectorTest extends TestCase
         $this->dataCollector = new AuditDataCollector($this->traceableCollector);
     }
 
-    #[Test]
-    public function itReturnsZeroCountWhenNoAudits(): void
+    public function testReturnsZeroCountWhenNoAudits(): void
     {
         $this->dataCollector->collect(new Request(), new Response());
 
         self::assertSame(0, $this->dataCollector->getAuditCount());
         self::assertSame([], $this->dataCollector->getAudits());
         self::assertSame([], $this->dataCollector->getActionBreakdown());
+        self::assertSame(0, $this->dataCollector->getAiAuditCount());
+        self::assertSame([], $this->dataCollector->getAiSeverityBreakdown());
     }
 
-    #[Test]
-    public function itCollectsAuditData(): void
+    public function testCollectsAuditData(): void
     {
         $audit = new AuditLog(entityClass: 'App\Entity\User', entityId: '7', action: 'create');
         $this->traceableCollector->onAuditLogCreated(new AuditLogCreatedEvent($audit));
@@ -50,8 +49,7 @@ final class AuditDataCollectorTest extends TestCase
         self::assertSame('App\Entity\User', $this->dataCollector->getAudits()[0]['entity_class']);
     }
 
-    #[Test]
-    public function itReturnsActionBreakdown(): void
+    public function testReturnsActionBreakdown(): void
     {
         $this->traceableCollector->onAuditLogCreated(
             new AuditLogCreatedEvent(new AuditLog(entityClass: 'App\Entity\User', entityId: '1', action: 'create'))
@@ -70,14 +68,41 @@ final class AuditDataCollectorTest extends TestCase
         self::assertSame(1, $breakdown['update']);
     }
 
-    #[Test]
-    public function itHasCorrectName(): void
+    public function testReturnsAiBreakdowns(): void
+    {
+        $this->traceableCollector->onAuditLogCreated(new AuditLogCreatedEvent(new AuditLog(
+            entityClass: 'App\Entity\User',
+            entityId: '1',
+            action: 'create',
+            context: ['ai' => ['symfony_ai' => ['severity' => 'medium', 'summary' => 'Created user']]],
+        )));
+        $this->traceableCollector->onAuditLogCreated(new AuditLogCreatedEvent(new AuditLog(
+            entityClass: 'App\Entity\User',
+            entityId: '2',
+            action: 'update',
+            context: ['ai' => ['symfony_ai' => ['severity' => 'high']]],
+        )));
+        $this->traceableCollector->onAuditLogCreated(new AuditLogCreatedEvent(new AuditLog(
+            entityClass: 'App\Entity\Order',
+            entityId: '1',
+            action: 'create',
+        )));
+
+        $this->dataCollector->collect(new Request(), new Response());
+
+        self::assertSame(2, $this->dataCollector->getAiAuditCount());
+        self::assertSame([
+            'medium' => 1,
+            'high' => 1,
+        ], $this->dataCollector->getAiSeverityBreakdown());
+    }
+
+    public function testHasCorrectName(): void
     {
         self::assertSame('audit_trail', $this->dataCollector->getName());
     }
 
-    #[Test]
-    public function itHasTemplate(): void
+    public function testHasTemplate(): void
     {
         self::assertSame('@AuditTrail/Collector/audit.html.twig', AuditDataCollector::getTemplate());
     }

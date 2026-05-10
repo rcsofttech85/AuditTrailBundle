@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityNormalizer;
 use Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService;
 use RuntimeException;
 
@@ -25,14 +26,19 @@ final class AuditIntegrityServiceTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->service = new AuditIntegrityService($this->secret, true, 'sha256');
+        $this->service = $this->createService($this->secret, true, 'sha256');
+    }
+
+    private function createService(?string $secret, bool $enabled, string $algorithm): AuditIntegrityService
+    {
+        return new AuditIntegrityService(new AuditIntegrityNormalizer(), $secret, $enabled, $algorithm);
     }
 
     public function testIsEnabled(): void
     {
         self::assertTrue($this->service->isEnabled());
 
-        $disabledService = new AuditIntegrityService($this->secret, false, 'sha256');
+        $disabledService = $this->createService($this->secret, false, 'sha256');
         self::assertFalse($disabledService->isEnabled());
     }
 
@@ -303,14 +309,14 @@ final class AuditIntegrityServiceTest extends TestCase
         $signature = $this->service->signPayload('test');
         self::assertNotEmpty($signature);
 
-        $disabledService = new AuditIntegrityService(null, true, 'sha256');
+        $disabledService = $this->createService(null, true, 'sha256');
         $this->expectException(RuntimeException::class);
         $disabledService->signPayload('test');
     }
 
     public function testGenerateSignatureNoSecret(): void
     {
-        $disabledService = new AuditIntegrityService(null, true, 'sha256');
+        $disabledService = $this->createService(null, true, 'sha256');
         $this->expectException(RuntimeException::class);
         $disabledService->generateSignature(new AuditLog('a', '1', 'create'));
     }

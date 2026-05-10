@@ -1,16 +1,19 @@
 # AuditReader API Documentation
 
-The **AuditReader** provides a fluent, immutable, and expressive API to query audit logs programmatically in your Symfony application.
+`AuditReader` is the main API for querying audit logs in your Symfony
+application.
 
-It is designed for:
+When you pass an entity object to helpers such as `getHistoryFor()`, `getLatestFor()`, or `hasHistoryFor()`, the bundle resolves Doctrine proxies and lazy subclasses back to the mapped entity class before querying.
+
+Use it for:
 
 - Entity-level audit history
 - Advanced filtering (actions, users, fields, transactions)
 - Diff inspection
 - Pagination and collections
-- Read-only, side-effect-free querying
+- Read-only queries
 
-All query methods are chainable and return **new immutable query instances**.
+All query methods are chainable and return new immutable query objects.
 
 ---
 
@@ -53,6 +56,10 @@ foreach ($history as $entry) {
 }
 ```
 
+If you already know the mapped class and identifier,
+`forEntity(User::class, '123')` is the clearest form. The object-based helpers
+are just convenience wrappers around the same lookup.
+
 ## Building Custom Queries
 
 ```php
@@ -60,7 +67,7 @@ foreach ($history as $entry) {
 
 declare(strict_types=1);
 
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 
 // Find all updates to User entities in the last 30 days
 $recentUpdates = $this->auditReader
@@ -74,8 +81,8 @@ $recentUpdates = $this->auditReader
 $deletions = $this->auditReader
     ->byUser('1')
     ->action(
-        AuditLogInterface::ACTION_DELETE,
-        AuditLogInterface::ACTION_SOFT_DELETE
+        AuditAction::Delete,
+        AuditAction::SoftDelete
     )
     ->getResults();
 ```
@@ -222,7 +229,8 @@ Cursor and limit rules:
 
 - `limit()` must be greater than `0`, otherwise the query throws an `InvalidArgumentException`.
 - `after()` and `before()` expect a valid audit-log UUID string.
-- `changedField()` supports forward keyset pagination with `after()`, but reverse pagination with `before()` is intentionally rejected because the bundle cannot guarantee stable changed-field filtering in that direction.
+- `changedField()` on the public `AuditReader` / `AuditQuery` API uses database-native JSON predicates on MySQL, PostgreSQL, and SQLite. On other platforms that query layer falls back to batched in-memory matching.
+- `changedField()` supports forward keyset pagination with `after()`. Reverse pagination with `before()` is rejected because the bundle cannot keep changed-field filtering stable in that direction.
 
 ```php
 <?php

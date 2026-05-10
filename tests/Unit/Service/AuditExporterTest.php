@@ -45,17 +45,14 @@ final class AuditExporterTest extends TestCase
 
         $csv = $this->exporter->formatAsCsv($audits);
 
-        // Header + 1 row
         $lines = explode("\n", trim($csv));
         self::assertCount(2, $lines);
 
         $dataRow = $lines[1];
 
-        // Ensure string values are prefixed with '
         self::assertStringContainsString("'-malicious", $dataRow);
         self::assertStringContainsString('127.0.0.1', $dataRow);
 
-        // JSON values should be preserved but the trigger character is inside the JSON string
         self::assertStringContainsString('"=1+1"', $dataRow);
         self::assertStringContainsString('"+SUM(A1)"', $dataRow);
     }
@@ -68,6 +65,15 @@ final class AuditExporterTest extends TestCase
 
         self::assertStringContainsString("'-malicious", $csv);
         self::assertStringContainsString('127.0.0.1', $csv);
+    }
+
+    public function testSanitizeCsvValueWithLeadingWhitespaceFormula(): void
+    {
+        $log = new AuditLog('User', '1', 'update', username: " \t=cmd|' /C calc'!A0");
+
+        $csv = $this->exporter->formatAsCsv([$log]);
+
+        self::assertStringContainsString("' \t=cmd|' /C calc'!A0", $csv);
     }
 
     public function testFormatAuditsThrowsOnInvalidFormat(): void
@@ -96,7 +102,6 @@ final class AuditExporterTest extends TestCase
         $log1 = new AuditLog('User', '1', 'create', new DateTimeImmutable('2024-01-01 12:00:00'));
         $log2 = new AuditLog('User', '2', 'update', new DateTimeImmutable('2024-01-02 12:00:00'));
 
-        // This direct call will kill the PublicVisibility mutant on formatAsJson
         $json = $this->exporter->formatAsJson([$log1, $log2]);
 
         /** @var array<int, array<string, mixed>> $decoded */
@@ -115,8 +120,6 @@ final class AuditExporterTest extends TestCase
         self::assertArrayHasKey('user_agent', $decoded[0]);
         self::assertSame('2024-01-01T12:00:00+00:00', $decoded[0]['created_at']);
 
-        // Test JSON formatting flags by strictly checking string layout
-        // Assuming PRETTY_PRINT adds newlines and JSON_UNESCAPED_SLASHES prevents \/
         self::assertStringContainsString("[{\n    \"id\":", $json);
         self::assertStringNotContainsString('\/', $json);
     }
@@ -126,23 +129,19 @@ final class AuditExporterTest extends TestCase
         $log1 = new AuditLog('User', '1', 'create', new DateTimeImmutable('2024-01-01 12:00:00'));
         $log2 = new AuditLog('Post', '99', 'delete', new DateTimeImmutable('2024-01-02 12:00:00'));
 
-        // Direct call to kill PublicVisibility mutant
         $csv = $this->exporter->formatAsCsv([$log1, $log2]);
 
         $lines = explode("\n", trim($csv));
         self::assertCount(3, $lines);
 
-        // Header array keys checking
-        self::assertStringContainsString('id,entity_class,entity_id,action,old_values,new_values,changed_fields,user_id,username,ip_address,user_agent,created_at', $lines[0]);
+        self::assertStringContainsString('id,entity_class,entity_id,action,old_values,new_values,changed_fields,user_id,username,ip_address,user_agent,reverted_log_id,created_at', $lines[0]);
 
-        // Check exact row layouts
-        self::assertStringContainsString(',User,1,create,,,,,,,,2024-01-01T12:00:00+00:00', $lines[1]);
-        self::assertStringContainsString(',Post,99,delete,,,,,,,,2024-01-02T12:00:00+00:00', $lines[2]);
+        self::assertStringContainsString(',User,1,create,,,,,,,,,2024-01-01T12:00:00+00:00', $lines[1]);
+        self::assertStringContainsString(',Post,99,delete,,,,,,,,,2024-01-02T12:00:00+00:00', $lines[2]);
     }
 
     public function testAuditToArrayVisibility(): void
     {
-        // Testing that auditToArray is public, will cause PublicVisibility to be caught if it is made protected
         $log = new AuditLog('User', '1', 'create');
         $array = $this->exporter->auditToArray($log);
         self::assertArrayHasKey('action', $array);
@@ -156,7 +155,7 @@ final class AuditExporterTest extends TestCase
         $stream = fopen('php://temp', 'r+');
         self::assertIsResource($stream);
 
-        $this->exporter->exportToStream([$log1, $log2], 'json', $stream);
+        $count = $this->exporter->exportToStream([$log1, $log2], 'json', $stream);
 
         rewind($stream);
         $streamOutput = stream_get_contents($stream);
@@ -164,6 +163,7 @@ final class AuditExporterTest extends TestCase
 
         $stringOutput = $this->exporter->formatAsJson([$log1, $log2]);
 
+        self::assertSame(2, $count);
         self::assertSame($stringOutput, $streamOutput);
     }
 
@@ -175,7 +175,7 @@ final class AuditExporterTest extends TestCase
         $stream = fopen('php://temp', 'r+');
         self::assertIsResource($stream);
 
-        $this->exporter->exportToStream([$log1, $log2], 'csv', $stream);
+        $count = $this->exporter->exportToStream([$log1, $log2], 'csv', $stream);
 
         rewind($stream);
         $streamOutput = stream_get_contents($stream);
@@ -183,6 +183,7 @@ final class AuditExporterTest extends TestCase
 
         $stringOutput = $this->exporter->formatAsCsv([$log1, $log2]);
 
+        self::assertSame(2, $count);
         self::assertSame($stringOutput, $streamOutput);
     }
 

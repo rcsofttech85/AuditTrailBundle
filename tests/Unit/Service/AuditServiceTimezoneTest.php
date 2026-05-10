@@ -10,14 +10,17 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use PHPUnit\Framework\TestCase;
 use Psr\Clock\ClockInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditMetadataManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ContextResolverInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityDataExtractorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Service\AuditContextNormalizer;
+use Rcsofttech\AuditTrailBundle\Service\AuditLogFactory;
 use Rcsofttech\AuditTrailBundle\Service\AuditService;
 use Rcsofttech\AuditTrailBundle\Service\ContextSanitizer;
 use Rcsofttech\AuditTrailBundle\Service\TransactionIdGenerator;
+use Symfony\Component\Uid\Factory\UuidFactory;
 
 final class AuditServiceTimezoneTest extends TestCase
 {
@@ -44,16 +47,17 @@ final class AuditServiceTimezoneTest extends TestCase
 
         $service = new AuditService(
             $entityManager,
-            $clock,
-            new TransactionIdGenerator(),
             self::createStub(EntityDataExtractorInterface::class),
             $metadataManager,
-            $contextResolver,
-            $idResolver,
-            new ContextSanitizer(),
-            null,
-            'Asia/Kolkata',
-            [],
+            new AuditLogFactory(
+                $clock,
+                new TransactionIdGenerator(new UuidFactory()),
+                $contextResolver,
+                $idResolver,
+                new ContextSanitizer(),
+                new AuditContextNormalizer(new ContextSanitizer()),
+                timezone: 'Asia/Kolkata',
+            ),
         );
 
         $entity = new class {
@@ -64,10 +68,11 @@ final class AuditServiceTimezoneTest extends TestCase
         };
 
         $metadata = self::createStub(ClassMetadata::class);
+        $metadata->method('getName')->willReturn($entity::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $entityManager->method('getClassMetadata')->willReturn($metadata);
 
-        $auditLog = $service->createAuditLog($entity, AuditLogInterface::ACTION_CREATE);
+        $auditLog = $service->createAuditLog($entity, AuditAction::Create);
 
         self::assertSame('Asia/Kolkata', $auditLog->createdAt->getTimezone()->getName());
         self::assertSame('2023-01-01 17:30:00', $auditLog->createdAt->format('Y-m-d H:i:s'));
@@ -95,16 +100,16 @@ final class AuditServiceTimezoneTest extends TestCase
 
         $service = new AuditService(
             $entityManager,
-            $clock,
-            new TransactionIdGenerator(),
             self::createStub(EntityDataExtractorInterface::class),
             $metadataManager,
-            $contextResolver,
-            $idResolver,
-            new ContextSanitizer(),
-            null,
-            'UTC',
-            [],
+            new AuditLogFactory(
+                $clock,
+                new TransactionIdGenerator(new UuidFactory()),
+                $contextResolver,
+                $idResolver,
+                new ContextSanitizer(),
+                new AuditContextNormalizer(new ContextSanitizer()),
+            ),
         );
 
         $entity = new class {
@@ -115,10 +120,11 @@ final class AuditServiceTimezoneTest extends TestCase
         };
 
         $metadata = self::createStub(ClassMetadata::class);
+        $metadata->method('getName')->willReturn($entity::class);
         $metadata->method('getIdentifierValues')->willReturn(['id' => 1]);
         $entityManager->method('getClassMetadata')->willReturn($metadata);
 
-        $auditLog = $service->createAuditLog($entity, AuditLogInterface::ACTION_CREATE);
+        $auditLog = $service->createAuditLog($entity, AuditAction::Create);
 
         self::assertSame('UTC', $auditLog->createdAt->getTimezone()->getName());
         self::assertSame('2023-01-01 12:00:00', $auditLog->createdAt->format('Y-m-d H:i:s'));

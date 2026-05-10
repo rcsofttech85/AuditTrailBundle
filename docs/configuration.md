@@ -1,8 +1,9 @@
 # Configuration Reference
 
-Create a configuration file at `config/packages/audit_trail.yaml`.
+Create `config/packages/audit_trail.yaml`.
 
-For detailed transport configuration and usage, see [Audit Transports](symfony-audit-transports.md).
+For transport setup details, see
+[Audit Transports](symfony-audit-transports.md).
 
 ```yaml
 audit_trail:
@@ -20,7 +21,9 @@ audit_trail:
     table_prefix: ''
     table_suffix: ''
 
-    # Global list of entities to ignore
+    # Global list of entities to ignore.
+    # Use mapped entity classes such as App\Entity\Order.
+    # The bundle maps Doctrine proxy/lazy subclasses back to that class automatically.
     ignored_entities: []
 
     # Retention period for database logs (in days)
@@ -33,11 +36,13 @@ audit_trail:
     # enable or disable delete tracking
     enable_hard_delete: true
     enable_soft_delete: true
+    # The built-in restore flow clears this field by setting it back to null,
+    # so use a nullable timestamp-like field such as deletedAt or archivedAt.
     soft_delete_field: 'deletedAt'
 
     # Attempt database-backed fallback persistence if another transport fails.
-    # This uses the bundle's phase-aware fallback path and may persist immediately
-    # or defer safely depending on the current audit phase.
+    # This uses the bundle's fallback path for the current phase and may persist
+    # immediately or defer safely depending on the audit phase.
     fallback_to_database: true
 
     # Optional cache pool used for cross-request access-audit cooldowns.
@@ -48,6 +53,11 @@ audit_trail:
     # Required role/permission for EasyAdmin audit actions
     admin_permission: 'ROLE_ADMIN'
 
+    # Maximum number of rows a single EasyAdmin export request will stream.
+    # This keeps browser-triggered exports bounded. Use the CLI export command
+    # for larger or full-history exports.
+    admin_export_limit: 50000
+
     # HTTP methods eligible for access auditing
     audited_methods: ['GET']
 
@@ -55,6 +65,14 @@ audit_trail:
     # -----------------------------------
     collection_serialization_mode: 'lazy'
     max_collection_items: 100
+
+    # In-memory queue limits for scheduled and deferred audit work.
+    # These defaults protect long-running workers from unbounded growth if
+    # audit delivery keeps failing and work must be retained for a later flush.
+    queue_limits:
+        scheduled_audits: 1000
+        pending_audit_plans: 1000
+        pending_deletions: 1000
 
     transports:
         # Store logs in the local database
@@ -80,7 +98,7 @@ audit_trail:
     # Enable cryptographic signing of audit logs to prevent tampering.
     integrity:
         enabled: false
-        secret: '%env(AUDIT_INTEGRITY_SECRET)%'
+        secret: '%env(string:AUDIT_INTEGRITY_SECRET)%'
         algorithm: 'sha256'
 
     # Transaction Safety & Performance
@@ -108,12 +126,19 @@ audit_trail:
 
 - At least one transport must be enabled when `audit_trail.enabled` is `true`
 - The database transport is enabled by default
+- If `transports.http.enabled` or `transports.queue.enabled` is `true` and you
+  leave `fail_on_transport_error` / `fallback_to_database` unset, the bundle
+  sets them to `true` / `false` by default. Explicit values still win.
 - Enabling `transports.database.async` or `transports.queue` without `symfony/messenger` installed throws a clear `LogicException`
 - Enabling `transports.http` without `symfony/http-client` installed throws a clear `LogicException`
 - `integrity.secret` is required only when `integrity.enabled` is `true`
 - `http.endpoint` must start with `http://` or `https://` when HTTP transport is enabled
 - `table_prefix` and `table_suffix` must be strings; non-empty values may contain only letters, numbers, and underscores and must not start with a digit
+- `soft_delete_field` must not be empty and should point to a nullable timestamp-like field such as `deletedAt` or `archivedAt`
+- the built-in restore flow clears that field by setting it to `null`; boolean or status-based soft-delete markers need a custom restore handler
 - `max_collection_items` must be at least `1`
+- `admin_export_limit` must be at least `1`
+- each `queue_limits` value must be at least `1`
 - If `cache_pool` is `null`, access-audit cooldowns are request-local only; cross-request cooldown persistence is disabled
 
 ## Package Requirements By Feature
@@ -128,13 +153,17 @@ Install additional packages only for the features you enable:
 
 ## Transaction Safety Guide
 
-These three options control the bundle's failure boundary:
+These three options control how the bundle behaves when delivery fails:
 
 | Option | Default | What It Changes |
 | :--- | :--- | :--- |
 | `defer_transport_until_commit` | `true` | Delivers audits after the Doctrine `postFlush` boundary instead of during `onFlush`. |
 | `fail_on_transport_error` | `false` | Escalates transport exceptions instead of logging and continuing. |
-| `fallback_to_database` | `true` | Attempts phase-aware database-backed fallback persistence when another transport fails. |
+| `fallback_to_database` | `true` | Tries database-backed fallback persistence when another transport fails. |
+
+These are the base defaults. When HTTP or queue transport is enabled and you
+leave the failure-handling flags unset, the bundle changes them to
+`fail_on_transport_error: true` and `fallback_to_database: false`.
 
 ### Recommended combinations
 
@@ -146,13 +175,15 @@ These three options control the bundle's failure boundary:
 
 ### Important behavior notes
 
-- When `defer_transport_until_commit` is `false`, the bundle still avoids calling `flush()` from inside Doctrine `onFlush`.
-- Transport support remains phase-specific even when `defer_transport_until_commit` is `false`. For example, HTTP and queue delivery still occur in deferred phases rather than inside the Doctrine transaction, so this setting does not make every enabled transport part of the same transactional boundary.
+- When `defer_transport_until_commit` is `false`, the bundle still does not call `flush()` from inside Doctrine `onFlush`.
+- Transport support is still phase-specific when `defer_transport_until_commit` is `false`. For example, HTTP and queue delivery still happen in deferred phases rather than inside the Doctrine transaction, so this setting does not put every enabled transport in the same transaction boundary.
 - If fallback is needed during `onFlush`, the database audit entity is attached through Doctrine `UnitOfWork` change-set computation and joins the application's existing flush.
 - If `defer_transport_until_commit` is `true`, there is a small but real window where the main transaction can commit and the audit delivery can fail afterward. This is the default performance trade-off for HTTP and queue transports.
 - In deferred database mode, the bundle no longer performs a follow-up ORM `flush()` from `postFlush`. Deferred `AuditLog` rows are written through a dedicated database writer instead.
 - Because deferred database writes use a dedicated writer, Doctrine ORM lifecycle callbacks/listeners on `AuditLog` are not involved in that deferred path.
-- When `fallback_to_database` is enabled, the dispatcher uses the bundle's own phase-aware fallback persistence path. On `onFlush` it joins the current `UnitOfWork`; on deferred and manual phases it writes through the dedicated database writer; and on failure it logs the fallback failure explicitly.
+- When `fallback_to_database` is enabled, the dispatcher uses the bundle's own fallback path for each phase. On `onFlush` it joins the current `UnitOfWork`; on deferred and manual phases it writes through the dedicated database writer; and on failure it logs the fallback failure clearly.
+- If transport delivery keeps failing in a long-running process, the bundle retains failed work for a later flush. The `queue_limits` settings cap that in-memory retention so workers fail loudly instead of growing without bound.
+- EasyAdmin exports respect the active admin filters first, then apply `admin_export_limit`. If you need a larger export, prefer the CLI command.
 
 ## Collection Serialization Guide
 

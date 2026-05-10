@@ -6,19 +6,35 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\ORM\Query\FilterCollection;
+use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ScheduledAuditManagerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\SoftDeleteHandlerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Service\AssociationMutatorInvoker;
 use Rcsofttech\AuditTrailBundle\Service\AuditReverter;
+use Rcsofttech\AuditTrailBundle\Service\EntityIdentifierNormalizer;
+use Rcsofttech\AuditTrailBundle\Service\EntityManagerResolver;
+use Rcsofttech\AuditTrailBundle\Service\RevertAccessActionHandler;
+use Rcsofttech\AuditTrailBundle\Service\RevertAuditLogCreator;
+use Rcsofttech\AuditTrailBundle\Service\RevertCollectionAssociationSynchronizer;
+use Rcsofttech\AuditTrailBundle\Service\RevertCreateActionHandler;
+use Rcsofttech\AuditTrailBundle\Service\RevertDateTimeValueDenormalizer;
+use Rcsofttech\AuditTrailBundle\Service\RevertEntityStateApplier;
+use Rcsofttech\AuditTrailBundle\Service\RevertGuard;
+use Rcsofttech\AuditTrailBundle\Service\RevertPlanBuilder;
+use Rcsofttech\AuditTrailBundle\Service\RevertSoftDeleteActionHandler;
+use Rcsofttech\AuditTrailBundle\Service\RevertUpdateActionHandler;
 use Rcsofttech\AuditTrailBundle\Service\RevertValueDenormalizer;
+use Rcsofttech\AuditTrailBundle\Service\SoftDeleteFilterManager;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\DummyEntity;
 use RuntimeException;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -34,6 +50,8 @@ final class AuditRevertIntegrityTest extends TestCase
     /** @var SoftDeleteHandlerInterface&\PHPUnit\Framework\MockObject\Stub */
     private SoftDeleteHandlerInterface $softDeleteHandler;
 
+    private FilterCollection $filterCollection;
+
     private AuditReverter $reverter;
 
     protected function setUp(): void
@@ -41,45 +59,73 @@ final class AuditRevertIntegrityTest extends TestCase
         $this->em = self::createStub(EntityManagerInterface::class);
         $this->integrityService = self::createStub(AuditIntegrityServiceInterface::class);
         $this->softDeleteHandler = self::createStub(SoftDeleteHandlerInterface::class);
-
-        $this->softDeleteHandler->method('disableSoftDeleteFilters')->willReturn([]);
+        $this->filterCollection = self::createStub(FilterCollection::class);
+        $this->filterCollection->method('getEnabledFilters')->willReturn([]);
+        $this->em->method('getFilters')->willReturn($this->filterCollection);
 
         $serializer = self::createStub(ValueSerializerInterface::class);
         $serializer->method('serialize')->willReturnArgument(0);
 
-        $this->reverter = new AuditReverter(
-            $this->em,
-            self::createStub(ValidatorInterface::class),
-            self::createStub(AuditServiceInterface::class),
-            new RevertValueDenormalizer($this->em),
-            $this->softDeleteHandler,
-            $this->integrityService,
-            self::createStub(AuditDispatcherInterface::class),
-            $serializer,
-            self::createStub(ScheduledAuditManagerInterface::class),
-            self::createStub(AuditLogRepositoryInterface::class)
+        $this->reverter = $this->createReverter($this->integrityService, $serializer);
+    }
+
+    private function createReverter(
+        AuditIntegrityServiceInterface $integrityService,
+        ?ValueSerializerInterface $serializer = null,
+    ): AuditReverter {
+        if ($serializer === null) {
+            $serializer = self::createStub(ValueSerializerInterface::class);
+            $serializer->method('serialize')->willReturnArgument(0);
+        }
+
+        $resolver = $this->createResolver();
+        $denormalizer = new RevertValueDenormalizer(
+            $resolver,
+            new RevertDateTimeValueDenormalizer(),
+            new EntityIdentifierNormalizer($resolver),
         );
+        $collectionSynchronizer = new RevertCollectionAssociationSynchronizer($resolver, new AssociationMutatorInvoker());
+
+        return new AuditReverter(
+            $resolver,
+            self::createStub(ValidatorInterface::class),
+            $denormalizer,
+            new SoftDeleteFilterManager(['softdeleteable']),
+            self::createStub(ScheduledAuditManagerInterface::class),
+            new RevertGuard($integrityService, self::createStub(AuditLogRepositoryInterface::class)),
+            new RevertEntityStateApplier($resolver, $this->softDeleteHandler, $collectionSynchronizer),
+            new RevertAuditLogCreator(
+                self::createStub(AuditServiceInterface::class),
+                $serializer,
+            ),
+            self::createStub(AuditDispatcherInterface::class),
+            [
+                new RevertCreateActionHandler(),
+                new RevertUpdateActionHandler(
+                    new RevertPlanBuilder($resolver, $denormalizer, $serializer, $collectionSynchronizer),
+                ),
+                new RevertSoftDeleteActionHandler($this->softDeleteHandler),
+                new RevertAccessActionHandler(),
+            ],
+        );
+    }
+
+    private function createResolver(): EntityManagerResolver
+    {
+        $registry = self::createStub(ManagerRegistry::class);
+        $registry->method('getManagerForClass')->willReturn($this->em);
+
+        return new EntityManagerResolver($registry);
     }
 
     public function testRevertFailsIfTampered(): void
     {
-        $log = new AuditLog(entityClass: DummyEntity::class, entityId: '1', action: AuditLogInterface::ACTION_UPDATE);
+        $log = new AuditLog(entityClass: DummyEntity::class, entityId: '1', action: AuditAction::Update);
 
         $integrityService = self::createMock(AuditIntegrityServiceInterface::class);
         $integrityService->method('isEnabled')->willReturn(true);
         $integrityService->expects($this->once())->method('verifySignature')->with($log)->willReturn(false);
-        $this->reverter = new AuditReverter(
-            $this->em,
-            self::createStub(ValidatorInterface::class),
-            self::createStub(AuditServiceInterface::class),
-            new RevertValueDenormalizer($this->em),
-            $this->softDeleteHandler,
-            $integrityService,
-            self::createStub(AuditDispatcherInterface::class),
-            self::createStub(ValueSerializerInterface::class),
-            self::createStub(ScheduledAuditManagerInterface::class),
-            self::createStub(AuditLogRepositoryInterface::class)
-        );
+        $this->reverter = $this->createReverter($integrityService);
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('has been tampered with');
@@ -92,7 +138,7 @@ final class AuditRevertIntegrityTest extends TestCase
         $log = new AuditLog(
             entityClass: DummyEntity::class,
             entityId: '1',
-            action: AuditLogInterface::ACTION_UPDATE,
+            action: AuditAction::Update,
             oldValues: ['name' => 'John']
         );
 
@@ -101,18 +147,7 @@ final class AuditRevertIntegrityTest extends TestCase
         $integrityService->expects($this->once())->method('verifySignature')->with($log)->willReturn(true);
         $serializer = self::createStub(ValueSerializerInterface::class);
         $serializer->method('serialize')->willReturnArgument(0);
-        $this->reverter = new AuditReverter(
-            $this->em,
-            self::createStub(ValidatorInterface::class),
-            self::createStub(AuditServiceInterface::class),
-            new RevertValueDenormalizer($this->em),
-            $this->softDeleteHandler,
-            $integrityService,
-            self::createStub(AuditDispatcherInterface::class),
-            $serializer,
-            self::createStub(ScheduledAuditManagerInterface::class),
-            self::createStub(AuditLogRepositoryInterface::class)
-        );
+        $this->reverter = $this->createReverter($integrityService, $serializer);
 
         $this->em->method('find')->willReturn(new DummyEntity());
         $meta = self::createStub(ClassMetadata::class);
@@ -129,7 +164,7 @@ final class AuditRevertIntegrityTest extends TestCase
         $log = new AuditLog(
             entityClass: DummyEntity::class,
             entityId: '1',
-            action: AuditLogInterface::ACTION_UPDATE,
+            action: AuditAction::Update,
             oldValues: ['name' => 'John']
         );
 
@@ -138,18 +173,7 @@ final class AuditRevertIntegrityTest extends TestCase
         $integrityService->expects($this->never())->method('verifySignature');
         $serializer = self::createStub(ValueSerializerInterface::class);
         $serializer->method('serialize')->willReturnArgument(0);
-        $this->reverter = new AuditReverter(
-            $this->em,
-            self::createStub(ValidatorInterface::class),
-            self::createStub(AuditServiceInterface::class),
-            new RevertValueDenormalizer($this->em),
-            $this->softDeleteHandler,
-            $integrityService,
-            self::createStub(AuditDispatcherInterface::class),
-            $serializer,
-            self::createStub(ScheduledAuditManagerInterface::class),
-            self::createStub(AuditLogRepositoryInterface::class)
-        );
+        $this->reverter = $this->createReverter($integrityService, $serializer);
 
         $this->em->method('find')->willReturn(new DummyEntity());
         $meta = self::createStub(ClassMetadata::class);
@@ -163,25 +187,14 @@ final class AuditRevertIntegrityTest extends TestCase
 
     public function testRevertSucceedsForRevertActionWithoutSignature(): void
     {
-        $log = new AuditLog(entityClass: DummyEntity::class, entityId: '1', action: AuditLogInterface::ACTION_REVERT);
+        $log = new AuditLog(entityClass: DummyEntity::class, entityId: '1', action: AuditAction::Revert);
 
         $integrityService = self::createMock(AuditIntegrityServiceInterface::class);
         $integrityService->method('isEnabled')->willReturn(true);
         $integrityService->expects($this->once())->method('verifySignature')->with($log)->willReturn(true);
         $serializer = self::createStub(ValueSerializerInterface::class);
         $serializer->method('serialize')->willReturnArgument(0);
-        $this->reverter = new AuditReverter(
-            $this->em,
-            self::createStub(ValidatorInterface::class),
-            self::createStub(AuditServiceInterface::class),
-            new RevertValueDenormalizer($this->em),
-            $this->softDeleteHandler,
-            $integrityService,
-            self::createStub(AuditDispatcherInterface::class),
-            $serializer,
-            self::createStub(ScheduledAuditManagerInterface::class),
-            self::createStub(AuditLogRepositoryInterface::class)
-        );
+        $this->reverter = $this->createReverter($integrityService, $serializer);
 
         $this->em->method('find')->willReturn(new DummyEntity());
 

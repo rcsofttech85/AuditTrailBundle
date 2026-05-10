@@ -9,7 +9,6 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\JoinColumnMapping;
 use Doctrine\ORM\Mapping\ManyToManyOwningSideMapping;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 use Stringable;
 use Throwable;
@@ -58,7 +57,7 @@ final readonly class JoinTableCollectionIdLoader
         EntityManagerInterface $em,
     ): ?array {
         $ownerId = $this->idResolver->resolveFromEntity($owner, $em);
-        if ($ownerId === AuditLogInterface::PENDING_ID) {
+        if ($ownerId === null) {
             return null;
         }
 
@@ -197,6 +196,7 @@ final readonly class JoinTableCollectionIdLoader
             try {
                 $value = Type::getType($type)->convertToPHPValue($value, $em->getConnection()->getDatabasePlatform());
             } catch (Throwable) {
+                // Leave the raw database value in place and normalize it below when possible.
             }
         }
 

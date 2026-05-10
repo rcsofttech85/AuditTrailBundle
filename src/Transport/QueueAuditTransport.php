@@ -11,24 +11,24 @@ use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Event\AuditMessageStampEvent;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\ApiKeyStamp;
 use Rcsofttech\AuditTrailBundle\Message\Stamp\SignatureStamp;
+use Rcsofttech\AuditTrailBundle\Serializer\AuditLogMessagePayloadEncoder;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
-use const JSON_THROW_ON_ERROR;
-
-final class QueueAuditTransport implements AuditTransportInterface
+final readonly class QueueAuditTransport implements AuditTransportInterface
 {
     public function __construct(
-        private readonly MessageBusInterface $bus,
-        private readonly EventDispatcherInterface $eventDispatcher,
-        private readonly AuditIntegrityServiceInterface $integrityService,
-        private readonly AuditLogMessageFactoryInterface $messageFactory,
-        private readonly ?string $apiKey = null,
+        private MessageBusInterface $bus,
+        private EventDispatcherInterface $eventDispatcher,
+        private AuditIntegrityServiceInterface $integrityService,
+        private AuditLogMessageFactoryInterface $messageFactory,
+        private ?string $apiKey = null,
+        private AuditLogMessagePayloadEncoder $payloadEncoder = new AuditLogMessagePayloadEncoder(),
     ) {
     }
 
     #[Override]
-    public function send(AuditTransportContext $context): void
+    public function send(AuditTransportContext $context): AuditDeliveryResult
     {
         $message = $this->messageFactory->createQueueMessage($context);
 
@@ -36,7 +36,7 @@ final class QueueAuditTransport implements AuditTransportInterface
         $this->eventDispatcher->dispatch($event);
 
         if ($event->isPropagationStopped()) {
-            return;
+            return AuditDeliveryResult::delivered();
         }
 
         $stamps = $event->getStamps();
@@ -46,17 +46,19 @@ final class QueueAuditTransport implements AuditTransportInterface
         }
 
         if ($this->integrityService->isEnabled()) {
-            $payload = json_encode($message, JSON_THROW_ON_ERROR);
+            $payload = $this->payloadEncoder->encode($message);
             $signature = $this->integrityService->signPayload($payload);
             $stamps[] = new SignatureStamp($signature);
         }
 
         $this->bus->dispatch($message, $stamps);
+
+        return AuditDeliveryResult::delivered();
     }
 
     #[Override]
     public function supports(AuditTransportContext $context): bool
     {
-        return $context->phase->isAsyncDispatchPhase();
+        return $context->phase->isAsyncDispatchPhase() && $context->audit->hasResolvedEntityId();
     }
 }

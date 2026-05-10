@@ -129,10 +129,10 @@ class AuditDiffCommand extends BaseAuditCommand
      */
     private function renderDiff(SymfonyStyle $io, OutputInterface $output, AuditLog $log, array $diff): void
     {
-        $io->title(sprintf('Audit Diff for %s #%s', $log->entityClass, $log->entityId));
+        $io->title(sprintf('Audit Diff for %s #%s', $log->entityClass, $log->requireEntityId()));
         $io->definitionList(
             ['Log ID' => $log->id?->toRfc4122()],
-            ['Action' => strtoupper($log->action)],
+            ['Action' => strtoupper($log->action->value)],
             ['Date' => $log->createdAt->format('Y-m-d H:i:s')],
             ['User' => $log->username ?? 'System']
         );

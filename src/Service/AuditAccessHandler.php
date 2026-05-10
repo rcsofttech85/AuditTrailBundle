@@ -6,53 +6,38 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Override;
-use Psr\Log\LoggerInterface;
-use Rcsofttech\AuditTrailBundle\Attribute\AuditAccess;
 use Rcsofttech\AuditTrailBundle\Contract\AuditAccessHandlerInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditDispatcherInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
-use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\RequestStack;
+use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\ValueObject\PendingAccessAudit;
 use Symfony\Contracts\Service\ResetInterface;
-use Throwable;
 
-use function in_array;
 use function sprintf;
 
 final class AuditAccessHandler implements AuditAccessHandlerInterface, ResetInterface
 {
     /**
-     * @var array<string, array{entity: object, em: EntityManagerInterface, access: AuditAccess, context: array<string, mixed>}>
+     * @var array<string, PendingAccessAudit>
      */
     private array $pendingAccesses = [];
 
     /** @var array<string, bool> */
     private array $skipAccessCheck = [];
 
-    /** @var array<string, string> */
-    private array $resolvedClassNames = [];
+    private readonly EntityClassResolver $entityClassResolver;
 
-    private ?int $readIntentRequestId = null;
-
-    private ?bool $readIntentRequestAllowed = null;
-
-    /**
-     * @param array<string> $auditedMethods
-     */
     public function __construct(
         private readonly AuditServiceInterface $auditService,
-        private readonly AuditDispatcherInterface $dispatcher,
-        private readonly RequestStack $requestStack,
+        private readonly AuditAccessLogDispatcher $accessLogDispatcher,
+        private readonly AuditAccessRequestEvaluator $requestEvaluator,
         private readonly EntityIdResolverInterface $idResolver,
-        private readonly AuditAccessIntentResolver $intentResolver,
         private readonly AuditAccessCooldownManager $cooldownManager,
         private readonly AuditAccessContextProvider $contextProvider,
-        private readonly ?LoggerInterface $logger = null,
-        private readonly array $auditedMethods = ['GET'],
+        ?EntityClassResolver $entityClassResolver = null,
     ) {
+        $this->entityClassResolver = $entityClassResolver ?? new EntityClassResolver();
     }
 
     /**
@@ -61,7 +46,7 @@ final class AuditAccessHandler implements AuditAccessHandlerInterface, ResetInte
     #[Override]
     public function handleAccess(object $entity, $om): void
     {
-        if (!$this->isExplicitReadIntentRequest()) {
+        if (!$this->requestEvaluator->allowsAccessAudit()) {
             return;
         }
 
@@ -83,7 +68,7 @@ final class AuditAccessHandler implements AuditAccessHandlerInterface, ResetInte
             return;
         }
 
-        if (!$this->auditService->passesVoters($entity, AuditLogInterface::ACTION_ACCESS)) {
+        if (!$this->auditService->passesVoters($entity, AuditAction::Access)) {
             return;
         }
 
@@ -104,38 +89,27 @@ final class AuditAccessHandler implements AuditAccessHandlerInterface, ResetInte
             return;
         }
 
-        $this->pendingAccesses[$requestKey] = [
-            'entity' => $entity,
-            'em' => $om,
-            'access' => $accessAttr,
-            'context' => $capturedContext,
-        ];
+        $this->cooldownManager->persistForRequest($requestKey, $capturedContext, $accessAttr->cooldown);
+        $this->pendingAccesses[$requestKey] = new PendingAccessAudit($requestKey, $entity, $om, $accessAttr, $capturedContext);
     }
 
     public function markAsAudited(string $requestKey): void
     {
         $this->cooldownManager->markAsAudited($requestKey);
-        unset($this->pendingAccesses[$requestKey]);
+        $this->discardPendingAccess($requestKey);
     }
 
     public function flushPendingAccesses(): void
     {
         foreach ($this->pendingAccesses as $requestKey => $pending) {
-            $em = $pending['em'];
+            $em = $pending->entityManager;
             if (!$em->isOpen()) {
-                unset($this->pendingAccesses[$requestKey]);
+                $this->discardPendingAccess($requestKey);
 
                 continue;
             }
 
-            $this->dispatchAccessAudit(
-                $requestKey,
-                $pending['entity'],
-                $em,
-                $pending['access'],
-                $pending['context'],
-            );
-
+            $this->accessLogDispatcher->dispatch($pending);
             unset($this->pendingAccesses[$requestKey]);
         }
     }
@@ -148,119 +122,33 @@ final class AuditAccessHandler implements AuditAccessHandlerInterface, ResetInte
     #[Override]
     public function reset(): void
     {
-        $this->pendingAccesses = [];
+        foreach (array_keys($this->pendingAccesses) as $requestKey) {
+            $this->discardPendingAccess($requestKey);
+        }
+
         $this->skipAccessCheck = [];
-        $this->resolvedClassNames = [];
-        $this->readIntentRequestId = null;
-        $this->readIntentRequestAllowed = null;
+        $this->requestEvaluator->reset();
         $this->cooldownManager->reset();
+    }
+
+    private function discardPendingAccess(string $requestKey): void
+    {
+        $pending = $this->pendingAccesses[$requestKey] ?? null;
+        if ($pending === null) {
+            return;
+        }
+
+        $this->cooldownManager->clearForRequest($pending->requestKey, $pending->context);
+        unset($this->pendingAccesses[$requestKey]);
     }
 
     private function resolveEntityId(object $entity, EntityManagerInterface $om): ?string
     {
-        $id = $this->idResolver->resolveFromEntity($entity, $om);
-
-        return $id === AuditLogInterface::PENDING_ID ? null : $id;
+        return $this->idResolver->resolveFromEntity($entity, $om);
     }
 
     private function resolveEntityClass(object $entity, EntityManagerInterface $om): string
     {
-        $runtimeClass = $entity::class;
-
-        if (isset($this->resolvedClassNames[$runtimeClass])) {
-            return $this->resolvedClassNames[$runtimeClass];
-        }
-
-        try {
-            return $this->resolvedClassNames[$runtimeClass] = $om->getClassMetadata($runtimeClass)->getName();
-        } catch (Throwable) {
-            return $this->resolvedClassNames[$runtimeClass] = $runtimeClass;
-        }
-    }
-
-    /**
-     * @param array<string, mixed> $capturedContext
-     */
-    private function dispatchAccessAudit(
-        string $requestKey,
-        object $entity,
-        EntityManagerInterface $om,
-        AuditAccess $accessAttr,
-        array $capturedContext = [],
-    ): void {
-        try {
-            $context = [...$capturedContext, 'level' => $accessAttr->level];
-            if ($accessAttr->message !== null) {
-                $context['message'] = $accessAttr->message;
-            }
-
-            $audit = $this->auditService->createAuditLog(
-                $entity,
-                AuditLogInterface::ACTION_ACCESS,
-                null,
-                null,
-                $context,
-                $om,
-            );
-
-            if ($this->dispatcher->dispatch($audit, $om, AuditPhase::PostLoad, null, $entity)) {
-                $this->cooldownManager->persistForRequest($requestKey, $capturedContext, $accessAttr->cooldown);
-            }
-        } catch (Throwable $e) {
-            $this->logger?->error('Failed to log audit access', [
-                'entity' => $entity::class,
-                'exception' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    private function isAuditedRequest(Request $request): bool
-    {
-        $method = $request->getMethod();
-
-        return in_array($method, ['GET', 'HEAD'], true)
-            && in_array($method, $this->auditedMethods, true);
-    }
-
-    private function isExplicitReadIntentRequest(): bool
-    {
-        $request = $this->getCurrentAuditedRequest();
-        if ($request === null) {
-            return false;
-        }
-
-        $requestId = spl_object_id($request);
-        if ($this->readIntentRequestId === $requestId && $this->readIntentRequestAllowed !== null) {
-            return $this->readIntentRequestAllowed;
-        }
-
-        if (!$this->isAuditedRequest($request)) {
-            return $this->rememberReadIntentDecision($requestId, false);
-        }
-
-        return $this->rememberReadIntentDecision(
-            $requestId,
-            $this->intentResolver->isExplicitReadIntentRequest($request, $this->auditedMethods),
-        );
-    }
-
-    private function rememberReadIntentDecision(int $requestId, bool $allowed): bool
-    {
-        $this->readIntentRequestId = $requestId;
-        $this->readIntentRequestAllowed = $allowed;
-
-        return $allowed;
-    }
-
-    private function getCurrentAuditedRequest(): ?Request
-    {
-        $request = $this->requestStack->getCurrentRequest();
-        $mainRequest = $this->requestStack->getMainRequest();
-
-        if ($request === null || $mainRequest === null || $request !== $mainRequest) {
-            return null;
-        }
-
-        return $request;
+        return $this->entityClassResolver->resolve($entity, $om);
     }
 }

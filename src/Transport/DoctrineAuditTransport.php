@@ -4,32 +4,34 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Transport;
 
+use LogicException;
 use Override;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
 
-final class DoctrineAuditTransport implements AuditTransportInterface
+final readonly class DoctrineAuditTransport implements AuditTransportInterface
 {
     public function __construct(
-        private readonly EntityIdResolverInterface $idResolver,
-        private readonly AuditLogWriterInterface $auditLogWriter,
+        private EntityIdResolverInterface $idResolver,
+        private AuditLogWriterInterface $auditLogWriter,
     ) {
     }
 
     #[Override]
-    public function send(AuditTransportContext $context): void
+    public function send(AuditTransportContext $context): AuditDeliveryResult
     {
         if ($context->phase->isOnFlush()) {
             $this->persistWithinCurrentUnitOfWork($context);
 
-            return;
+            return AuditDeliveryResult::delivered();
         }
 
         if ($context->phase->isDeferredPersistencePhase()) {
             $this->persistDeferredAudit($context);
         }
+
+        return AuditDeliveryResult::delivered();
     }
 
     private function persistWithinCurrentUnitOfWork(AuditTransportContext $context): void
@@ -44,11 +46,13 @@ final class DoctrineAuditTransport implements AuditTransportInterface
     private function persistDeferredAudit(AuditTransportContext $context): void
     {
         $log = $context->audit;
-        $entityId = $this->idResolver->resolve($log, $context);
+        $entityId = $this->resolveEntityId($context);
 
-        if ($entityId !== null) {
-            $log->entityId = $entityId;
+        if ($entityId === null) {
+            throw new LogicException('Cannot persist a deferred audit log before the entity ID has been resolved.');
         }
+
+        $log->entityId = $entityId;
 
         $this->auditLogWriter->insert($log, $context->entityManager);
     }
@@ -57,9 +61,14 @@ final class DoctrineAuditTransport implements AuditTransportInterface
     public function supports(AuditTransportContext $context): bool
     {
         if ($context->phase->isOnFlush()) {
-            return $context->audit->entityId !== AuditLogInterface::PENDING_ID;
+            return $context->audit->hasResolvedEntityId();
         }
 
-        return true;
+        return $this->resolveEntityId($context) !== null;
+    }
+
+    private function resolveEntityId(AuditTransportContext $context): ?string
+    {
+        return $this->idResolver->resolve($context->audit, $context) ?? $context->audit->entityId;
     }
 }
