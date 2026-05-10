@@ -58,11 +58,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          composer require "symfony/framework-bundle:${{ matrix.symfony }}" --no-update
           if [ "${{ matrix.dependencies }}" = "lowest" ]; then
-            composer update --prefer-dist --no-interaction --no-progress --prefer-lowest --prefer-stable --optimize-autoloader
+            composer update --with "symfony/framework-bundle:${{ matrix.symfony }}" --with "symfony/doctrine-bridge:${{ matrix.symfony }}" --prefer-dist --no-interaction --no-progress --prefer-lowest --prefer-stable --optimize-autoloader
           else
-            composer update --prefer-dist --no-interaction --no-progress --prefer-stable --optimize-autoloader
+            composer update --with "symfony/framework-bundle:${{ matrix.symfony }}" --with "symfony/doctrine-bridge:${{ matrix.symfony }}" --prefer-dist --no-interaction --no-progress --prefer-stable --optimize-autoloader
           fi
 
       - name: Run tests with coverage

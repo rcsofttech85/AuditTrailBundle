@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use EasyCorp\Bundle\EasyAdminBundle\Config\Option\CacheKey;
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Context\RequestContext;
 use EasyCorp\Bundle\EasyAdminBundle\Contracts\Provider\AdminContextProviderInterface;
-use EasyCorp\Bundle\EasyAdminBundle\Contracts\Registry\AdminControllerRegistryInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Contracts\Router\AdminRouteGeneratorInterface;
+use EasyCorp\Bundle\EasyAdminBundle\Registry\AdminControllerRegistry;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditExporterInterface;
@@ -359,16 +360,10 @@ final class AuditLogAdminViewFactoryTest extends TestCase
         $urlGenerator = self::createStub(UrlGeneratorInterface::class);
         $urlGenerator->method('generate')->willReturn('/admin/audit-logs');
 
-        $adminControllers = self::createStub(AdminControllerRegistryInterface::class);
-        $adminControllers->method('getDashboardCount')->willReturn(1);
-        $adminControllers->method('getFirstDashboard')->willReturn(self::class);
-        $adminControllers->method('getFirstDashboardRoute')->willReturn('admin_dashboard');
-        $adminControllers->method('getDashboardRoute')->willReturn('admin_dashboard');
-        $adminControllers->method('getDashboardByRoute')->willReturn(self::class);
-        $adminControllers->method('getAllDashboards')->willReturn([self::class]);
-        $adminControllers->method('getAllCrudControllers')->willReturn([]);
-        $adminControllers->method('findCrudControllerByEntity')->willReturn(null);
-        $adminControllers->method('findEntityByCrudController')->willReturn(null);
+        $cache = new ArrayAdapter();
+        $dashboardRoutes = $cache->getItem(CacheKey::DASHBOARD_FQCN_TO_ROUTE);
+        $dashboardRoutes->set([self::class => 'admin_dashboard']);
+        $cache->save($dashboardRoutes);
 
         $adminRouteGenerator = self::createStub(AdminRouteGeneratorInterface::class);
         $adminRouteGenerator->method('findRouteName')->willReturn('audit_log_index_route');
@@ -377,9 +372,9 @@ final class AuditLogAdminViewFactoryTest extends TestCase
         return new AdminUrlGenerator(
             $adminContextProvider,
             $urlGenerator,
-            $adminControllers,
+            new AdminControllerRegistry($cache),
             $adminRouteGenerator,
-            new ArrayAdapter(),
+            $cache,
         );
     }
 

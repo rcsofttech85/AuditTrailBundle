@@ -18,6 +18,8 @@ use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\HttpKernel\Kernel;
 
+use function dirname;
+
 class TestKernel extends Kernel implements CompilerPassInterface
 {
     use MicroKernelTrait;
@@ -96,6 +98,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
     {
         return sys_get_temp_dir().'/audit_trail_test/cache/'.
             md5(serialize([
+                realpath(dirname(__DIR__, 2)),
                 $this->auditConfig,
                 $this->doctrineConfig,
                 $this->frameworkConfig,
