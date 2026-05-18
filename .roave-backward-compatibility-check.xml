@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<roave-bc-check
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="vendor/roave/backward-compatibility-check/Resources/schema.xsd">
+    <baseline>
+        <!-- Roave/BetterReflection cannot compile this unchanged PHP 8.4 promoted-property initializer yet. -->
+        <ignored-regex>#Unable to compile initializer in class Rcsofttech\\AuditTrailBundle\\Entity\\AuditLog in file /src/Entity/AuditLog\.php \(line 79\)#</ignored-regex>
+    </baseline>
+</roave-bc-check>

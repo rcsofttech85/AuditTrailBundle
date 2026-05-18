@@ -1,0 +1,11 @@
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+
+  Rcsofttech\AuditTrailBundle\Field\:
+    resource: '../../Field/'
+
+  Rcsofttech\AuditTrailBundle\Controller\Admin\AuditLogCrudController:
+    arguments:
+      $adminPermission: '%audit_trail.admin_permission%'

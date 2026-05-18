@@ -10,11 +10,9 @@ Add the `AuditLogCrudController` to your `DashboardController`:
 declare(strict_types=1);
 
 use EasyCorp\Bundle\EasyAdminBundle\Config\MenuItem;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Controller\Admin\AuditLogCrudController;
 
-yield MenuItem::linkToCrud('Audit Logs', 'fas fa-history', AuditLog::class)
-    ->setController(AuditLogCrudController::class);
+yield MenuItem::linkTo(AuditLogCrudController::class, 'Audit Logs', 'fas fa-history');
 ```
 
 ### Publishing Assets

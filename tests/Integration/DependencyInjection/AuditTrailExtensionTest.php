@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Integration\DependencyInjection;
 
+use EasyCorp\Bundle\EasyAdminBundle\EasyAdminBundle;
 use LogicException;
 use OverflowException;
 use PHPUnit\Framework\TestCase;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Controller\Admin\AuditLogCrudController;
 use Rcsofttech\AuditTrailBundle\DependencyInjection\AuditTrailExtension;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Factory\AuditLogMessageFactory;
+use Rcsofttech\AuditTrailBundle\Field\AuditActionField;
 use Rcsofttech\AuditTrailBundle\Query\AuditReader;
 use Rcsofttech\AuditTrailBundle\Service\AuditExporter;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogWriter;
@@ -25,7 +28,10 @@ use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Uid\Factory\UuidFactory;
+use Symfony\Component\Yaml\Yaml;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+
+use function dirname;
 
 final class AuditTrailExtensionTest extends TestCase
 {
@@ -78,9 +84,11 @@ final class AuditTrailExtensionTest extends TestCase
         $container = new ContainerBuilder();
         $extension = new AuditTrailExtension();
 
-        $extension->load([[
-            'admin_permission' => 'ROLE_AUDIT_ADMIN',
-        ]], $container);
+        $extension->load([
+            [
+                'admin_permission' => 'ROLE_AUDIT_ADMIN',
+            ],
+        ], $container);
 
         self::assertSame('ROLE_AUDIT_ADMIN', $container->getParameter('audit_trail.admin_permission'));
     }
@@ -90,9 +98,11 @@ final class AuditTrailExtensionTest extends TestCase
         $container = new ContainerBuilder();
         $extension = new AuditTrailExtension();
 
-        $extension->load([[
-            'admin_export_limit' => 2500,
-        ]], $container);
+        $extension->load([
+            [
+                'admin_export_limit' => 2500,
+            ],
+        ], $container);
 
         self::assertSame(2500, $container->getParameter('audit_trail.admin_export_limit'));
     }
@@ -102,13 +112,15 @@ final class AuditTrailExtensionTest extends TestCase
         $container = new ContainerBuilder();
         $extension = new AuditTrailExtension();
 
-        $extension->load([[
-            'queue_limits' => [
-                'scheduled_audits' => 250,
-                'pending_audit_plans' => 300,
-                'pending_deletions' => 150,
+        $extension->load([
+            [
+                'queue_limits' => [
+                    'scheduled_audits' => 250,
+                    'pending_audit_plans' => 300,
+                    'pending_deletions' => 150,
+                ],
             ],
-        ]], $container);
+        ], $container);
 
         self::assertSame(250, $container->getParameter('audit_trail.queue_limits.scheduled_audits'));
         self::assertSame(300, $container->getParameter('audit_trail.queue_limits.pending_audit_plans'));
@@ -139,13 +151,15 @@ final class AuditTrailExtensionTest extends TestCase
         $container = new ContainerBuilder();
         $extension = new AuditTrailExtension();
 
-        $extension->load([[
-            'queue_limits' => [
-                'scheduled_audits' => 2,
-                'pending_audit_plans' => 300,
-                'pending_deletions' => 150,
+        $extension->load([
+            [
+                'queue_limits' => [
+                    'scheduled_audits' => 2,
+                    'pending_audit_plans' => 300,
+                    'pending_deletions' => 150,
+                ],
             ],
-        ]], $container);
+        ], $container);
 
         $manager = $this->buildScheduledAuditManagerFromContainer($container);
         $entity = new stdClass();
@@ -158,14 +172,55 @@ final class AuditTrailExtensionTest extends TestCase
         $manager->schedule($entity, $log, true);
     }
 
-    public function testEasyAdminControllerIsNotRegisteredWhenBundleIsMissing(): void
+    public function testEasyAdminServicesAreNotRegisteredWhenBundleIsNotEnabled(): void
     {
         $container = new ContainerBuilder();
         $extension = new AuditTrailExtension();
 
         $extension->load([], $container);
+        $container->compile();
 
-        self::assertFalse($container->hasDefinition('Rcsofttech\\AuditTrailBundle\\Controller\\Admin\\AuditLogCrudController'));
+        self::assertTrue($container->isCompiled());
+        self::assertFalse($container->hasDefinition(AuditLogCrudController::class));
+        self::assertFalse($container->hasDefinition(AuditActionField::class));
+    }
+
+    public function testEasyAdminServicesAreRegisteredWhenBundleIsEnabled(): void
+    {
+        $container = new ContainerBuilder();
+        $container->setParameter('kernel.bundles', [
+            'EasyAdminBundle' => EasyAdminBundle::class,
+        ]);
+        $extension = new AuditTrailExtension();
+
+        $extension->load([], $container);
+
+        self::assertTrue($container->hasDefinition(AuditLogCrudController::class));
+        self::assertTrue($container->hasDefinition(AuditActionField::class));
+
+        $container->compile();
+
+        self::assertTrue($container->isCompiled());
+    }
+
+    public function testEasyAdminServicesStayInDedicatedServiceConfiguration(): void
+    {
+        /** @var array{services: array<string, mixed>} $services */
+        $services = Yaml::parseFile(dirname(__DIR__, 3).'/src/Resources/config/services.yaml');
+        /** @var array{services: array<string, mixed>} $easyAdminServices */
+        $easyAdminServices = Yaml::parseFile(dirname(__DIR__, 3).'/src/Resources/config/services_easyadmin.yaml');
+
+        /** @var array{resource: string, exclude: list<string>} $bundlePrototype */
+        $bundlePrototype = $services['services']['Rcsofttech\\AuditTrailBundle\\'];
+        /** @var array{resource: string} $fieldPrototype */
+        $fieldPrototype = $easyAdminServices['services']['Rcsofttech\\AuditTrailBundle\\Field\\'];
+        /** @var array{arguments: array<string, string>} $crudController */
+        $crudController = $easyAdminServices['services'][AuditLogCrudController::class];
+
+        self::assertContains('../../Field/', $bundlePrototype['exclude']);
+        self::assertContains('../../Controller/', $bundlePrototype['exclude']);
+        self::assertSame('../../Field/', $fieldPrototype['resource']);
+        self::assertSame('%audit_trail.admin_permission%', $crudController['arguments']['$adminPermission']);
     }
 
     public function testValidTablePrefixAndSuffixAreStored(): void
@@ -173,10 +228,12 @@ final class AuditTrailExtensionTest extends TestCase
         $container = new ContainerBuilder();
         $extension = new AuditTrailExtension();
 
-        $extension->load([[
-            'table_prefix' => 'audit_2026',
-            'table_suffix' => '_trail',
-        ]], $container);
+        $extension->load([
+            [
+                'table_prefix' => 'audit_2026',
+                'table_suffix' => '_trail',
+            ],
+        ], $container);
 
         self::assertSame('audit_2026', $container->getParameter('audit_trail.table_prefix'));
         self::assertSame('_trail', $container->getParameter('audit_trail.table_suffix'));
@@ -192,9 +249,11 @@ final class AuditTrailExtensionTest extends TestCase
             'The table_prefix may contain only letters, numbers, and underscores, and must not start with a digit.'
         );
 
-        $extension->load([[
-            'table_prefix' => '123 bad-',
-        ]], $container);
+        $extension->load([
+            [
+                'table_prefix' => '123 bad-',
+            ],
+        ], $container);
     }
 
     public function testNonStringTablePrefixIsRejectedByTypedNode(): void
@@ -204,9 +263,11 @@ final class AuditTrailExtensionTest extends TestCase
 
         $this->expectException(InvalidConfigurationException::class);
 
-        $extension->load([[
-            'table_prefix' => true,
-        ]], $container);
+        $extension->load([
+            [
+                'table_prefix' => true,
+            ],
+        ], $container);
     }
 
     public function testInvalidTableSuffixIsRejected(): void
@@ -219,9 +280,11 @@ final class AuditTrailExtensionTest extends TestCase
             'The table_suffix may contain only letters, numbers, and underscores, and must not start with a digit.'
         );
 
-        $extension->load([[
-            'table_suffix' => 'bad-suffix',
-        ]], $container);
+        $extension->load([
+            [
+                'table_suffix' => 'bad-suffix',
+            ],
+        ], $container);
     }
 
     public function testIntegritySecretMustMeetMinimumLength(): void
@@ -232,12 +295,14 @@ final class AuditTrailExtensionTest extends TestCase
         $this->expectException(InvalidConfigurationException::class);
         $this->expectExceptionMessage('The integrity secret must be at least 32 characters long.');
 
-        $extension->load([[
-            'integrity' => [
-                'enabled' => true,
-                'secret' => 'too-short-secret',
+        $extension->load([
+            [
+                'integrity' => [
+                    'enabled' => true,
+                    'secret' => 'too-short-secret',
+                ],
             ],
-        ]], $container);
+        ], $container);
     }
 
     public function testIntegritySecretAcceptsEnvPlaceholder(): void
@@ -245,12 +310,14 @@ final class AuditTrailExtensionTest extends TestCase
         $container = new ContainerBuilder();
         $extension = new AuditTrailExtension();
 
-        $extension->load([[
-            'integrity' => [
-                'enabled' => true,
-                'secret' => '%env(string:AUDIT_INTEGRITY_SECRET)%',
+        $extension->load([
+            [
+                'integrity' => [
+                    'enabled' => true,
+                    'secret' => '%env(string:AUDIT_INTEGRITY_SECRET)%',
+                ],
             ],
-        ]], $container);
+        ], $container);
 
         self::assertSame(
             '%env(string:AUDIT_INTEGRITY_SECRET)%',
@@ -301,15 +368,17 @@ final class AuditTrailExtensionTest extends TestCase
         $container->setParameter('kernel.environment', 'dev');
         $extension = new AuditTrailExtension();
 
-        $extension->load([[
-            'transports' => [
-                'database' => ['enabled' => true],
-                'http' => [
-                    'enabled' => true,
-                    'endpoint' => 'http://example.com',
+        $extension->load([
+            [
+                'transports' => [
+                    'database' => ['enabled' => true],
+                    'http' => [
+                        'enabled' => true,
+                        'endpoint' => 'http://example.com',
+                    ],
                 ],
             ],
-        ]], $container);
+        ], $container);
 
         self::assertTrue($container->getParameter('audit_trail.fail_on_transport_error'));
         self::assertFalse($container->getParameter('audit_trail.fallback_to_database'));
@@ -325,17 +394,19 @@ final class AuditTrailExtensionTest extends TestCase
         $container->setParameter('kernel.environment', 'dev');
         $extension = new AuditTrailExtension();
 
-        $extension->load([[
-            'fail_on_transport_error' => false,
-            'fallback_to_database' => true,
-            'transports' => [
-                'database' => ['enabled' => true],
-                'http' => [
-                    'enabled' => true,
-                    'endpoint' => 'http://example.com',
+        $extension->load([
+            [
+                'fail_on_transport_error' => false,
+                'fallback_to_database' => true,
+                'transports' => [
+                    'database' => ['enabled' => true],
+                    'http' => [
+                        'enabled' => true,
+                        'endpoint' => 'http://example.com',
+                    ],
                 ],
             ],
-        ]], $container);
+        ], $container);
 
         self::assertFalse($container->getParameter('audit_trail.fail_on_transport_error'));
         self::assertTrue($container->getParameter('audit_trail.fallback_to_database'));
@@ -379,13 +450,15 @@ final class AuditTrailExtensionTest extends TestCase
         $container = new ContainerBuilder();
         $extension = new AuditTrailExtension();
 
-        $extension->load([[
-            'transports' => [
-                'database' => ['enabled' => true, 'async' => true],
-                'http' => ['enabled' => false],
-                'queue' => ['enabled' => false],
+        $extension->load([
+            [
+                'transports' => [
+                    'database' => ['enabled' => true, 'async' => true],
+                    'http' => ['enabled' => false],
+                    'queue' => ['enabled' => false],
+                ],
             ],
-        ]], $container);
+        ], $container);
 
         self::assertTrue($container->hasDefinition('rcsofttech_audit_trail.transport.async_database'));
         self::assertTrue($container->hasDefinition('rcsofttech_audit_trail.handler.persist_audit_log'));
@@ -435,15 +508,17 @@ final class AuditTrailExtensionTest extends TestCase
         $this->expectException(InvalidConfigurationException::class);
         $this->expectExceptionMessage('Insecure audit HTTP endpoints are only allowed in the "dev" environment.');
 
-        $extension->load([[
-            'transports' => [
-                'database' => ['enabled' => false],
-                'http' => [
-                    'enabled' => true,
-                    'endpoint' => 'http://example.com',
+        $extension->load([
+            [
+                'transports' => [
+                    'database' => ['enabled' => false],
+                    'http' => [
+                        'enabled' => true,
+                        'endpoint' => 'http://example.com',
+                    ],
                 ],
             ],
-        ]], $container);
+        ], $container);
     }
 
     public function testTablePrefixSubscriberRegistration(): void
@@ -491,13 +566,15 @@ final class AuditTrailExtensionTest extends TestCase
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('At least one audit transport must be enabled');
 
-        $extension->load([[
-            'transports' => [
-                'database' => ['enabled' => false],
-                'http' => ['enabled' => false],
-                'queue' => ['enabled' => false],
+        $extension->load([
+            [
+                'transports' => [
+                    'database' => ['enabled' => false],
+                    'http' => ['enabled' => false],
+                    'queue' => ['enabled' => false],
+                ],
             ],
-        ]], $container);
+        ], $container);
     }
 
     public function testDisabledBundleCanUseNullTransportWhenAllTransportsAreDisabled(): void
@@ -505,14 +582,16 @@ final class AuditTrailExtensionTest extends TestCase
         $container = new ContainerBuilder();
         $extension = new AuditTrailExtension();
 
-        $extension->load([[
-            'enabled' => false,
-            'transports' => [
-                'database' => ['enabled' => false],
-                'http' => ['enabled' => false],
-                'queue' => ['enabled' => false],
+        $extension->load([
+            [
+                'enabled' => false,
+                'transports' => [
+                    'database' => ['enabled' => false],
+                    'http' => ['enabled' => false],
+                    'queue' => ['enabled' => false],
+                ],
             ],
-        ]], $container);
+        ], $container);
 
         self::assertTrue($container->hasDefinition('rcsofttech_audit_trail.transport.null'));
         self::assertTrue($container->hasAlias(AuditTransportInterface::class));
@@ -528,9 +607,11 @@ final class AuditTrailExtensionTest extends TestCase
         $container = new ContainerBuilder();
         $extension = new AuditTrailExtension();
 
-        $extension->load([[
-            'cache_pool' => 'cache.app',
-        ]], $container);
+        $extension->load([
+            [
+                'cache_pool' => 'cache.app',
+            ],
+        ], $container);
 
         self::assertTrue($container->hasAlias('rcsofttech_audit_trail.cache'));
         self::assertSame('cache.app', (string) $container->getAlias('rcsofttech_audit_trail.cache'));

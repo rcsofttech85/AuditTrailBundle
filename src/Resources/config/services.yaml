@@ -118,6 +118,7 @@ services:
       - '../../DataCollector/'
       - '../../Entity/'
       - '../../Enum/'
+      - '../../Field/'
       - '../../MessageHandler/'
       - '../../Message/'
       - '../../Serializer/'

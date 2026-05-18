@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\DependencyInjection;
 
-use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractCrudController;
+use EasyCorp\Bundle\EasyAdminBundle\EasyAdminBundle;
 use Override;
-use Rcsofttech\AuditTrailBundle\Controller\Admin\AuditLogCrudController;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -15,6 +14,7 @@ use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
 use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
 
 use function class_exists;
+use function is_array;
 use function is_string;
 use function sprintf;
 
@@ -101,19 +101,20 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
         if ($config['cache_pool'] !== null) {
             $container->setAlias('rcsofttech_audit_trail.cache', $config['cache_pool']);
         }
-        new YamlFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'))->load('services.yaml');
+        $loader = new YamlFileLoader($container, new FileLocator(__DIR__.'/../Resources/config'));
+        $loader->load('services.yaml');
         $this->integrityConfigurator->configure($container, $config['integrity']);
 
         $this->transportRegistrar->register($container, $config);
 
-        /** @var array<string, mixed> $bundles */
         $bundles = $container->hasParameter('kernel.bundles') ? $container->getParameter('kernel.bundles') : [];
-        if (isset($bundles['EasyAdminBundle']) && class_exists(AbstractCrudController::class)) {
-            $container->register(AuditLogCrudController::class, AuditLogCrudController::class)
-                ->setAutowired(true)
-                ->setAutoconfigured(true)
-                ->setArgument('$adminPermission', '%audit_trail.admin_permission%')
-                ->addTag('controller.service_arguments');
+        if (!is_array($bundles)) {
+            $bundles = [];
+        }
+
+        /** @var array<string, mixed> $bundles */
+        if ($this->isEasyAdminEnabled($bundles)) {
+            $loader->load('services_easyadmin.yaml');
         }
 
         $this->profilerRegistrar->register($container, $bundles);
@@ -151,6 +152,15 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
     public function getAlias(): string
     {
         return 'audit_trail';
+    }
+
+    /**
+     * @param array<string, mixed> $bundles
+     */
+    private function isEasyAdminEnabled(array $bundles): bool
+    {
+        return isset($bundles['EasyAdminBundle'])
+            && class_exists(EasyAdminBundle::class);
     }
 
     /**
