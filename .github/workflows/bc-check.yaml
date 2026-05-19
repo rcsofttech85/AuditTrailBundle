@@ -66,4 +66,5 @@ jobs:
           roave-backward-compatibility-check \
             --from="${{ steps.refs.outputs.from }}" \
             --to="${{ steps.refs.outputs.to }}" \
-            --format=github-actions
+            --format=github-actions \
+            --install-development-dependencies
