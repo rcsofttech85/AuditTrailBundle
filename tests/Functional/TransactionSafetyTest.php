@@ -11,6 +11,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
+use Rcsofttech\AuditTrailBundle\Tests\TestDatabaseUrlResolver;
 use RuntimeException;
 
 use function assert;
@@ -84,8 +85,16 @@ final class TransactionSafetyTest extends AbstractFunctionalTestCase
      *
      * @return array<string, mixed>
      */
-    private function buildFileDatabaseOptions(string $databasePath, array $auditConfig): array
+    private function buildStandaloneDatabaseOptions(array $auditConfig): array
     {
+        if (TestDatabaseUrlResolver::resolve() !== null) {
+            self::markTestSkipped(
+                'This scenario relies on a standalone SQLite database outside DAMA static transaction management.',
+            );
+        }
+
+        $databasePath = $this->createDatabasePath();
+
         return [
             'doctrine_config' => [
                 'dbal' => [
@@ -229,8 +238,7 @@ final class TransactionSafetyTest extends AbstractFunctionalTestCase
 
     public function testStrictRevertRollsBackEntityWhenRevertAuditFailsInTransaction(): void
     {
-        $databasePath = $this->createDatabasePath();
-        $options = $this->buildFileDatabaseOptions($databasePath, [
+        $options = $this->buildStandaloneDatabaseOptions([
             'defer_transport_until_commit' => false,
             'fail_on_transport_error' => true,
             'transports' => ['database' => ['enabled' => true]],
@@ -283,8 +291,7 @@ final class TransactionSafetyTest extends AbstractFunctionalTestCase
 
     public function testCommittedButUndeliveredRevertCannotBeAppliedTwice(): void
     {
-        $databasePath = $this->createDatabasePath();
-        $options = $this->buildFileDatabaseOptions($databasePath, [
+        $options = $this->buildStandaloneDatabaseOptions([
             'defer_transport_until_commit' => false,
             'fail_on_transport_error' => true,
             'transports' => ['database' => ['enabled' => true]],

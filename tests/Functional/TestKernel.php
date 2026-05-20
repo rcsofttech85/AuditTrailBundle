@@ -9,6 +9,7 @@ use Doctrine\Bundle\DoctrineBundle\DoctrineBundle;
 use Psr\Log\NullLogger;
 use Rcsofttech\AuditTrailBundle\AuditTrailBundle;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
+use Rcsofttech\AuditTrailBundle\Tests\TestDatabaseUrlResolver;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
 use Symfony\Bundle\SecurityBundle\SecurityBundle;
@@ -99,6 +100,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
         return sys_get_temp_dir().'/audit_trail_test/cache/'.
             md5(serialize([
                 realpath(dirname(__DIR__, 2)),
+                $this->resolveConfiguredDatabaseUrl(),
                 $this->auditConfig,
                 $this->doctrineConfig,
                 $this->frameworkConfig,
@@ -156,10 +158,7 @@ class TestKernel extends Kernel implements CompilerPassInterface
         ]);
 
         $defaultDoctrineConfig = [
-            'dbal' => [
-                'driver' => 'pdo_sqlite',
-                'url' => 'sqlite:///:memory:',
-            ],
+            'dbal' => $this->resolveDefaultDbalConfig(),
             'orm' => [
                 'naming_strategy' => 'doctrine.orm.naming_strategy.underscore_number_aware',
                 'mappings' => [
@@ -190,5 +189,26 @@ class TestKernel extends Kernel implements CompilerPassInterface
         ], $this->auditConfig);
 
         $c->loadFromExtension('audit_trail', $auditConfig);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function resolveDefaultDbalConfig(): array
+    {
+        $databaseUrl = $this->resolveConfiguredDatabaseUrl();
+        if ($databaseUrl !== null) {
+            return ['url' => $databaseUrl];
+        }
+
+        return [
+            'driver' => 'pdo_sqlite',
+            'url' => 'sqlite:///:memory:',
+        ];
+    }
+
+    private function resolveConfiguredDatabaseUrl(): ?string
+    {
+        return TestDatabaseUrlResolver::resolve();
     }
 }
