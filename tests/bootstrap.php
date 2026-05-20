@@ -5,7 +5,8 @@ declare(strict_types=1);
 /**
  * Bootstrap for PHPUnit.
  *
- * Configures DAMA static connections and initializes the in-memory SQLite schema.
+ * Configures DAMA static connections and initializes the schema on the
+ * configured test database connection.
  */
 
 require dirname(__DIR__).'/vendor/autoload.php';
@@ -14,6 +15,7 @@ use DAMA\DoctrineTestBundle\Doctrine\DBAL\StaticDriver;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\TestKernel;
+use Rcsofttech\AuditTrailBundle\Tests\TestDatabaseUrlResolver;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\DummySoftDeleteableFilter;
 
 // Register dummy Gedmo filter if the real package is not installed.
@@ -22,9 +24,13 @@ if (!class_exists('Gedmo\SoftDeleteable\Filter\SoftDeleteableFilter')) {
     class_alias(DummySoftDeleteableFilter::class, 'Gedmo\SoftDeleteable\Filter\SoftDeleteableFilter');
 }
 
-// This ensures that even after kernel shutdown, the underlying database connection
-// (especially for in-memory SQLite) persists in DAMA's static registry.
-StaticDriver::setKeepStaticConnections(true);
+$configuredDatabaseUrl = TestDatabaseUrlResolver::resolve();
+$usesPersistentExternalDatabase = is_string($configuredDatabaseUrl) && $configuredDatabaseUrl !== '';
+
+// Keep DAMA static connections only for the default in-memory SQLite path.
+// External databases persist on their own, and bootstrapping them through the
+// static driver leaves different platforms in different transaction states.
+StaticDriver::setKeepStaticConnections(!$usesPersistentExternalDatabase);
 
 try {
     // Boot kernel to create schema on the static connection
@@ -42,11 +48,20 @@ try {
     }
 
     $schemaTool = new SchemaTool($em);
+    $existingTables = $em->getConnection()->createSchemaManager()->listTableNames();
+    if ($existingTables !== []) {
+        $schemaTool->dropSchema($metadata);
+    }
+
     $schemaTool->createSchema($metadata);
 
-    // Commit the schema to the static connection.
-    // DAMA will now use this state as the "baseline" for every test's transaction.
-    StaticDriver::commit();
+    // Commit the schema baseline to DAMA's static connection for the default
+    // in-memory SQLite path. The static driver manages its own outer
+    // transaction state, so relying on Doctrine's transaction flag here leaves
+    // PHPUnit believing a transaction is already open.
+    if (!$usesPersistentExternalDatabase) {
+        StaticDriver::commit();
+    }
 
     // Shutdown kernel. The underlying static connection remains active in DAMA's registry.
     $kernel->shutdown();

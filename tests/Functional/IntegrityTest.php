@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
+use Doctrine\DBAL\ParameterType;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\TestEntity;
@@ -11,6 +12,7 @@ use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 
 use function hash_hmac;
+use function is_int;
 use function json_encode;
 
 use const JSON_THROW_ON_ERROR;
@@ -82,9 +84,10 @@ final class IntegrityTest extends AbstractFunctionalTestCase
         self::assertNotNull($auditLog);
         self::assertNotNull($auditLog->id);
 
-        $affected = $em->getConnection()->executeStatement(
+        $affected = $this->executeAuditLogUpdate(
             'UPDATE audit_log SET new_values = ? WHERE id = ?',
-            [json_encode(['name' => 'TAMPERED'], JSON_THROW_ON_ERROR), $auditLog->id->toBinary()]
+            json_encode(['name' => 'TAMPERED'], JSON_THROW_ON_ERROR),
+            $auditLog
         );
         self::assertSame(1, $affected, 'Tampering UPDATE should affect exactly 1 row');
         $em->clear();
@@ -133,9 +136,10 @@ final class IntegrityTest extends AbstractFunctionalTestCase
         $commandTester->execute([]);
         self::assertSame(0, $commandTester->getStatusCode());
 
-        $affected = $em->getConnection()->executeStatement(
+        $affected = $this->executeAuditLogUpdate(
             'UPDATE audit_log SET changed_fields = ? WHERE id = ?',
-            [json_encode(['tampered_field'], JSON_THROW_ON_ERROR), $auditLog->id->toBinary()]
+            json_encode(['tampered_field'], JSON_THROW_ON_ERROR),
+            $auditLog
         );
         self::assertSame(1, $affected);
         $em->clear();
@@ -191,9 +195,10 @@ final class IntegrityTest extends AbstractFunctionalTestCase
             'username' => $auditLog->username,
         ], JSON_THROW_ON_ERROR);
 
-        $affected = $em->getConnection()->executeStatement(
+        $affected = $this->executeAuditLogUpdate(
             'UPDATE audit_log SET signature = ? WHERE id = ?',
-            [hash_hmac('sha256', $legacyPayload, 'test-integrity-secret-for-suite-123'), $auditLog->id->toBinary()]
+            hash_hmac('sha256', $legacyPayload, 'test-integrity-secret-for-suite-123'),
+            $auditLog
         );
         self::assertSame(1, $affected);
         $em->clear();
@@ -205,5 +210,18 @@ final class IntegrityTest extends AbstractFunctionalTestCase
         $commandTester->execute(['--id' => (string) $auditLog->id]);
         self::assertSame(0, $commandTester->getStatusCode());
         self::assertStringContainsString('authentic', $commandTester->getDisplay());
+    }
+
+    private function executeAuditLogUpdate(string $sql, string $value, AuditLog $auditLog): int
+    {
+        self::assertNotNull($auditLog->id);
+
+        $affected = $this->getEntityManager()->getConnection()->executeStatement(
+            $sql,
+            [$value, $auditLog->id->toRfc4122()],
+            [ParameterType::STRING, 'uuid']
+        );
+
+        return is_int($affected) ? $affected : (int) $affected;
     }
 }

@@ -18,7 +18,7 @@ use function assert;
 
 final class AuditReaderChangedFieldQueryTest extends AbstractFunctionalTestCase
 {
-    public function testChangedFieldQueryUsesNativeSqliteFilteringForCountsAndResults(): void
+    public function testChangedFieldQueryUsesNativeDatabaseFilteringForCountsAndResults(): void
     {
         self::bootKernel();
         $em = $this->getEntityManager();
