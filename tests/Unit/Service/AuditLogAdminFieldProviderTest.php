@@ -8,10 +8,10 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
 use EasyCorp\Bundle\EasyAdminBundle\Contracts\Field\FieldInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\FieldDto;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminFieldProvider;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
-use Rcsofttech\AuditTrailBundle\Service\AuditLogAdminFieldProvider;
 
 use function sprintf;
 

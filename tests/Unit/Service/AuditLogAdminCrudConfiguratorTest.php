@@ -13,13 +13,13 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
 use EasyCorp\Bundle\EasyAdminBundle\Config\KeyValueStore;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminCrudConfigurator;
+use Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminFieldProvider;
+use Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminLocator;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
-use Rcsofttech\AuditTrailBundle\Service\AuditLogAdminCrudConfigurator;
-use Rcsofttech\AuditTrailBundle\Service\AuditLogAdminFieldProvider;
-use Rcsofttech\AuditTrailBundle\Service\AuditLogAdminLocator;
 
 final class AuditLogAdminCrudConfiguratorTest extends TestCase
 {

@@ -8,6 +8,7 @@ use EasyCorp\Bundle\EasyAdminBundle\EasyAdminBundle;
 use LogicException;
 use OverflowException;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminCrudConfigurator as BridgeAuditLogAdminCrudConfigurator;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Controller\Admin\AuditLogCrudController;
 use Rcsofttech\AuditTrailBundle\DependencyInjection\AuditTrailExtension;
@@ -20,6 +21,7 @@ use Rcsofttech\AuditTrailBundle\Service\AuditExporter;
 use Rcsofttech\AuditTrailBundle\Service\AuditLogWriter;
 use Rcsofttech\AuditTrailBundle\Service\AuditRenderer;
 use Rcsofttech\AuditTrailBundle\Service\ScheduledAuditManager;
+use Rcsofttech\AuditTrailBundle\Tests\Support\InteractsWithUserDeprecations;
 use Rcsofttech\AuditTrailBundle\Transport\NullAuditTransport;
 use stdClass;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
@@ -35,6 +37,8 @@ use function dirname;
 
 final class AuditTrailExtensionTest extends TestCase
 {
+    use InteractsWithUserDeprecations;
+
     private function buildScheduledAuditManagerFromContainer(ContainerBuilder $container): ScheduledAuditManager
     {
         if (!$container->hasDefinition(UuidFactory::class) && !$container->hasAlias(UuidFactory::class)) {
@@ -64,6 +68,8 @@ final class AuditTrailExtensionTest extends TestCase
             'rcsofttech_audit_trail.transport.database',
             (string) $container->getAlias(AuditTransportInterface::class)
         );
+        self::assertSame('ROLE_ADMIN', $container->getParameter('audit_trail.easyadmin.permission'));
+        self::assertSame(50000, $container->getParameter('audit_trail.easyadmin.export_limit'));
         self::assertSame('ROLE_ADMIN', $container->getParameter('audit_trail.admin_permission'));
         self::assertSame(50000, $container->getParameter('audit_trail.admin_export_limit'));
         self::assertSame(1000, $container->getParameter('audit_trail.queue_limits.scheduled_audits'));
@@ -79,31 +85,123 @@ final class AuditTrailExtensionTest extends TestCase
         }
     }
 
-    public function testCustomAdminPermissionIsStored(): void
+    public function testCustomEasyAdminPermissionIsStored(): void
     {
         $container = new ContainerBuilder();
         $extension = new AuditTrailExtension();
 
         $extension->load([
             [
-                'admin_permission' => 'ROLE_AUDIT_ADMIN',
+                'easyadmin' => [
+                    'permission' => 'ROLE_AUDIT_ADMIN',
+                ],
             ],
         ], $container);
 
+        self::assertSame('ROLE_AUDIT_ADMIN', $container->getParameter('audit_trail.easyadmin.permission'));
         self::assertSame('ROLE_AUDIT_ADMIN', $container->getParameter('audit_trail.admin_permission'));
     }
 
-    public function testCustomAdminExportLimitIsStored(): void
+    public function testCustomEasyAdminExportLimitIsStored(): void
     {
         $container = new ContainerBuilder();
         $extension = new AuditTrailExtension();
 
         $extension->load([
             [
-                'admin_export_limit' => 2500,
+                'easyadmin' => [
+                    'export_limit' => 2500,
+                ],
             ],
         ], $container);
 
+        self::assertSame(2500, $container->getParameter('audit_trail.easyadmin.export_limit'));
+        self::assertSame(2500, $container->getParameter('audit_trail.admin_export_limit'));
+    }
+
+    public function testLegacyAdminPermissionConfigIsDeprecatedAndMapped(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $this->expectSingleUserDeprecation(
+            'Since rcsofttech/audit-trail-bundle 4.1: Configuring "audit_trail.admin_permission" is deprecated since rcsofttech/audit-trail-bundle 4.1; use "audit_trail.easyadmin.permission" instead.',
+            static function () use ($extension, $container): void {
+                $extension->load([
+                    [
+                        'admin_permission' => 'ROLE_LEGACY_AUDIT_ADMIN',
+                    ],
+                ], $container);
+            },
+        );
+
+        self::assertSame('ROLE_LEGACY_AUDIT_ADMIN', $container->getParameter('audit_trail.easyadmin.permission'));
+        self::assertSame('ROLE_LEGACY_AUDIT_ADMIN', $container->getParameter('audit_trail.admin_permission'));
+    }
+
+    public function testLegacyAdminExportLimitConfigIsDeprecatedAndMapped(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $this->expectSingleUserDeprecation(
+            'Since rcsofttech/audit-trail-bundle 4.1: Configuring "audit_trail.admin_export_limit" is deprecated since rcsofttech/audit-trail-bundle 4.1; use "audit_trail.easyadmin.export_limit" instead.',
+            static function () use ($extension, $container): void {
+                $extension->load([
+                    [
+                        'admin_export_limit' => 3200,
+                    ],
+                ], $container);
+            },
+        );
+
+        self::assertSame(3200, $container->getParameter('audit_trail.easyadmin.export_limit'));
+        self::assertSame(3200, $container->getParameter('audit_trail.admin_export_limit'));
+    }
+
+    public function testCanonicalEasyAdminPermissionWinsOverLegacyConfig(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $this->expectSingleUserDeprecation(
+            'Since rcsofttech/audit-trail-bundle 4.1: Configuring "audit_trail.admin_permission" is deprecated since rcsofttech/audit-trail-bundle 4.1; use "audit_trail.easyadmin.permission" instead.',
+            static function () use ($extension, $container): void {
+                $extension->load([
+                    [
+                        'admin_permission' => 'ROLE_LEGACY_AUDIT_ADMIN',
+                        'easyadmin' => [
+                            'permission' => 'ROLE_CANONICAL_AUDIT_ADMIN',
+                        ],
+                    ],
+                ], $container);
+            },
+        );
+
+        self::assertSame('ROLE_CANONICAL_AUDIT_ADMIN', $container->getParameter('audit_trail.easyadmin.permission'));
+        self::assertSame('ROLE_CANONICAL_AUDIT_ADMIN', $container->getParameter('audit_trail.admin_permission'));
+    }
+
+    public function testCanonicalEasyAdminExportLimitWinsOverLegacyConfig(): void
+    {
+        $container = new ContainerBuilder();
+        $extension = new AuditTrailExtension();
+
+        $this->expectSingleUserDeprecation(
+            'Since rcsofttech/audit-trail-bundle 4.1: Configuring "audit_trail.admin_export_limit" is deprecated since rcsofttech/audit-trail-bundle 4.1; use "audit_trail.easyadmin.export_limit" instead.',
+            static function () use ($extension, $container): void {
+                $extension->load([
+                    [
+                        'admin_export_limit' => 3200,
+                        'easyadmin' => [
+                            'export_limit' => 2500,
+                        ],
+                    ],
+                ], $container);
+            },
+        );
+
+        self::assertSame(2500, $container->getParameter('audit_trail.easyadmin.export_limit'));
         self::assertSame(2500, $container->getParameter('audit_trail.admin_export_limit'));
     }
 
@@ -197,6 +295,9 @@ final class AuditTrailExtensionTest extends TestCase
 
         self::assertTrue($container->hasDefinition(AuditLogCrudController::class));
         self::assertTrue($container->hasDefinition(AuditActionField::class));
+        self::assertTrue($container->hasDefinition(BridgeAuditLogAdminCrudConfigurator::class));
+        self::assertTrue($container->hasDefinition('Rcsofttech\\AuditTrailBundle\\Service\\AuditLogAdminCrudConfigurator'));
+        self::assertTrue($container->getDefinition('Rcsofttech\\AuditTrailBundle\\Service\\AuditLogAdminCrudConfigurator')->isDeprecated());
 
         $container->compile();
 
@@ -214,13 +315,19 @@ final class AuditTrailExtensionTest extends TestCase
         $bundlePrototype = $services['services']['Rcsofttech\\AuditTrailBundle\\'];
         /** @var array{resource: string} $fieldPrototype */
         $fieldPrototype = $easyAdminServices['services']['Rcsofttech\\AuditTrailBundle\\Field\\'];
-        /** @var array{arguments: array<string, string>} $crudController */
-        $crudController = $easyAdminServices['services'][AuditLogCrudController::class];
+        /** @var array{resource: string} $bridgePrototype */
+        $bridgePrototype = $easyAdminServices['services']['Rcsofttech\\AuditTrailBundle\\Bridge\\EasyAdmin\\Service\\'];
+        /** @var array{bind: array<string, string>} $defaults */
+        $defaults = $easyAdminServices['services']['_defaults'];
 
         self::assertContains('../../Field/', $bundlePrototype['exclude']);
         self::assertContains('../../Controller/', $bundlePrototype['exclude']);
+        self::assertContains('../../Bridge/', $bundlePrototype['exclude']);
+        self::assertContains('../../Service/AuditLogAdminCrudConfigurator.php', $bundlePrototype['exclude']);
         self::assertSame('../../Field/', $fieldPrototype['resource']);
-        self::assertSame('%audit_trail.admin_permission%', $crudController['arguments']['$adminPermission']);
+        self::assertSame('../../Bridge/EasyAdmin/Service/', $bridgePrototype['resource']);
+        self::assertSame('%audit_trail.easyadmin.permission%', $defaults['bind']['$adminPermission']);
+        self::assertSame('%audit_trail.easyadmin.export_limit%', $defaults['bind']['$adminExportLimit']);
     }
 
     public function testValidTablePrefixAndSuffixAreStored(): void

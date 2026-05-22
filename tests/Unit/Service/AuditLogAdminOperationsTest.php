@@ -6,13 +6,13 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminOperations;
+use Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminRequestMapper;
 use Rcsofttech\AuditTrailBundle\Contract\AuditExporterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditReverterInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
-use Rcsofttech\AuditTrailBundle\Service\AuditLogAdminOperations;
-use Rcsofttech\AuditTrailBundle\Service\AuditLogAdminRequestMapper;
 use Rcsofttech\AuditTrailBundle\Service\RevertPreviewFormatter;
 use Rcsofttech\AuditTrailBundle\Service\TransactionDrilldownService;
 use RuntimeException;

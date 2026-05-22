@@ -25,8 +25,6 @@ services:
       $maxPendingDeletions: '%audit_trail.queue_limits.pending_deletions%'
       $trackIpAddress: '%audit_trail.track_ip_address%'
       $trackUserAgent: '%audit_trail.track_user_agent%'
-      $adminPermission: '%audit_trail.admin_permission%'
-      $adminExportLimit: '%audit_trail.admin_export_limit%'
       $retentionDays: '%audit_trail.retention_days%'
 
   Rcsofttech\AuditTrailBundle\Service\AuditIntegrityService:
@@ -116,6 +114,7 @@ services:
       - '../../Attribute/'
       - '../../DependencyInjection/'
       - '../../DataCollector/'
+      - '../../Bridge/'
       - '../../Entity/'
       - '../../Enum/'
       - '../../Field/'
@@ -123,6 +122,13 @@ services:
       - '../../Message/'
       - '../../Serializer/'
       - '../../Service/AuditIntegrityService.php'
+      - '../../Service/AuditLogAdminCrudConfigurator.php'
+      - '../../Service/AuditLogAdminFieldProvider.php'
+      - '../../Service/AuditLogAdminLocator.php'
+      - '../../Service/AuditLogAdminOperations.php'
+      - '../../Service/AuditLogAdminRequestMapper.php'
+      - '../../Service/AuditLogAdminViewFactory.php'
+      - '../../Service/AuditLogExportResponseFactory.php'
       - '../../Transport/'
       - '../../Controller/'
 

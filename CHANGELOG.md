@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.1.0]
+
+- **Legacy EasyAdmin flat config keys**: `audit_trail.admin_permission` and
+  `audit_trail.admin_export_limit` are deprecated in favor of the nested
+  `audit_trail.easyadmin.permission` and `audit_trail.easyadmin.export_limit`
+  keys.
+- **Legacy EasyAdmin helper service classes**:
+  `Rcsofttech\AuditTrailBundle\Service\AuditLogAdmin*` now act as BC wrappers
+  around the canonical `Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\*`
+  implementations.
+
 ## [4.0.0]
 
 This release includes API cleanup, stronger typing, and a fix for same-flush

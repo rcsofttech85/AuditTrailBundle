@@ -4,59 +4,22 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
-use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
-use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
-use Stringable;
+use Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminLocator as BridgeAuditLogAdminLocator;
 
-use function is_scalar;
+use function trigger_deprecation;
 
-final readonly class AuditLogAdminLocator
+trigger_deprecation(
+    'rcsofttech/audit-trail-bundle',
+    '4.1',
+    'The "%s" class is deprecated since rcsofttech/audit-trail-bundle 4.1; use "%s" instead.',
+    AuditLogAdminLocator::class,
+    BridgeAuditLogAdminLocator::class,
+);
+
+/**
+ * @deprecated since rcsofttech/audit-trail-bundle 4.1, use
+ *             Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminLocator instead.
+ */
+readonly class AuditLogAdminLocator extends BridgeAuditLogAdminLocator
 {
-    public function __construct(
-        private AuditLogRepositoryInterface $repository,
-    ) {
-    }
-
-    /**
-     * @param AdminContext<AuditLog> $context
-     */
-    public function loadFromContext(AdminContext $context): ?AuditLog
-    {
-        $request = $context->getRequest();
-        $entityId = $request->query->getString('entityId');
-        if ($entityId === '') {
-            $attributeEntityId = $request->attributes->get('entityId');
-            $entityId = is_scalar($attributeEntityId) || $attributeEntityId instanceof Stringable
-                ? (string) $attributeEntityId
-                : '';
-        }
-
-        if ($entityId === '') {
-            return null;
-        }
-
-        /** @var AuditLog|null $auditLog */
-        $auditLog = $this->repository->find($entityId);
-
-        return $auditLog;
-    }
-
-    public function isUiRevertable(AuditLog $log, ?bool $isReverted = null): bool
-    {
-        if (!$log->action->isUiRevertable()) {
-            return false;
-        }
-
-        if ($isReverted ?? $this->repository->isReverted($log)) {
-            return false;
-        }
-
-        return !$this->repository->hasNewerStateChangingLogs($log);
-    }
-
-    public function isReverted(AuditLog $log): bool
-    {
-        return $this->repository->isReverted($log);
-    }
 }

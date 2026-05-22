@@ -2,10 +2,57 @@ services:
   _defaults:
     autowire: true
     autoconfigure: true
+    bind:
+      $adminPermission: '%audit_trail.easyadmin.permission%'
+      $adminExportLimit: '%audit_trail.easyadmin.export_limit%'
 
   Rcsofttech\AuditTrailBundle\Field\:
     resource: '../../Field/'
 
+  Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\:
+    resource: '../../Bridge/EasyAdmin/Service/'
+
+  Rcsofttech\AuditTrailBundle\Service\AuditLogAdminCrudConfigurator:
+    deprecated:
+      package: 'rcsofttech/audit-trail-bundle'
+      version: '4.1'
+      message: 'The "%service_id%" service is deprecated since rcsofttech/audit-trail-bundle 4.1; use "Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminCrudConfigurator" instead.'
+
+  Rcsofttech\AuditTrailBundle\Service\AuditLogAdminFieldProvider:
+    deprecated:
+      package: 'rcsofttech/audit-trail-bundle'
+      version: '4.1'
+      message: 'The "%service_id%" service is deprecated since rcsofttech/audit-trail-bundle 4.1; use "Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminFieldProvider" instead.'
+
+  Rcsofttech\AuditTrailBundle\Service\AuditLogAdminLocator:
+    deprecated:
+      package: 'rcsofttech/audit-trail-bundle'
+      version: '4.1'
+      message: 'The "%service_id%" service is deprecated since rcsofttech/audit-trail-bundle 4.1; use "Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminLocator" instead.'
+
+  Rcsofttech\AuditTrailBundle\Service\AuditLogAdminOperations:
+    deprecated:
+      package: 'rcsofttech/audit-trail-bundle'
+      version: '4.1'
+      message: 'The "%service_id%" service is deprecated since rcsofttech/audit-trail-bundle 4.1; use "Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminOperations" instead.'
+
+  Rcsofttech\AuditTrailBundle\Service\AuditLogAdminRequestMapper:
+    deprecated:
+      package: 'rcsofttech/audit-trail-bundle'
+      version: '4.1'
+      message: 'The "%service_id%" service is deprecated since rcsofttech/audit-trail-bundle 4.1; use "Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminRequestMapper" instead.'
+
+  Rcsofttech\AuditTrailBundle\Service\AuditLogAdminViewFactory:
+    deprecated:
+      package: 'rcsofttech/audit-trail-bundle'
+      version: '4.1'
+      message: 'The "%service_id%" service is deprecated since rcsofttech/audit-trail-bundle 4.1; use "Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminViewFactory" instead.'
+
+  Rcsofttech\AuditTrailBundle\Service\AuditLogExportResponseFactory:
+    deprecated:
+      package: 'rcsofttech/audit-trail-bundle'
+      version: '4.1'
+      message: 'The "%service_id%" service is deprecated since rcsofttech/audit-trail-bundle 4.1; use "Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogExportResponseFactory" instead.'
+
   Rcsofttech\AuditTrailBundle\Controller\Admin\AuditLogCrudController:
-    arguments:
-      $adminPermission: '%audit_trail.admin_permission%'
+    ~
