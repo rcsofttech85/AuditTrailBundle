@@ -7,10 +7,10 @@ namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Context\RequestContext;
 use PHPUnit\Framework\TestCase;
+use Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminLocator;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogRepositoryInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
-use Rcsofttech\AuditTrailBundle\Service\AuditLogAdminLocator;
 use Stringable;
 use Symfony\Component\HttpFoundation\Request;
 

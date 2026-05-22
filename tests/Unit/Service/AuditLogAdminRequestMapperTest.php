@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
 use PHPUnit\Framework\TestCase;
-use Rcsofttech\AuditTrailBundle\Service\AuditLogAdminRequestMapper;
+use Rcsofttech\AuditTrailBundle\Bridge\EasyAdmin\Service\AuditLogAdminRequestMapper;
 
 final class AuditLogAdminRequestMapperTest extends TestCase
 {

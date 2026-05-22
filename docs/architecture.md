@@ -112,11 +112,11 @@ Admin integration is split into smaller services.
 Look at:
 
 - `AuditLogCrudController`
-- `AuditLogAdminCrudConfigurator`
-- `AuditLogAdminFieldProvider`
-- `AuditLogAdminOperations`
-- `AuditLogAdminViewFactory`
-- `AuditLogExportResponseFactory`
+- `Bridge\EasyAdmin\Service\AuditLogAdminCrudConfigurator`
+- `Bridge\EasyAdmin\Service\AuditLogAdminFieldProvider`
+- `Bridge\EasyAdmin\Service\AuditLogAdminOperations`
+- `Bridge\EasyAdmin\Service\AuditLogAdminViewFactory`
+- `Bridge\EasyAdmin\Service\AuditLogExportResponseFactory`
 
 If your change is mostly about presentation or export behavior, change these
 services instead of adding more logic to the controller.

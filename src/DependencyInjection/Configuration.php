@@ -33,6 +33,7 @@ final class Configuration implements ConfigurationInterface
         $rootNode = $treeBuilder->getRootNode();
 
         $this->configureBaseSettings($rootNode);
+        $this->configureEasyAdmin($rootNode);
         $this->configureTransports($rootNode);
         $this->configureIntegrity($rootNode);
 
@@ -47,6 +48,8 @@ final class Configuration implements ConfigurationInterface
             ->beforeNormalization()
             ->ifArray()
             ->then(function (array $value): array {
+                $value = $this->normalizeEasyAdminConfig($value);
+
                 if (!$this->usesRemoteTransport($value)) {
                     return $value;
                 }
@@ -111,14 +114,24 @@ final class Configuration implements ConfigurationInterface
             ->booleanNode('fallback_to_database')->defaultTrue()->end()
             ->scalarNode('cache_pool')->defaultNull()->end()
             ->scalarNode('admin_permission')
-            ->defaultValue('ROLE_ADMIN')
+            ->defaultNull()
+            ->setDeprecated(
+                'rcsofttech/audit-trail-bundle',
+                '4.1',
+                'Configuring "audit_trail.%node%" is deprecated since rcsofttech/audit-trail-bundle 4.1; use "audit_trail.easyadmin.permission" instead.'
+            )
             ->cannotBeEmpty()
-            ->info('Required Symfony permission/role for EasyAdmin audit UI actions such as export and revert.')
+            ->info('Deprecated: use easyadmin.permission instead.')
             ->end()
             ->integerNode('admin_export_limit')
-            ->defaultValue(50000)
+            ->defaultNull()
             ->min(1)
-            ->info('Maximum number of audit rows the EasyAdmin export endpoints will stream in a single HTTP response.')
+            ->setDeprecated(
+                'rcsofttech/audit-trail-bundle',
+                '4.1',
+                'Configuring "audit_trail.%node%" is deprecated since rcsofttech/audit-trail-bundle 4.1; use "audit_trail.easyadmin.export_limit" instead.'
+            )
+            ->info('Deprecated: use easyadmin.export_limit instead.')
             ->end()
             ->arrayNode('audited_methods')
             ->scalarPrototype()->end()
@@ -152,6 +165,50 @@ final class Configuration implements ConfigurationInterface
             ->defaultValue(1000)
             ->min(1)
             ->info('Maximum number of pending deletions retained in memory before the manager throws an overflow exception.')
+            ->end()
+            ->end()
+            ->end()
+            ->end();
+    }
+
+    /**
+     * @param array<string, mixed> $value
+     *
+     * @return array<string, mixed>
+     */
+    private function normalizeEasyAdminConfig(array $value): array
+    {
+        if (!isset($value['easyadmin']) || !is_array($value['easyadmin'])) {
+            $value['easyadmin'] = [];
+        }
+
+        if (array_key_exists('admin_permission', $value) && !array_key_exists('permission', $value['easyadmin'])) {
+            $value['easyadmin']['permission'] = $value['admin_permission'];
+        }
+
+        if (array_key_exists('admin_export_limit', $value) && !array_key_exists('export_limit', $value['easyadmin'])) {
+            $value['easyadmin']['export_limit'] = $value['admin_export_limit'];
+        }
+
+        return $value;
+    }
+
+    private function configureEasyAdmin(ArrayNodeDefinition $rootNode): void
+    {
+        $rootNode
+            ->children()
+            ->arrayNode('easyadmin')
+            ->addDefaultsIfNotSet()
+            ->children()
+            ->scalarNode('permission')
+            ->defaultValue('ROLE_ADMIN')
+            ->cannotBeEmpty()
+            ->info('Required Symfony permission/role for EasyAdmin audit UI actions such as export and revert.')
+            ->end()
+            ->integerNode('export_limit')
+            ->defaultValue(50000)
+            ->min(1)
+            ->info('Maximum number of audit rows the EasyAdmin export endpoints will stream in a single HTTP response.')
             ->end()
             ->end()
             ->end()

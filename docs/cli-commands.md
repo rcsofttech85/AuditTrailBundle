@@ -29,7 +29,7 @@ Notes:
 
 - The CLI export command is the right tool for large or full-history exports.
 - EasyAdmin export respects the active admin filters, but is capped by
-  `admin_export_limit` to keep browser-triggered downloads bounded.
+  `easyadmin.export_limit` to keep browser-triggered downloads bounded.
 
 ## View Diff
 

@@ -50,13 +50,18 @@ audit_trail:
     # persisted across requests.
     cache_pool: null
 
-    # Required role/permission for EasyAdmin audit actions
-    admin_permission: 'ROLE_ADMIN'
+    easyadmin:
+        # Required role/permission for EasyAdmin audit actions
+        permission: 'ROLE_ADMIN'
 
-    # Maximum number of rows a single EasyAdmin export request will stream.
-    # This keeps browser-triggered exports bounded. Use the CLI export command
-    # for larger or full-history exports.
-    admin_export_limit: 50000
+        # Maximum number of rows a single EasyAdmin export request will stream.
+        # This keeps browser-triggered exports bounded. Use the CLI export
+        # command for larger or full-history exports.
+        export_limit: 50000
+
+    # Deprecated in 4.1; use the nested easyadmin config above instead.
+    # admin_permission: 'ROLE_ADMIN'
+    # admin_export_limit: 50000
 
     # HTTP methods eligible for access auditing
     audited_methods: ['GET']
@@ -137,7 +142,7 @@ audit_trail:
 - `soft_delete_field` must not be empty and should point to a nullable timestamp-like field such as `deletedAt` or `archivedAt`
 - the built-in restore flow clears that field by setting it to `null`; boolean or status-based soft-delete markers need a custom restore handler
 - `max_collection_items` must be at least `1`
-- `admin_export_limit` must be at least `1`
+- `easyadmin.export_limit` must be at least `1`
 - each `queue_limits` value must be at least `1`
 - If `cache_pool` is `null`, access-audit cooldowns are request-local only; cross-request cooldown persistence is disabled
 
@@ -183,7 +188,7 @@ leave the failure-handling flags unset, the bundle changes them to
 - Because deferred database writes use a dedicated writer, Doctrine ORM lifecycle callbacks/listeners on `AuditLog` are not involved in that deferred path.
 - When `fallback_to_database` is enabled, the dispatcher uses the bundle's own fallback path for each phase. On `onFlush` it joins the current `UnitOfWork`; on deferred and manual phases it writes through the dedicated database writer; and on failure it logs the fallback failure clearly.
 - If transport delivery keeps failing in a long-running process, the bundle retains failed work for a later flush. The `queue_limits` settings cap that in-memory retention so workers fail loudly instead of growing without bound.
-- EasyAdmin exports respect the active admin filters first, then apply `admin_export_limit`. If you need a larger export, prefer the CLI command.
+- EasyAdmin exports respect the active admin filters first, then apply `easyadmin.export_limit`. If you need a larger export, prefer the CLI command.
 
 ## Collection Serialization Guide
 

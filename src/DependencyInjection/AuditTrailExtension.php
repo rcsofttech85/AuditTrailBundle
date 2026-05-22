@@ -51,8 +51,9 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
          *   fallback_to_database: bool,
          *   integrity: array{enabled: bool, secret: ?string, algorithm: string},
          *   cache_pool: ?string,
-         *   admin_permission: string,
-         *   admin_export_limit: int,
+         *   admin_permission: ?string,
+         *   admin_export_limit: ?int,
+         *   easyadmin: array{permission: string, export_limit: int},
          *   audited_methods: array<string>,
          *   collection_serialization_mode: string,
          *   max_collection_items: int,
@@ -69,6 +70,9 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
          * } $config */
         $config = $this->processConfiguration($configuration, $configs);
         $this->assertHttpTransportSecurity($container, $config);
+
+        $easyAdminPermission = $config['easyadmin']['permission'];
+        $easyAdminExportLimit = $config['easyadmin']['export_limit'];
 
         $this->parameterRegistrar->register($container, [
             'audit_trail.enabled' => $config['enabled'],
@@ -88,8 +92,10 @@ final class AuditTrailExtension extends Extension implements PrependExtensionInt
             'audit_trail.fail_on_transport_error' => $config['fail_on_transport_error'],
             'audit_trail.fallback_to_database' => $config['fallback_to_database'],
             'audit_trail.cache_pool' => $config['cache_pool'],
-            'audit_trail.admin_permission' => $config['admin_permission'],
-            'audit_trail.admin_export_limit' => $config['admin_export_limit'],
+            'audit_trail.easyadmin.permission' => $easyAdminPermission,
+            'audit_trail.easyadmin.export_limit' => $easyAdminExportLimit,
+            'audit_trail.admin_permission' => $easyAdminPermission,
+            'audit_trail.admin_export_limit' => $easyAdminExportLimit,
             'audit_trail.audited_methods' => $config['audited_methods'],
             'audit_trail.collection_serialization_mode' => $config['collection_serialization_mode'],
             'audit_trail.max_collection_items' => $config['max_collection_items'],
