@@ -78,7 +78,7 @@ final class AuditLogMessageSerializerTest extends TestCase
         self::assertSame('test_api_key', $encoded['headers']['X-Audit-Api-Key']);
         self::assertSame('test_signature', $encoded['headers']['X-Audit-Signature']);
         self::assertSame('application/json', $encoded['headers']['Content-Type']);
-        self::assertSame('RcsoftTech-AuditTrailBundle/'.AuditTrailBundle::VERSION, $encoded['headers']['User-Agent']);
+        self::assertSame('RcsoftTech-AuditTrailBundle/'.AuditTrailBundle::version(), $encoded['headers']['User-Agent']);
     }
 
     public function testDecodeThrowsException(): void
