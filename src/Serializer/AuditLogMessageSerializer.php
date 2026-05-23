@@ -64,7 +64,7 @@ final readonly class AuditLogMessageSerializer implements SerializerInterface
     {
         $headers = [
             'Content-Type' => self::CONTENT_TYPE,
-            'User-Agent' => 'RcsoftTech-AuditTrailBundle/'.AuditTrailBundle::VERSION,
+            'User-Agent' => 'RcsoftTech-AuditTrailBundle/'.AuditTrailBundle::version(),
         ];
 
         /** @var ApiKeyStamp|null $apiKeyStamp */

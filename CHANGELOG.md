@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.2.0]
+
+This release modernizes bundle bootstrapping around Symfony's `AbstractBundle`
+while keeping the 4.x upgrade path backward compatible.
+
+### 4.2.0 Upgrade Notes
+
+- **Bundle runtime now uses `AbstractBundle`**: the bundle now configures,
+  prepends, and loads container state through
+  `Rcsofttech\AuditTrailBundle\AuditTrailBundle` instead of relying on the
+  legacy `Bundle::createContainerExtension()` pattern.
+- **Legacy DI entrypoints are deprecated, not removed**:
+  `Rcsofttech\AuditTrailBundle\DependencyInjection\AuditTrailExtension` and
+  `Rcsofttech\AuditTrailBundle\DependencyInjection\Configuration` remain
+  available as thin BC wrappers in 4.x, but direct use of those classes is now
+  deprecated and they are intended for removal in 5.0.
+- **`AuditTrailBundle::VERSION` is deprecated**: use
+  `Rcsofttech\AuditTrailBundle\AuditTrailBundle::version()` instead.
+- **Integrity secret configuration is stricter**: if integrity signing is
+  enabled, `audit_trail.integrity.secret` must now resolve as a string and is
+  expected to be configured through an env placeholder such as
+  `%env(string:AUDIT_INTEGRITY_SECRET)%`.
+
+### 4.2.0 Improved
+
+- **Modern Symfony bundle structure**: configuration-tree definition and shared
+  container wiring are now split into focused internal helpers, keeping the
+  `AbstractBundle` entrypoint thin and aligned with current Symfony guidance.
+- **Automatic package version reporting**: transport serializers now resolve
+  the installed bundle version through Composer runtime metadata instead of
+  relying on a manually updated public constant.
+- **Modern-path integration coverage**: the test suite now includes dedicated
+  coverage for the `AbstractBundle` runtime path while preserving 4.x
+  compatibility checks for the deprecated wrappers.
+
+### 4.2.0 Fixed
+
+- **Integrity secret contract safety**: invalid non-string integrity secrets
+  are now rejected during configuration processing instead of leaking through
+  to runtime service wiring.
+
 ## [4.1.0]
 
 - **Legacy EasyAdmin flat config keys**: `audit_trail.admin_permission` and

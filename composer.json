@@ -34,6 +34,7 @@
     "minimum-stability": "stable",
     "require": {
         "php": "^8.4",
+        "composer-runtime-api": "^2.0",
         "symfony/framework-bundle": "^7.4|^8.0",
         "doctrine/orm": "^3.6",
         "doctrine/doctrine-bundle": "^3.1",
