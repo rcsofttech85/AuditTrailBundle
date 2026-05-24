@@ -449,6 +449,9 @@ final class AuditTrailExtensionTest extends TestCase
                     'http' => [
                         'enabled' => true,
                         'endpoint' => 'http://example.com',
+                        'headers' => [
+                            'X-App-Name' => 'AuditTrailBundle',
+                        ],
                     ],
                 ],
             ],
@@ -460,6 +463,10 @@ final class AuditTrailExtensionTest extends TestCase
         self::assertSame(
             'rcsofttech_audit_trail.transport.http',
             (string) $container->getAlias(AuditTransportInterface::class)
+        );
+        self::assertSame(
+            ['X-App-Name' => 'AuditTrailBundle'],
+            $container->getDefinition('rcsofttech_audit_trail.transport.http')->getArgument('$headers'),
         );
         self::assertTrue($container->getParameter('audit_trail.fail_on_transport_error'));
         self::assertFalse($container->getParameter('audit_trail.fallback_to_database'));

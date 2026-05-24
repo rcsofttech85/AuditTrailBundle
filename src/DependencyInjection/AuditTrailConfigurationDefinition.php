@@ -281,6 +281,7 @@ final class AuditTrailConfigurationDefinition
             ->end()
             ->end()
             ->arrayNode('headers')
+            ->normalizeKeys(false)
             ->scalarPrototype()->end()
             ->defaultValue([])
             ->end()
