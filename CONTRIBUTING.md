@@ -89,9 +89,10 @@ If you are new to the codebase, these are the main places to look:
   `src/Query/*`,
   `src/Repository/*`
 
-For a broader map of the codebase and extension points, see
-[`docs/advanced-usage.md`](docs/advanced-usage.md) and
-[`docs/architecture.md`](docs/architecture.md).
+For a broader map of the codebase and extension points, see the public documentation:
+
+- [Usage and extension points](https://rcsofttech85.github.io/public/audit-trail-bundle/docs/4.x/usage.html)
+- [Architecture notes](https://rcsofttech85.github.io/public/audit-trail-bundle/docs/4.x/upgrade-architecture.html#architecture)
 
 ## Extension Points
 
