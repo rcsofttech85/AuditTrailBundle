@@ -115,7 +115,7 @@ collection auditing.
   implementations must update `exportToStream()` to return the exported record
   count as `int` instead of `void`.
 
-See `docs/upgrade-v4.md` for the full migration guide.
+See the [public upgrade guide](https://rcsofttech85.github.io/public/audit-trail-bundle/docs/4.x/upgrade-architecture.html#upgrade-guides) for full migration details.
 
 ### 4.0.0 Fixed
 
