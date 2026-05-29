@@ -12,7 +12,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditIntegrityServiceInterface;
-use Rcsofttech\AuditTrailBundle\Contract\AuditLogAiProcessorInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogReadModelAiProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogWriterInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditTransportInterface;
 use Rcsofttech\AuditTrailBundle\Contract\DataMaskerInterface;
@@ -20,6 +20,7 @@ use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
 use Rcsofttech\AuditTrailBundle\Event\AuditDeliveryFailedEvent;
 use Rcsofttech\AuditTrailBundle\Event\AuditLogCreatedEvent;
+use Rcsofttech\AuditTrailBundle\Query\AuditLogReadModel;
 use Rcsofttech\AuditTrailBundle\Service\AuditContextNormalizer;
 use Rcsofttech\AuditTrailBundle\Service\AuditDispatcher;
 use Rcsofttech\AuditTrailBundle\Service\AuditFallbackPersister;
@@ -99,14 +100,14 @@ final class AuditDispatcherTest extends TestCase
         return $em;
     }
 
-    /** @return AuditLogAiProcessorInterface&MockObject */
-    private function useAiProcessorMock(): AuditLogAiProcessorInterface
+    /** @return AuditLogReadModelAiProcessorInterface&MockObject */
+    private function useReadModelAiProcessorMock(): AuditLogReadModelAiProcessorInterface
     {
-        return self::createMock(AuditLogAiProcessorInterface::class);
+        return self::createMock(AuditLogReadModelAiProcessorInterface::class);
     }
 
     /**
-     * @param iterable<AuditLogAiProcessorInterface>|null $aiProcessors
+     * @param iterable<object>|null $aiProcessors
      */
     private function createDispatcher(
         ?AuditTransportInterface $transport = null,
@@ -281,7 +282,7 @@ final class AuditDispatcherTest extends TestCase
     {
         $transport = $this->useTransportMock();
         $integrityService = $this->useIntegrityServiceMock();
-        $aiProcessor = $this->useAiProcessorMock();
+        $aiProcessor = $this->useReadModelAiProcessorMock();
         $dispatcher = $this->createDispatcher($transport, null, $integrityService, null, null, false, true, [$aiProcessor]);
 
         $transport->method('supports')->willReturn(true);
@@ -290,8 +291,8 @@ final class AuditDispatcherTest extends TestCase
             ->method('getNamespace')
             ->willReturn('default_ai');
         $aiProcessor->expects($this->once())
-            ->method('process')
-            ->with($this->audit->context, null)
+            ->method('processAuditLog')
+            ->with(self::callback(static fn (AuditLogReadModel $audit): bool => $audit->context === []))
             ->willReturn(['summary' => 'Potential risk']);
         $integrityService->method('isEnabled')->willReturn(true);
         $integrityService->expects($this->once())
@@ -309,7 +310,7 @@ final class AuditDispatcherTest extends TestCase
         $transport = $this->useTransportMock();
         $eventDispatcher = $this->useEventDispatcherMock();
         $integrityService = $this->useIntegrityServiceMock();
-        $aiProcessor = $this->useAiProcessorMock();
+        $aiProcessor = $this->useReadModelAiProcessorMock();
         $dispatcher = $this->createDispatcher($transport, $eventDispatcher, $integrityService, null, null, false, true, [$aiProcessor]);
 
         $transport->method('supports')->willReturn(true);
@@ -324,8 +325,8 @@ final class AuditDispatcherTest extends TestCase
             ->method('getNamespace')
             ->willReturn('derived_ai');
         $aiProcessor->expects($this->once())
-            ->method('process')
-            ->with(['source' => 'event'], null)
+            ->method('processAuditLog')
+            ->with(self::callback(static fn (AuditLogReadModel $audit): bool => $audit->context === ['source' => 'event']))
             ->willReturn(['summary' => 'Derived after event']);
         $integrityService->method('isEnabled')->willReturn(true);
         $integrityService->expects($this->once())
@@ -345,10 +346,49 @@ final class AuditDispatcherTest extends TestCase
         self::assertSame('Derived after event', $this->audit->context['ai']['derived_ai']['summary'] ?? null);
     }
 
+    public function testDispatchPassesReadModelToReadModelAiProcessor(): void
+    {
+        $transport = $this->useTransportMock();
+        $aiProcessor = new class implements AuditLogReadModelAiProcessorInterface {
+            public ?AuditLogReadModel $audit = null;
+
+            public function getNamespace(): string
+            {
+                return 'read_model_ai';
+            }
+
+            public function processAuditLog(AuditLogReadModel $audit): array
+            {
+                $this->audit = $audit;
+
+                return [
+                    'summary' => 'Read model processed',
+                    'action' => $audit->action->value,
+                ];
+            }
+        };
+        $dispatcher = $this->createDispatcher($transport, null, null, null, null, false, true, [$aiProcessor]);
+
+        $transport->method('supports')->willReturn(true);
+        $transport->expects($this->once())
+            ->method('send')
+            ->with(
+                self::callback(static fn (AuditTransportContext $context): bool => ($context->audit->context['ai']['read_model_ai']['summary'] ?? null) === 'Read model processed'
+                    && ($context->audit->context['ai']['read_model_ai']['action'] ?? null) === 'update'),
+            )
+            ->willReturn(AuditDeliveryResult::delivered());
+
+        self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::PostFlush));
+        self::assertNotNull($aiProcessor->audit);
+        self::assertSame($this->audit->entityClass, $aiProcessor->audit->entityClass);
+        self::assertSame($this->audit->entityId, $aiProcessor->audit->entityId);
+        self::assertSame($this->audit->action, $aiProcessor->audit->action);
+    }
+
     public function testDispatchPreservesExistingAiContextWhenProcessorAddsMetadata(): void
     {
         $transport = $this->useTransportMock();
-        $aiProcessor = $this->useAiProcessorMock();
+        $aiProcessor = $this->useReadModelAiProcessorMock();
         $dispatcher = $this->createDispatcher($transport, null, null, null, null, false, true, [$aiProcessor]);
         $this->audit->context = [
             'ai' => ['existing_ai' => ['existing' => 'kept']],
@@ -360,8 +400,8 @@ final class AuditDispatcherTest extends TestCase
             ->method('getNamespace')
             ->willReturn('new_ai');
         $aiProcessor->expects($this->once())
-            ->method('process')
-            ->with($this->audit->context, null)
+            ->method('processAuditLog')
+            ->with(self::callback(static fn (AuditLogReadModel $audit): bool => ($audit->context['request_id'] ?? null) === 'req-123'))
             ->willReturn(['summary' => 'New insight']);
         $transport->expects($this->once())
             ->method('send')
@@ -379,24 +419,24 @@ final class AuditDispatcherTest extends TestCase
     public function testDispatchNamespacedAiProcessorsAvoidKeyCollisions(): void
     {
         $transport = $this->useTransportMock();
-        $firstProcessor = new class implements AuditLogAiProcessorInterface {
+        $firstProcessor = new class implements AuditLogReadModelAiProcessorInterface {
             public function getNamespace(): string
             {
                 return 'summary_engine';
             }
 
-            public function process(array $context, ?object $entity = null): array
+            public function processAuditLog(AuditLogReadModel $audit): array
             {
                 return ['summary' => 'Price changed'];
             }
         };
-        $secondProcessor = new class implements AuditLogAiProcessorInterface {
+        $secondProcessor = new class implements AuditLogReadModelAiProcessorInterface {
             public function getNamespace(): string
             {
                 return 'risk_engine';
             }
 
-            public function process(array $context, ?object $entity = null): array
+            public function processAuditLog(AuditLogReadModel $audit): array
             {
                 return ['summary' => 'Elevated risk'];
             }
@@ -421,7 +461,7 @@ final class AuditDispatcherTest extends TestCase
     {
         $transport = $this->useTransportMock();
         $logger = $this->useLoggerMock();
-        $aiProcessor = $this->useAiProcessorMock();
+        $aiProcessor = $this->useReadModelAiProcessorMock();
         $dispatcher = $this->createDispatcher($transport, null, null, null, $logger, false, true, [$aiProcessor]);
 
         $transport->method('supports')->willReturn(true);
@@ -429,7 +469,7 @@ final class AuditDispatcherTest extends TestCase
             ->method('getNamespace')
             ->willReturn(' ');
         $aiProcessor->expects($this->never())
-            ->method('process');
+            ->method('processAuditLog');
         $logger->expects($this->once())
             ->method('warning')
             ->with(self::stringContains('empty namespace'));
@@ -448,7 +488,7 @@ final class AuditDispatcherTest extends TestCase
     {
         $transport = $this->useTransportMock();
         $logger = $this->useLoggerMock();
-        $aiProcessor = $this->useAiProcessorMock();
+        $aiProcessor = $this->useReadModelAiProcessorMock();
         $dispatcher = $this->createDispatcher($transport, null, null, null, $logger, false, true, [$aiProcessor]);
 
         $transport->method('supports')->willReturn(true);
@@ -457,7 +497,7 @@ final class AuditDispatcherTest extends TestCase
             ->method('getNamespace')
             ->willReturn('default_ai');
         $aiProcessor->expects($this->once())
-            ->method('process')
+            ->method('processAuditLog')
             ->willThrowException(new Exception('AI unavailable'));
         $logger->expects($this->once())
             ->method('warning')
@@ -469,14 +509,14 @@ final class AuditDispatcherTest extends TestCase
     public function testDispatchSkipsAiProcessorsDuringOnFlush(): void
     {
         $transport = $this->useTransportMock();
-        $aiProcessor = $this->useAiProcessorMock();
+        $aiProcessor = $this->useReadModelAiProcessorMock();
         $dispatcher = $this->createDispatcher($transport, null, null, null, null, false, true, [$aiProcessor]);
         $uow = self::createStub(UnitOfWork::class);
 
         $transport->method('supports')->willReturn(true);
         $transport->expects($this->once())->method('send')->willReturn(AuditDeliveryResult::delivered());
         $aiProcessor->expects($this->never())->method('getNamespace');
-        $aiProcessor->expects($this->never())->method('process');
+        $aiProcessor->expects($this->never())->method('processAuditLog');
 
         self::assertTrue($dispatcher->dispatch($this->audit, $this->em, AuditPhase::OnFlush, $uow));
     }
@@ -484,13 +524,13 @@ final class AuditDispatcherTest extends TestCase
     public function testDispatchRedactsAiContextBeforeSending(): void
     {
         $transport = $this->useTransportMock();
-        $aiProcessor = self::createStub(AuditLogAiProcessorInterface::class);
+        $aiProcessor = self::createStub(AuditLogReadModelAiProcessorInterface::class);
         $dispatcher = $this->createDispatcher($transport, null, null, new DataMasker(), null, false, true, [$aiProcessor]);
 
         $transport->method('supports')->willReturn(true);
         $aiProcessor->method('getNamespace')
             ->willReturn('masking_ai');
-        $aiProcessor->method('process')
+        $aiProcessor->method('processAuditLog')
             ->willReturn(['ai_secret' => 'raw-token']);
         $transport->expects($this->once())->method('send')->willReturn(AuditDeliveryResult::delivered());
 
@@ -542,7 +582,7 @@ final class AuditDispatcherTest extends TestCase
 
         $transport = $this->useTransportMock();
         $logger = $this->useLoggerMock();
-        $aiProcessor = $this->useAiProcessorMock();
+        $aiProcessor = $this->useReadModelAiProcessorMock();
         $dispatcher = $this->createDispatcher($transport, null, null, null, $logger, false, true, [$aiProcessor]);
 
         $transport->method('supports')->willReturn(true);
@@ -550,7 +590,7 @@ final class AuditDispatcherTest extends TestCase
             ->method('getNamespace')
             ->willReturn('large_ai');
         $aiProcessor->expects($this->once())
-            ->method('process')
+            ->method('processAuditLog')
             ->willReturn([
                 'summary' => str_repeat('x', 8_000),
                 'details' => str_repeat('y', 8_000),

@@ -6,20 +6,23 @@ namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Psr\Log\LoggerInterface;
 use Rcsofttech\AuditTrailBundle\Contract\AuditLogAiProcessorInterface;
+use Rcsofttech\AuditTrailBundle\Contract\AuditLogReadModelAiProcessorInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditPhase;
+use Rcsofttech\AuditTrailBundle\Query\AuditLogReadModel;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 use Throwable;
 
 use function array_key_exists;
 use function is_array;
+use function spl_object_id;
 use function sprintf;
 use function trim;
 
 final readonly class AuditLogContextProcessor
 {
     /**
-     * @param iterable<AuditLogAiProcessorInterface> $aiProcessors
+     * @param iterable<object> $aiProcessors
      */
     public function __construct(
         private ContextSanitizer $contextSanitizer,
@@ -49,9 +52,25 @@ final readonly class AuditLogContextProcessor
         }
 
         $aiContext = $existingAiContext;
+        $readModel = null;
+        $processedProcessors = [];
 
         foreach ($this->aiProcessors as $processor) {
             try {
+                $processorId = spl_object_id($processor);
+                if (isset($processedProcessors[$processorId])) {
+                    continue;
+                }
+                $processedProcessors[$processorId] = true;
+
+                if (!$processor instanceof AuditLogReadModelAiProcessorInterface && !$processor instanceof AuditLogAiProcessorInterface) {
+                    $this->logger?->warning(
+                        sprintf('Audit AI processor %s does not implement a supported processing contract and was skipped.', $processor::class),
+                    );
+
+                    continue;
+                }
+
                 $namespace = trim($processor->getNamespace());
 
                 if ($namespace === '') {
@@ -62,7 +81,9 @@ final readonly class AuditLogContextProcessor
                     continue;
                 }
 
-                $result = $processor->process($audit->context, $entity);
+                $result = $processor instanceof AuditLogReadModelAiProcessorInterface
+                    ? $processor->processAuditLog($readModel ??= AuditLogReadModel::fromAuditLog($audit))
+                    : $processor->process($audit->context, $entity);
 
                 if ($result !== []) {
                     $result = $this->contextSanitizer->sanitizeArray($result);
@@ -93,7 +114,7 @@ final readonly class AuditLogContextProcessor
      *
      * @return array<string, mixed>
      */
-    private function mergeAiProcessorResult(array $aiContext, array $result, AuditLogAiProcessorInterface $processor, string $namespace): array
+    private function mergeAiProcessorResult(array $aiContext, array $result, object $processor, string $namespace): array
     {
         $existingNamespace = isset($aiContext[$namespace]) && is_array($aiContext[$namespace]) ? $aiContext[$namespace] : [];
         $aiContext[$namespace] = $this->mergeAiArrays($existingNamespace, $result, $processor::class.':'.$namespace);

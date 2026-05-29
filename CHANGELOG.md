@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.3.0]
+
+### 4.3.0 Upgrade Notes
+
+- **AI processor API cleanup for v5**:
+  `Rcsofttech\AuditTrailBundle\Contract\AuditLogAiProcessorInterface` is now
+  deprecated and will be removed in 5.0. Implement
+  `Rcsofttech\AuditTrailBundle\Contract\AuditLogReadModelAiProcessorInterface`
+  instead so processors receive a read-only audit-log snapshot with action,
+  entity, actor, request, old/new values, changed fields, and context.
+
+### 4.3.0 Fixed
+
+- **AI processors can analyze the full audit event**: the new
+  `AuditLogReadModelAiProcessorInterface` receives an `AuditLogReadModel`
+  instead of only `context` plus an optional live entity object. This gives AI
+  processors access to audit metadata and diff data such as `action`,
+  `entityId`, `createdAt`, `transactionHash`, `oldValues`, `newValues`,
+  `changedFields`, actor fields, request fields, and custom context. Legacy
+  `AuditLogAiProcessorInterface` processors still run in 4.x for backward
+  compatibility, but new processors should use the read-model API.
+
 ## [4.2.0]
 
 This release modernizes bundle bootstrapping around Symfony's `AbstractBundle`

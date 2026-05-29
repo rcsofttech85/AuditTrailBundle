@@ -6,6 +6,16 @@ namespace Rcsofttech\AuditTrailBundle\Contract;
 
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 
+use function trigger_deprecation;
+
+trigger_deprecation(
+    'rcsofttech/audit-trail-bundle',
+    '4.3',
+    'The "%s" interface is deprecated since rcsofttech/audit-trail-bundle 4.3 and will be removed in 5.0; implement "%s" instead.',
+    AuditLogAiProcessorInterface::class,
+    AuditLogReadModelAiProcessorInterface::class,
+);
+
 /**
  * Optional extension point for AI-oriented processing of audit logs before
  * signing and transport dispatch.
@@ -16,6 +26,9 @@ use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
  * - scoped to returned AI metadata only
  * - optional and non-critical
  * - safe to omit when external AI systems are unavailable
+ *
+ * @deprecated since rcsofttech/audit-trail-bundle 4.3, will be removed in 5.0;
+ *             implement AuditLogReadModelAiProcessorInterface instead.
  */
 #[AutoconfigureTag('audit_trail.ai_processor')]
 interface AuditLogAiProcessorInterface
