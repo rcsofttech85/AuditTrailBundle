@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.3.1]
+
+### 4.3.1 Fixed
+
+- **Deferred transport is respected for resolved-ID create audits**: create
+  audits whose entity ID is already available during `onFlush` now honor
+  `audit_trail.defer_transport_until_commit`. With the default deferred
+  transport setting, these audits are scheduled and delivered from the
+  post-flush path instead of being dispatched immediately during `onFlush`.
+  This makes UUID/ULID-backed inserts behave consistently with generated-ID
+  inserts and other deferred audit entries.
+
+### 4.3.1 Compatibility Notes
+
+- **`AuditLogCreatedEvent` timing for resolved-ID inserts**: when
+  `audit_trail.defer_transport_until_commit` is enabled, listeners now observe
+  `AuditLogCreatedEvent` for resolved-ID create audits during post-flush
+  delivery instead of during `onFlush`. The event API and payload are
+  unchanged, and listener mutations still run before audit context processing,
+  AI processing, integrity signing, and transport delivery. Applications using
+  `defer_transport_until_commit: false` keep the immediate dispatch behavior
+  for resolved-ID inserts.
+
 ## [4.3.0]
 
 ### 4.3.0 Upgrade Notes

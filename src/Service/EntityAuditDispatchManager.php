@@ -37,14 +37,14 @@ final readonly class EntityAuditDispatchManager
 
     private function shouldDispatchNow(AuditLog $audit, bool $isInsert): bool
     {
-        if (!$isInsert) {
-            return !$this->deferTransportUntilCommit;
+        if ($this->deferTransportUntilCommit) {
+            return false;
         }
 
-        if ($audit->hasResolvedEntityId()) {
+        if (!$isInsert) {
             return true;
         }
 
-        return !$this->deferTransportUntilCommit && $this->failOnTransportError;
+        return $audit->hasResolvedEntityId() || $this->failOnTransportError;
     }
 }
