@@ -158,14 +158,14 @@ final class EntityProcessorTest extends TestCase
         ]);
     }
 
-    public function testProcessInsertionsWithResolvedId(): void
+    public function testProcessInsertionsWithResolvedIdDefersWhenTransportDeferred(): void
     {
         $dispatcher = self::createMock(AuditDispatcherInterface::class);
         $processor = $this->createProcessor(dispatcher: $dispatcher);
         $em = self::createStub(EntityManagerInterface::class);
         $uow = self::createStub(UnitOfWork::class);
         $entity = new stdClass();
-        // Entity ID is already resolved (UUID case) — should dispatch immediately
+        // Entity ID is already resolved (UUID case) but deferred transport waits until postFlush.
         $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
         $this->auditService->expects($this->once())
             ->method('shouldAudit')
@@ -175,7 +175,8 @@ final class EntityProcessorTest extends TestCase
         $audit = new AuditLog(stdClass::class, '550e8400-e29b-41d4-a716-446655440000', AuditAction::Create);
         $this->auditService->expects($this->once())->method('createAuditLog')->willReturn($audit);
 
-        $dispatcher->expects($this->once())->method('dispatch')->willReturn(true);
+        $dispatcher->expects($this->never())->method('dispatch');
+        $this->auditManager->expects($this->once())->method('schedule')->with($entity, $audit, true);
         $this->auditManager->expects($this->never())->method('schedulePendingAuditPlan');
 
         $processor->processInsertions($em, $uow);

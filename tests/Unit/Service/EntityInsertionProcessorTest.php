@@ -37,7 +37,7 @@ final class EntityInsertionProcessorTest extends TestCase
         $this->auditManager = $this->createMock(AuditQueueManagerInterface::class);
     }
 
-    public function testDispatchesImmediateInsertionsWithoutDeferredCollections(): void
+    public function testDispatchesInsertionsWithoutDeferredCollectionsWhenTransportIsImmediate(): void
     {
         $em = self::createMock(EntityManagerInterface::class);
         $uow = self::createStub(UnitOfWork::class);
@@ -64,6 +64,36 @@ final class EntityInsertionProcessorTest extends TestCase
             ->method('dispatch')
             ->willReturn(true);
         $this->auditManager->expects($this->never())->method('schedule');
+        $this->auditManager->expects($this->never())->method('schedulePendingAuditPlan');
+
+        $this->createProcessor(dispatcher: $dispatcher, deferTransportUntilCommit: false)->process($em, $uow);
+    }
+
+    public function testSchedulesResolvedInsertionsWithoutDeferredCollectionsWhenTransportIsDeferred(): void
+    {
+        $em = self::createMock(EntityManagerInterface::class);
+        $uow = self::createStub(UnitOfWork::class);
+        $metadata = self::createStub(ClassMetadata::class);
+        $entity = new stdClass();
+        $data = ['name' => 'Example'];
+        $audit = new AuditLog(stdClass::class, '1', AuditAction::Create);
+        $dispatcher = $this->createMock(AuditDispatcherInterface::class);
+
+        $uow->method('getScheduledEntityInsertions')->willReturn([$entity]);
+        $em->expects($this->once())->method('getClassMetadata')->with($entity::class)->willReturn($metadata);
+        $metadata->method('getAssociationNames')->willReturn([]);
+
+        $this->auditService->method('getEntityData')->willReturn($data);
+        $this->auditService->expects($this->once())
+            ->method('shouldAudit')
+            ->with($entity, AuditAction::Create, $data)
+            ->willReturn(true);
+        $this->auditService->expects($this->once())
+            ->method('createAuditLog')
+            ->with($entity, AuditAction::Create, null, $data, [], $em)
+            ->willReturn($audit);
+        $dispatcher->expects($this->never())->method('dispatch');
+        $this->auditManager->expects($this->once())->method('schedule')->with($entity, $audit, true);
         $this->auditManager->expects($this->never())->method('schedulePendingAuditPlan');
 
         $this->createProcessor(dispatcher: $dispatcher)->process($em, $uow);
@@ -108,6 +138,7 @@ final class EntityInsertionProcessorTest extends TestCase
     private function createProcessor(
         ?AuditDispatcherInterface $dispatcher = null,
         ?EntityIdResolverInterface $idResolver = null,
+        bool $deferTransportUntilCommit = true,
     ): EntityInsertionProcessor {
         $resolver = $idResolver ?? self::createStub(EntityIdResolverInterface::class);
         $collectionIdExtractor = new CollectionIdExtractor($resolver);
@@ -124,7 +155,11 @@ final class EntityInsertionProcessorTest extends TestCase
             $this->auditService,
             $this->auditManager,
             new DeferredCollectionDetector($collectionChangeResolver),
-            new EntityAuditDispatchManager($dispatcher ?? self::createStub(AuditDispatcherInterface::class), $this->auditManager),
+            new EntityAuditDispatchManager(
+                $dispatcher ?? self::createStub(AuditDispatcherInterface::class),
+                $this->auditManager,
+                $deferTransportUntilCommit,
+            ),
         );
     }
 }
