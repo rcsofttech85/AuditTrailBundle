@@ -212,8 +212,32 @@ final readonly class CollectionChangeResolver
         PersistentCollection|TrackableCollectionInterface $collection,
         EntityManagerInterface $em,
     ): array {
-        if ($collection instanceof PersistentCollection) {
+        if ($collection instanceof PersistentCollection && $collection->isInitialized()) {
             return $this->collectionIdExtractor->extractFromIterable($collection, $em);
+        }
+
+        if ($collection instanceof PersistentCollection) {
+            // Never iterate an uninitialized live collection here: doing so initializes it
+            // from the pre-commit database state mid-flush and corrupts later reads in the
+            // same request. Compute current ids from the snapshot plus insert/delete diffs.
+            $deletedIds = [];
+            foreach ($this->getCollectionDeleteDiff($collection) as $entity) {
+                $deletedIds[spl_object_id($entity)] = true;
+            }
+
+            $kept = [];
+            foreach ($collection->getSnapshot() as $entity) {
+                if (is_object($entity) && isset($deletedIds[spl_object_id($entity)])) {
+                    continue;
+                }
+
+                $kept[] = $entity;
+            }
+
+            return $this->collectionIdExtractor->extractFromIterable(
+                [...$kept, ...$this->getCollectionInsertDiff($collection)],
+                $em,
+            );
         }
 
         if (is_iterable($collection)) {

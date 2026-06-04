@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Query\QueryBuilder;
@@ -13,6 +14,7 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\DefaultNamingStrategy;
 use Doctrine\ORM\Mapping\ManyToManyInverseSideMapping;
 use Doctrine\ORM\Mapping\ManyToManyOwningSideMapping;
+use Doctrine\ORM\PersistentCollection;
 use Doctrine\ORM\UnitOfWork;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
@@ -353,6 +355,40 @@ final class CollectionChangeResolverTest extends TestCase
         $uow->method('getOriginalEntityData')->willReturn([]);
 
         self::assertSame([], $resolver->extractCollectionChangesIndexedByOwner($em, $uow));
+    }
+
+    public function testBuildCollectionTransitionDoesNotInitializeUninitializedPersistentCollection(): void
+    {
+        $owner = new class {
+            public int $id = 10;
+        };
+        $existingTag = new TestCollectionItem(1);
+        $addedTag = new TestCollectionItem(2);
+
+        $resolver = $this->createResolver();
+
+        $targetMetadata = self::createStub(ClassMetadata::class);
+        $em = self::createStub(EntityManagerInterface::class);
+        $em->method('getClassMetadata')->willReturn($targetMetadata);
+
+        /** @var PersistentCollection<int, object> $collection */
+        $collection = new PersistentCollection($em, $targetMetadata, new ArrayCollection([$existingTag]));
+        $collection->setOwner($owner, $this->createOwningTagsMapping($owner));
+        $collection->takeSnapshot();        // snapshot baseline = [existingTag]
+        $collection->add($addedTag);        // pending insert diff = [addedTag]
+        $collection->setInitialized(false); // simulate a lazy collection that was never loaded
+
+        $transition = $resolver->buildCollectionTransition($collection, $em);
+
+        self::assertSame(
+            ['field' => 'tags', 'old' => ['1'], 'new' => ['1', '2']],
+            $transition,
+            'new ids must come from the snapshot plus insert/delete diffs',
+        );
+        self::assertFalse(
+            $collection->isInitialized(),
+            'audit id resolution must NOT initialize an uninitialized collection',
+        );
     }
 
     private function createResolver(?JoinTableCollectionIdLoader $joinTableLoader = null): CollectionChangeResolver
