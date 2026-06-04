@@ -13,8 +13,6 @@ use Rcsofttech\AuditTrailBundle\Contract\TrackableCollectionInterface;
 
 use function array_values;
 use function is_int;
-use function is_iterable;
-use function is_object;
 use function spl_object_id;
 
 /**
@@ -99,7 +97,7 @@ final readonly class CollectionChangeResolver
         return [
             'field' => $fieldName,
             'old' => $oldIds,
-            'new' => $this->normalizeUniqueIds($this->resolveCurrentCollectionIds($collection, $em)),
+            'new' => $this->normalizeUniqueIds($this->resolveCurrentCollectionIds($collection, $em, $oldIds)),
         ];
     }
 
@@ -204,64 +202,75 @@ final readonly class CollectionChangeResolver
     }
 
     /**
-     * @param TrackableCollection $collection
+     * @param TrackableCollection    $collection
+     * @param array<int, int|string> $baseIds
      *
      * @return array<int, int|string>
      */
     private function resolveCurrentCollectionIds(
         PersistentCollection|TrackableCollectionInterface $collection,
         EntityManagerInterface $em,
+        array $baseIds,
     ): array {
-        if ($collection instanceof PersistentCollection && $collection->isInitialized()) {
-            return $this->collectionIdExtractor->extractFromIterable($collection, $em);
-        }
-
         if ($collection instanceof PersistentCollection) {
-            // Never iterate an uninitialized live collection here: doing so initializes it
-            // from the pre-commit database state mid-flush and corrupts later reads in the
-            // same request. Compute current ids from the snapshot plus insert/delete diffs.
-            $deletedIds = [];
-            foreach ($this->getCollectionDeleteDiff($collection) as $entity) {
-                $deletedIds[spl_object_id($entity)] = true;
+            if (!$collection->isInitialized()) {
+                return $this->applyCollectionDiffsToBaseIds(
+                    $baseIds,
+                    $this->extractCollectionIdsFromIterable($this->getCollectionDeleteDiff($collection), $em),
+                    $this->extractCollectionIdsFromIterable($this->getCollectionInsertDiff($collection), $em),
+                );
             }
 
-            $kept = [];
-            foreach ($collection->getSnapshot() as $entity) {
-                if (is_object($entity) && isset($deletedIds[spl_object_id($entity)])) {
-                    continue;
-                }
-
-                $kept[] = $entity;
-            }
-
-            return $this->collectionIdExtractor->extractFromIterable(
-                [...$kept, ...$this->getCollectionInsertDiff($collection)],
-                $em,
-            );
-        }
-
-        if (is_iterable($collection)) {
             return $this->collectionIdExtractor->extractFromIterable($collection, $em);
         }
 
-        $deletedObjectIds = [];
-        foreach ($this->getCollectionDeleteDiff($collection) as $entity) {
-            $deletedObjectIds[spl_object_id($entity)] = true;
+        return $this->applyCollectionDiffsToBaseIds(
+            $this->extractCollectionIdsFromIterable($collection->getSnapshot(), $em),
+            $this->extractCollectionIdsFromIterable($this->getCollectionDeleteDiff($collection), $em),
+            $this->extractCollectionIdsFromIterable($this->getCollectionInsertDiff($collection), $em),
+        );
+    }
+
+    /**
+     * @param array<int, int|string> $baseIds
+     * @param array<int, int|string> $deleteDiffIds
+     * @param array<int, int|string> $insertDiffIds
+     *
+     * @return array<int, int|string>
+     */
+    private function applyCollectionDiffsToBaseIds(
+        array $baseIds,
+        array $deleteDiffIds,
+        array $insertDiffIds,
+    ): array {
+        $deletedIds = [];
+        foreach ($deleteDiffIds as $id) {
+            $deletedIds[$this->buildComparableIdLookupKey($id)] = true;
         }
 
-        $currentItems = [];
-        foreach ($collection->getSnapshot() as $entity) {
-            if (is_object($entity) && isset($deletedObjectIds[spl_object_id($entity)])) {
+        $currentIds = [];
+        $currentLookup = [];
+        foreach ($baseIds as $id) {
+            $lookupKey = $this->buildComparableIdLookupKey($id);
+            if (isset($deletedIds[$lookupKey])) {
                 continue;
             }
 
-            $currentItems[] = $entity;
+            $currentIds[] = $id;
+            $currentLookup[$lookupKey] = true;
         }
 
-        return $this->collectionIdExtractor->extractFromIterable(
-            [...$currentItems, ...$this->getCollectionInsertDiff($collection)],
-            $em,
-        );
+        foreach ($insertDiffIds as $id) {
+            $lookupKey = $this->buildComparableIdLookupKey($id);
+            if (isset($currentLookup[$lookupKey])) {
+                continue;
+            }
+
+            $currentIds[] = $id;
+            $currentLookup[$lookupKey] = true;
+        }
+
+        return $currentIds;
     }
 
     /**
@@ -290,5 +299,10 @@ final readonly class CollectionChangeResolver
     private function buildIdLookupKey(int|string $id): string
     {
         return is_int($id) ? 'i:'.$id : 's:'.$id;
+    }
+
+    private function buildComparableIdLookupKey(int|string $id): string
+    {
+        return (string) $id;
     }
 }
