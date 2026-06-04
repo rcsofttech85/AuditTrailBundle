@@ -5068,16 +5068,16 @@
         },
         {
             "name": "easycorp/easyadmin-bundle",
-            "version": "v5.0.6",
+            "version": "v5.0.13",
             "source": {
                 "type": "git",
                 "url": "https://github.com/EasyCorp/EasyAdminBundle.git",
-                "reference": "bfecca7c406ebfb7bf77f22055b5c9443fee98cb"
+                "reference": "11b06ef648b6d5fccb3e62ccd8f67f59534e006a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/EasyCorp/EasyAdminBundle/zipball/bfecca7c406ebfb7bf77f22055b5c9443fee98cb",
-                "reference": "bfecca7c406ebfb7bf77f22055b5c9443fee98cb",
+                "url": "https://api.github.com/repos/EasyCorp/EasyAdminBundle/zipball/11b06ef648b6d5fccb3e62ccd8f67f59534e006a",
+                "reference": "11b06ef648b6d5fccb3e62ccd8f67f59534e006a",
                 "shasum": ""
             },
             "require": {
@@ -5163,7 +5163,7 @@
             ],
             "support": {
                 "issues": "https://github.com/EasyCorp/EasyAdminBundle/issues",
-                "source": "https://github.com/EasyCorp/EasyAdminBundle/tree/v5.0.6"
+                "source": "https://github.com/EasyCorp/EasyAdminBundle/tree/v5.0.13"
             },
             "funding": [
                 {
@@ -5171,7 +5171,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-04-21T06:06:46+00:00"
+            "time": "2026-06-04T06:25:35+00:00"
         },
         {
             "name": "ergebnis/agent-detector",
