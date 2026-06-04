@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Tests\Unit\Service;
 
+use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\SQLitePlatform;
 use Doctrine\DBAL\Query\QueryBuilder;
@@ -13,6 +14,7 @@ use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\DefaultNamingStrategy;
 use Doctrine\ORM\Mapping\ManyToManyInverseSideMapping;
 use Doctrine\ORM\Mapping\ManyToManyOwningSideMapping;
+use Doctrine\ORM\PersistentCollection;
 use Doctrine\ORM\UnitOfWork;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
@@ -24,6 +26,7 @@ use Rcsofttech\AuditTrailBundle\Service\JoinTableCollectionIdLoader;
 use Rcsofttech\AuditTrailBundle\Tests\Unit\Fixtures\StubCollection;
 use stdClass;
 
+use function array_values;
 use function get_object_vars;
 use function is_int;
 use function is_string;
@@ -278,6 +281,58 @@ final class CollectionChangeResolverTest extends TestCase
         ], $resolver->buildCollectionTransition($collection, $em));
     }
 
+    public function testBuildCollectionTransitionDoesNotInitializeUninitializedPersistentCollection(): void
+    {
+        $owner = new class {
+            public int $id = 10;
+        };
+        $addedTag = new TestCollectionItem(6);
+
+        $resolver = $this->createResolver();
+        $em = $this->createEntityManagerForDatabaseFallback($owner, [1, 2, 3, 4, 5]);
+
+        $targetMetadata = self::createStub(ClassMetadata::class);
+        $collection = new PersistentCollection($em, $targetMetadata, $this->createObjectCollection($addedTag));
+        $collection->setOwner($owner, $this->createOwningTagsMapping($owner));
+        $collection->setInitialized(false);
+        $collection->setDirty(true);
+
+        self::assertFalse($collection->isInitialized());
+
+        self::assertSame([
+            'field' => 'tags',
+            'old' => [1, 2, 3, 4, 5],
+            'new' => [1, 2, 3, 4, 5, '6'],
+        ], $resolver->buildCollectionTransition($collection, $em));
+
+        self::assertFalse($collection->isInitialized());
+    }
+
+    public function testBuildCollectionTransitionDoesNotDuplicateDatabaseFallbackIdsForUninitializedPersistentCollection(): void
+    {
+        $owner = new class {
+            public int $id = 10;
+        };
+        $existingTag = new TestCollectionItem(2);
+
+        $resolver = $this->createResolver();
+        $em = $this->createEntityManagerForDatabaseFallback($owner, [1, 2, 3]);
+
+        $targetMetadata = self::createStub(ClassMetadata::class);
+        $collection = new PersistentCollection($em, $targetMetadata, $this->createObjectCollection($existingTag));
+        $collection->setOwner($owner, $this->createOwningTagsMapping($owner));
+        $collection->setInitialized(false);
+        $collection->setDirty(true);
+
+        self::assertSame([
+            'field' => 'tags',
+            'old' => [1, 2, 3],
+            'new' => [1, 2, 3],
+        ], $resolver->buildCollectionTransition($collection, $em));
+
+        self::assertFalse($collection->isInitialized());
+    }
+
     public function testExtractCollectionChangesForOwnerUsesTrackableSnapshotWithoutDuckTyping(): void
     {
         $owner = new class {
@@ -379,6 +434,14 @@ final class CollectionChangeResolverTest extends TestCase
             new CollectionChangeIndexBuilder($collectionIdExtractor, $joinTableLoader),
             $joinTableLoader,
         );
+    }
+
+    /**
+     * @return ArrayCollection<int, object>
+     */
+    private function createObjectCollection(object ...$items): ArrayCollection
+    {
+        return new ArrayCollection(array_values($items));
     }
 
     private function createOwningTagsMapping(object $owner): ManyToManyOwningSideMapping
