@@ -14,12 +14,12 @@ AuditTrailBundle records Doctrine ORM entity changes in Symfony applications. It
 
 Full documentation now lives on GitHub Pages:
 
-- **Current docs:** [AuditTrailBundle 4.x documentation](https://rcsofttech85.github.io/public/audit-trail-bundle/docs/4.x/index.html)
-- **Configuration:** [configuration reference](https://rcsofttech85.github.io/public/audit-trail-bundle/docs/4.x/configuration.html)
-- **Transports:** [database, async database, queue, HTTP, and chain](https://rcsofttech85.github.io/public/audit-trail-bundle/docs/4.x/transports.html)
-- **Usage & AuditReader:** [attributes, context, events, and query API](https://rcsofttech85.github.io/public/audit-trail-bundle/docs/4.x/usage.html)
-- **Operations:** [revert, CLI, exports, and serialization](https://rcsofttech85.github.io/public/audit-trail-bundle/docs/4.x/operations.html)
-- **Upgrade & Architecture:** [upgrade guides and architecture notes](https://rcsofttech85.github.io/public/audit-trail-bundle/docs/4.x/upgrade-architecture.html)
+- **Current docs:** [AuditTrailBundle 4.x documentation](https://rcsofttech85.github.io/audit-trail-bundle/docs/4.x/)
+- **Configuration:** [configuration reference](https://rcsofttech85.github.io/audit-trail-bundle/docs/4.x/configuration/)
+- **Transports:** [database, async database, queue, HTTP, and chain](https://rcsofttech85.github.io/audit-trail-bundle/docs/4.x/transports/)
+- **Usage & AuditReader:** [attributes, context, events, and query API](https://rcsofttech85.github.io/audit-trail-bundle/docs/4.x/usage/)
+- **Operations:** [revert, CLI, exports, and serialization](https://rcsofttech85.github.io/audit-trail-bundle/docs/4.x/operations/)
+- **Upgrade & Architecture:** [upgrade guides and architecture notes](https://rcsofttech85.github.io/audit-trail-bundle/docs/4.x/upgrade-architecture/)
 
 For older versions, use the README and docs from the matching GitHub tag unless archived public docs are added later.
 
