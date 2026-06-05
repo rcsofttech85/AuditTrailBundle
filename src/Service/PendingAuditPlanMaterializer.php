@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Service;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\PersistentCollection;
 use Rcsofttech\AuditTrailBundle\Contract\AuditServiceInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\ValueObject\PendingAuditPlan;
@@ -33,6 +34,15 @@ final readonly class PendingAuditPlanMaterializer
 
         foreach ($plan->deferredCollectionFields as $field) {
             $currentValue = $metadata->getFieldValue($plan->entity, $field);
+            if ($currentValue instanceof PersistentCollection && !$currentValue->isInitialized() && !$currentValue->isDirty()) {
+                $newValues[$field] = $this->collectionIdExtractor->extractFromPersistentCollectionCriteria(
+                    $currentValue,
+                    $entityManager,
+                );
+
+                continue;
+            }
+
             $newValues[$field] = is_iterable($currentValue)
                 ? $this->collectionIdExtractor->extractFromIterable($currentValue, $entityManager)
                 : [];
