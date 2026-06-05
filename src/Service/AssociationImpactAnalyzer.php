@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use Doctrine\Common\Collections\Criteria;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\AssociationMapping;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\InverseSideMapping;
 use Doctrine\ORM\Mapping\OwningSideMapping;
+use Doctrine\ORM\PersistentCollection;
 use Doctrine\ORM\UnitOfWork;
 use Rcsofttech\AuditTrailBundle\ValueObject\AssociationImpact;
 
@@ -114,8 +116,8 @@ final readonly class AssociationImpactAnalyzer
             return [];
         }
 
-        $relatedEntities = $metadata->getFieldValue($deletedEntity, $associationName);
-        if (!is_iterable($relatedEntities)) {
+        $relatedEntities = $this->resolveCollectionItems($metadata->getFieldValue($deletedEntity, $associationName));
+        if ($relatedEntities === null) {
             return [];
         }
 
@@ -161,17 +163,62 @@ final readonly class AssociationImpactAnalyzer
     ): ?AssociationImpact {
         $relatedMetadata = $this->getClassMetadata($relatedEntity, $metadataByClass, $em);
         $relatedCollection = $relatedMetadata->getFieldValue($relatedEntity, $counterpartField);
-        if (!is_iterable($relatedCollection)) {
+        $oldIds = $this->resolveCollectionIds($relatedCollection, $em);
+        if ($oldIds === null) {
             return null;
         }
 
-        $oldIds = $this->collectionIdExtractor->extractFromIterable($relatedCollection, $em);
         $newIds = array_values(array_filter($oldIds, static fn ($id) => $id !== $deletedId));
         if ($oldIds === $newIds) {
             return null;
         }
 
         return new AssociationImpact($relatedEntity, $counterpartField, $oldIds, $newIds);
+    }
+
+    /**
+     * @return iterable<mixed>|null
+     */
+    private function resolveCollectionItems(mixed $items): ?iterable
+    {
+        if (!is_iterable($items)) {
+            return null;
+        }
+
+        if ($items instanceof PersistentCollection && $this->canReadCollectionThroughCriteria($items)) {
+            return $items->matching(Criteria::create());
+        }
+
+        return $items;
+    }
+
+    /**
+     * @return array<int, int|string>|null
+     */
+    private function resolveCollectionIds(mixed $items, EntityManagerInterface $em): ?array
+    {
+        if (!is_iterable($items)) {
+            return null;
+        }
+
+        if ($items instanceof PersistentCollection && $this->canReadCollectionThroughCriteria($items)) {
+            return $this->collectionIdExtractor->extractFromPersistentCollectionCriteria($items, $em);
+        }
+
+        return $this->collectionIdExtractor->extractFromIterable($items, $em);
+    }
+
+    /**
+     * During onFlush delete impact analysis, a clean uninitialized collection
+     * can be read from the pre-delete database state without hydrating the
+     * original PersistentCollection. Dirty collections keep the existing path
+     * because their in-memory diffs must remain part of the result.
+     *
+     * @param PersistentCollection<int|string, mixed> $items
+     */
+    private function canReadCollectionThroughCriteria(PersistentCollection $items): bool
+    {
+        return !$items->isInitialized() && !$items->isDirty();
     }
 
     /**

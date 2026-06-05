@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rcsofttech\AuditTrailBundle\Service;
 
+use Doctrine\Common\Collections\Criteria;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\PersistentCollection;
 use Rcsofttech\AuditTrailBundle\Contract\EntityIdResolverInterface;
@@ -39,6 +40,23 @@ final readonly class CollectionIdExtractor
         }
 
         return $ids;
+    }
+
+    /**
+     * Read ids through a separate Doctrine criteria result without hydrating
+     * the owning PersistentCollection.
+     *
+     * Use this only when the database state is the intended source of truth for
+     * the collection, and the collection has no pending in-memory diffs that
+     * must be folded into the result.
+     *
+     * @param PersistentCollection<int|string, mixed> $collection
+     *
+     * @return array<int, string>
+     */
+    public function extractFromPersistentCollectionCriteria(PersistentCollection $collection, EntityManagerInterface $em): array
+    {
+        return $this->extractFromIterable($collection->matching(Criteria::create()), $em);
     }
 
     public function hasPendingIds(mixed $items, EntityManagerInterface $em): bool
