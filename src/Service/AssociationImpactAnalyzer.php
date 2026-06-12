@@ -218,6 +218,16 @@ final readonly class AssociationImpactAnalyzer
      */
     private function canReadCollectionThroughCriteria(PersistentCollection $items): bool
     {
+        // Doctrine's matching()/Criteria is unsupported for ManyToMany associations
+        // whose target entity uses class inheritance: ManyToManyPersister::loadCriteria
+        // builds a ResultSetMapping via addRootEntityFromClassMetadata, which throws
+        // "ResultSetMappingBuilder does not currently support your inheritance scheme.".
+        // Bail out so the caller falls back to standard iteration / lazy loading, which
+        // hydrates inherited entities correctly.
+        if ($items->getMapping()->isManyToMany() && !$items->getTypeClass()->isInheritanceTypeNone()) {
+            return false;
+        }
+
         return !$items->isInitialized() && !$items->isDirty();
     }
 
