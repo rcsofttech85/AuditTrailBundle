@@ -184,9 +184,27 @@ final readonly class ValueSerializer implements ValueSerializerInterface
             return array_values($value->unwrap()->slice(0, $this->maxCollectionItems + 1));
         }
 
+        if ($this->needsInitializedIdentifierSample($value)) {
+            $value->initialize();
+
+            return array_values($value->slice(0, $this->maxCollectionItems + 1));
+        }
+
         return array_values($value
             ->matching(Criteria::create()->setMaxResults($this->maxCollectionItems + 1))
             ->toArray());
+    }
+
+    /**
+     * Criteria sampling has the same inherited ManyToMany limitation; initialize
+     * only for that unsupported mapping so ids_only returns real identifiers.
+     *
+     * @param PersistentCollection<int|string, mixed> $value
+     */
+    private function needsInitializedIdentifierSample(PersistentCollection $value): bool
+    {
+        return $value->getMapping()->isManyToMany()
+            && !$value->getTypeClass()->isInheritanceTypeNone();
     }
 
     private function serializeObject(object $value, int $depth = 0): mixed
