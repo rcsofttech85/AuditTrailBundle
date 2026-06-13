@@ -110,7 +110,6 @@ audit_trail:
             enabled: true
             async: false
 ```
-
 ## Requirements
 
 - PHP 8.4+
@@ -122,9 +121,18 @@ audit_trail:
 ## Links
 
 - **Packagist:** [rcsofttech/audit-trail-bundle](https://packagist.org/packages/rcsofttech/audit-trail-bundle)
-- **Issues:** [GitHub issue tracker](https://github.com/rcsofttech85/AuditTrailBundle/issues)
 - **Changelog:** [CHANGELOG.md](https://github.com/rcsofttech85/AuditTrailBundle/blob/main/CHANGELOG.md)
-- **Contributing:** [CONTRIBUTING.md](https://github.com/rcsofttech85/AuditTrailBundle/blob/main/CONTRIBUTING.md)
+
+## Support & Feedback
+
+If you find this bundle useful:
+
+- ⭐ **Star the repository** on GitHub
+- 💬 **Share feedback** in [Discussions](https://github.com/rcsofttech85/AuditTrailBundle/discussions)
+- 🐛 **Report bugs or suggest improvements** via [Issues](https://github.com/rcsofttech85/AuditTrailBundle/issues)
+- 🔧 **Contribute code or documentation** (see [CONTRIBUTING.md](https://github.com/rcsofttech85/AuditTrailBundle/blob/main/CONTRIBUTING.md))
+
+Your support helps improve the bundle and makes it easier for other Symfony developers to discover it.
 
 ## License
 
