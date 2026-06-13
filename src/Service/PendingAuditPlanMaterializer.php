@@ -34,7 +34,7 @@ final readonly class PendingAuditPlanMaterializer
 
         foreach ($plan->deferredCollectionFields as $field) {
             $currentValue = $metadata->getFieldValue($plan->entity, $field);
-            if ($currentValue instanceof PersistentCollection && !$currentValue->isInitialized() && !$currentValue->isDirty()) {
+            if ($currentValue instanceof PersistentCollection && $this->canReadCollectionThroughCriteria($currentValue)) {
                 $newValues[$field] = $this->collectionIdExtractor->extractFromPersistentCollectionCriteria(
                     $currentValue,
                     $entityManager,
@@ -56,5 +56,22 @@ final readonly class PendingAuditPlanMaterializer
             $plan->context,
             $entityManager,
         );
+    }
+
+    /**
+     * During deferred collection materialization, a clean uninitialized
+     * collection can be read through Criteria without hydrating the original
+     * PersistentCollection. Dirty collections keep the existing path because
+     * their in-memory diffs must remain part of the result.
+     *
+     * @param PersistentCollection<int|string, mixed> $items
+     */
+    private function canReadCollectionThroughCriteria(PersistentCollection $items): bool
+    {
+        if ($items->getMapping()->isManyToMany() && !$items->getTypeClass()->isInheritanceTypeNone()) {
+            return false;
+        }
+
+        return !$items->isInitialized() && !$items->isDirty();
     }
 }

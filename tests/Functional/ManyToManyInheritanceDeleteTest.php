@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace Rcsofttech\AuditTrailBundle\Tests\Functional;
 
 use Doctrine\ORM\PersistentCollection;
+use Rcsofttech\AuditTrailBundle\Contract\ValueSerializerInterface;
 use Rcsofttech\AuditTrailBundle\Entity\AuditLog;
 use Rcsofttech\AuditTrailBundle\Enum\AuditAction;
+use Rcsofttech\AuditTrailBundle\Service\PendingAuditPlanMaterializer;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\Club;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\Membership;
 use Rcsofttech\AuditTrailBundle\Tests\Functional\Entity\PremiumMembership;
+use Rcsofttech\AuditTrailBundle\ValueObject\PendingAuditPlan;
 
 use function array_map;
 use function array_slice;
@@ -86,5 +89,91 @@ final class ManyToManyInheritanceDeleteTest extends AbstractFunctionalTestCase
 
         // The membership row is actually gone: four of the original five remain.
         self::assertSame(4, $em->getRepository(Membership::class)->count([]));
+    }
+
+    public function testMaterializingDeferredInheritedManyToManyCollectionDoesNotCrash(): void
+    {
+        TestKernel::$publicServiceIds = [PendingAuditPlanMaterializer::class];
+
+        self::bootKernel();
+        $em = $this->getEntityManager();
+
+        $club = new Club('deferred audit club');
+        $membership = new PremiumMembership('zara');
+        $club->addMembership($membership);
+
+        $em->persist($club);
+        $em->flush();
+
+        $clubId = $club->getId();
+        $membershipId = $membership->getId();
+        self::assertNotNull($clubId);
+        self::assertNotNull($membershipId);
+
+        $em->clear();
+
+        $club = $em->find(Club::class, $clubId);
+        self::assertInstanceOf(Club::class, $club);
+
+        $clubMemberships = $club->getMemberships();
+        self::assertInstanceOf(PersistentCollection::class, $clubMemberships);
+        self::assertFalse($clubMemberships->isInitialized());
+        self::assertFalse($clubMemberships->isDirty());
+
+        $materializer = $this->getService(PendingAuditPlanMaterializer::class);
+        self::assertInstanceOf(PendingAuditPlanMaterializer::class, $materializer);
+
+        $audit = $materializer->materialize(
+            PendingAuditPlan::forDeferredCollections(
+                $club,
+                AuditAction::Update,
+                ['memberships' => []],
+                [],
+                ['memberships'],
+            ),
+            $em,
+        );
+
+        self::assertEqualsCanonicalizing([(string) $membershipId], $audit->newValues['memberships'] ?? null);
+        self::assertTrue($clubMemberships->isInitialized());
+    }
+
+    public function testIdsOnlySerializationOfDeferredInheritedManyToManyCollectionReturnsIds(): void
+    {
+        TestKernel::$publicServiceIds = [ValueSerializerInterface::class];
+
+        self::bootKernel([
+            'audit_config' => [
+                'collection_serialization_mode' => 'ids_only',
+            ],
+        ]);
+        $em = $this->getEntityManager();
+
+        $club = new Club('ids only club');
+        $membership = new PremiumMembership('yara');
+        $club->addMembership($membership);
+
+        $em->persist($club);
+        $em->flush();
+
+        $clubId = $club->getId();
+        $membershipId = $membership->getId();
+        self::assertNotNull($clubId);
+        self::assertNotNull($membershipId);
+
+        $em->clear();
+
+        $club = $em->find(Club::class, $clubId);
+        self::assertInstanceOf(Club::class, $club);
+
+        $clubMemberships = $club->getMemberships();
+        self::assertInstanceOf(PersistentCollection::class, $clubMemberships);
+        self::assertFalse($clubMemberships->isInitialized());
+
+        $serializer = $this->getService(ValueSerializerInterface::class);
+        self::assertInstanceOf(ValueSerializerInterface::class, $serializer);
+
+        self::assertEqualsCanonicalizing([(string) $membershipId], $serializer->serializeAssociation($clubMemberships));
+        self::assertTrue($clubMemberships->isInitialized());
     }
 }
