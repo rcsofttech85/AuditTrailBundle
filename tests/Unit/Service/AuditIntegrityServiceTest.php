@@ -42,6 +42,87 @@ final class AuditIntegrityServiceTest extends TestCase
         self::assertFalse($disabledService->isEnabled());
     }
 
+    /**
+     * A DATETIME column carries no timezone: Doctrine writes the digits the object happens to hold
+     * and hands those same digits back reinterpreted in PHP's default timezone. Signing an instant
+     * therefore signs something the round trip cannot reproduce — anywhere PHP is not on UTC, a row
+     * verifies at write time and reports itself tampered with the moment it is read back.
+     *
+     * Pinned to a non-UTC default on purpose: on a UTC runner the two forms coincide and this test
+     * would pass no matter what the normalizer does.
+     */
+    public function testVerifySignatureSurvivesADoctrineRoundTripUnderANonUtcDefaultTimezone(): void
+    {
+        $originalTimezone = date_default_timezone_get();
+        date_default_timezone_set('Europe/Paris');
+
+        try {
+            $written = $this->logCreatedAt(new DateTimeImmutable('2026-08-24 07:34:52', new DateTimeZone('UTC')));
+            $signature = $this->service->generateSignature($written);
+
+            // What Doctrine gives back: the stored digits, read in PHP's default timezone.
+            $reloaded = $this->logCreatedAt(new DateTimeImmutable('2026-08-24 07:34:52'));
+            $reloaded->signature = $signature;
+
+            self::assertTrue($this->service->verifySignature($reloaded));
+        } finally {
+            date_default_timezone_set($originalTimezone);
+        }
+    }
+
+    /**
+     * Tamper detection must not soften on the very hosts the round-trip fix targets. Shifting
+     * created_at by exactly the host's UTC offset is the one edit that would slip past a verifier
+     * willing to accept the pre-fix, UTC-converted form as well as the stored one.
+     */
+    public function testAShiftedCreatedAtIsStillDetectedUnderANonUtcDefaultTimezone(): void
+    {
+        $originalTimezone = date_default_timezone_get();
+        date_default_timezone_set('Europe/Paris');
+
+        try {
+            $written = $this->logCreatedAt(new DateTimeImmutable('2026-08-24 07:34:52', new DateTimeZone('UTC')));
+            $signature = $this->service->generateSignature($written);
+
+            $backdated = $this->logCreatedAt(new DateTimeImmutable('2026-08-24 09:34:52'));
+            $backdated->signature = $signature;
+
+            self::assertFalse($this->service->verifySignature($backdated));
+        } finally {
+            date_default_timezone_set($originalTimezone);
+        }
+    }
+
+    /**
+     * Why this invalidates nothing already in the wild: audit_trail.timezone defaults to 'UTC', so
+     * AuditLogFactory hands the signer an already-UTC object and the conversion the previous
+     * implementation performed had nothing to convert. Both forms must be byte-identical here.
+     */
+    public function testTheStoredFormMatchesThePreviousUtcConvertedFormWhenStampedInUtc(): void
+    {
+        $createdAt = new DateTimeImmutable('2026-08-24 07:34:52', new DateTimeZone('UTC'));
+        $log = $this->logCreatedAt($createdAt);
+
+        self::assertSame(
+            $createdAt->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s'),
+            new AuditIntegrityNormalizer()->normalize($log)['created_at'],
+        );
+    }
+
+    private function logCreatedAt(DateTimeImmutable $createdAt): AuditLog
+    {
+        return new AuditLog(
+            entityClass: 'App\Entity\User',
+            entityId: '1',
+            action: 'update',
+            createdAt: $createdAt,
+            oldValues: ['name' => 'Old Name'],
+            newValues: ['name' => 'New Name'],
+            userId: '42',
+            username: 'admin',
+        );
+    }
+
     public function testGenerateSignature(): void
     {
         $log = new AuditLog(
@@ -229,9 +310,19 @@ final class AuditIntegrityServiceTest extends TestCase
         self::assertTrue($this->service->verifySignature($log));
     }
 
-    public function testVerifySignatureWithTimezoneStability(): void
+    /**
+     * The signature follows the digits that get stored, not the instant they denote.
+     *
+     * This used to assert the opposite — that the same moment written in two zones verified against
+     * one signature — but that property cannot survive persistence. created_at is a DATETIME and
+     * keeps no offset, so Doctrine writes whatever digits the object holds and hands them back in
+     * PHP's default timezone; a reloaded row only ever carries one zone, and the instant it
+     * originally denoted is not recoverable. Honouring the old property also meant a verifier had
+     * to accept several distinct timestamps for a single signature, which is precisely how a row
+     * shifted by the host's UTC offset would have slipped through.
+     */
+    public function testSignatureFollowsTheStoredDigitsRatherThanTheInstant(): void
     {
-        // Create a log with UTC timezone
         $logUtc = new AuditLog(
             'App\Entity\User',
             '1',
@@ -242,18 +333,27 @@ final class AuditIntegrityServiceTest extends TestCase
 
         $signature = $this->service->generateSignature($logUtc);
 
-        // Create a log with different timezone but same point in time
-        $logIst = new AuditLog(
+        // Same digits, different zone: what Doctrine reconstructs on a non-UTC host.
+        $sameDigits = new AuditLog(
+            'App\Entity\User',
+            '1',
+            'update',
+            new DateTimeImmutable('2023-01-01 12:00:00', new DateTimeZone('Asia/Kolkata')),
+            ['name' => 'Old']
+        );
+        $sameDigits->signature = $signature;
+        self::assertTrue($this->service->verifySignature($sameDigits));
+
+        // Same instant, different digits: no longer the row that was signed.
+        $sameInstant = new AuditLog(
             'App\Entity\User',
             '1',
             'update',
             new DateTimeImmutable('2023-01-01 17:30:00', new DateTimeZone('Asia/Kolkata')),
             ['name' => 'Old']
         );
-        $logIst->signature = $signature;
-
-        // Should pass because we normalize to UTC before hashing
-        self::assertTrue($this->service->verifySignature($logIst));
+        $sameInstant->signature = $signature;
+        self::assertFalse($this->service->verifySignature($sameInstant));
     }
 
     public function testVerifySignatureWithDateArrayStability(): void

@@ -28,6 +28,8 @@ final readonly class AuditIntegrityNormalizer
 {
     private const int MAX_NORMALIZATION_DEPTH = 5;
 
+    private const string CREATED_AT_FORMAT = 'Y-m-d H:i:s';
+
     private const array DATE_TIME_FORMATS = [
         DateTimeInterface::ATOM,
         DateTimeInterface::RFC3339_EXTENDED,
@@ -65,7 +67,12 @@ final readonly class AuditIntegrityNormalizer
             'ip_address' => $log->ipAddress,
             'user_agent' => $log->userAgent,
             'transaction_hash' => $log->transactionHash,
-            'created_at' => $log->createdAt->setTimezone($this->utc)->format('Y-m-d H:i:s'),
+            // Signed as stored rather than converted: the column is a DATETIME and carries no
+            // timezone, so Doctrine hands these digits back reinterpreted in PHP's default
+            // timezone. Converting to UTC here would sign a moment the round trip cannot
+            // reproduce, and the row would report itself tampered with the moment it is read back
+            // on any host that is not on UTC.
+            'created_at' => $log->createdAt->format(self::CREATED_AT_FORMAT),
         ];
 
         if ($includeRevertedLogId) {
